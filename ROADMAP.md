@@ -1,0 +1,332 @@
+Rust Notepad — Feature-Parity Roadmap
+1. Project Goal
+
+Build a Windows-native text editor in Rust that achieves 1:1 feature parity with a defined reference version of Microsoft Windows Notepad.
+
+The application must reproduce the reference application's observable behavior, including:
+
+    UI layout, menus, dialogs, and window behavior
+    Text editing, selection, clipboard, and undo/redo
+    File opening, saving, encoding, and line endings
+    Tabs, session restoration, and unsaved-document handling
+    Search, replace, navigation, and status information
+    Markdown editing and formatting, where supported by the reference build
+    Accessibility, keyboard navigation, and Windows integration
+    Performance, reliability, and edge-case behavior
+
+Parity means behavioral equivalence, not merely visual similarity.
+2. Reference Baseline
+
+Before implementation, record the exact reference environment.
+
+    Operating system: Windows 11
+    Reference application: Microsoft Notepad
+    Reference app version: [record exact version]
+    Windows build: [record exact build]
+    Display scaling: 100%, 150%, and 200%
+    Architectures: x64 initially; ARM64 where required
+    Languages and keyboard layouts: English initially, then additional layouts
+    Feature availability: record stable, preview, and optional features separately
+
+Maintain docs/reference-matrix.md containing screenshots, observed behavior, shortcuts, menu structures, test cases, and version-specific differences.
+
+Do not claim complete parity until every in-scope feature has passed its acceptance tests.
+3. Technology Strategy
+Language and platform
+
+    Rust stable, pinned through rust-toolchain.toml
+    Windows APIs through the windows crate
+    Native Windows integration for dialogs, clipboard, accessibility, DPI, and window management
+    Cargo workspaces for modularity
+    Automated tests and CI for Windows x64
+    ARM64 validation when supported by the chosen dependencies
+
+UI and text engine
+
+Evaluate two implementations before committing:
+
+    Native Win32 UI with a custom text engine: maximum control over behavior and performance, but substantial engineering effort.
+    Native Windows controls with a compatibility layer: faster initial development, but only acceptable if the controls can reproduce the reference behavior.
+
+Do not assume a standard Rust text widget or RichEdit control automatically provides Notepad parity. Verify selection semantics, line endings, Unicode handling, undo history, large-file performance, and accessibility experimentally.
+Architecture
+
+Separate the application into these modules:
+
+    app — startup, process lifecycle, and command-line arguments
+    ui — windows, menus, toolbar, tabs, dialogs, and status bar
+    editor — document model, text engine, selection, caret, and editing commands
+    document — file state, dirty tracking, and document identity
+    encoding — encoding detection, decoding, and serialization
+    filesystem — file operations, metadata, and error handling
+    search — find, replace, navigation, and search state
+    markdown — Markdown parsing, editing, formatting, and view switching
+    session — tabs, recent files, and session restoration
+    settings — preferences, theme, font, and persistence
+    platform — Windows APIs, clipboard, shell integration, and accessibility
+    tests — behavioral fixtures, regression tests, and parity tests
+
+Keep platform-specific behavior behind narrow interfaces. Avoid duplicating document state across the UI and text engine.
+4. Milestones
+M0 — Specification and reference capture
+
+    Pin the target Notepad version and Windows build.
+    Capture screenshots of every major window, menu, dialog, and settings page.
+    Record all visible commands and keyboard shortcuts.
+    Test each command against the reference application.
+    Record text editing and file-format edge cases.
+    Create a feature inventory with IDs, priorities, and acceptance criteria.
+    Separate mandatory features from optional or service-dependent features.
+
+Exit criteria: Every in-scope feature has a specification and a reproducible test or documented verification procedure.
+
+Status: IN_PROGRESS — specification, feature inventory, architecture, and test strategy drafted
+(`docs/reference-matrix.md`, `docs/feature-matrix.md`, `docs/architecture.md`, `docs/test-strategy.md`,
+`docs/parity-report.md`). Reference capture on a Windows reference machine is outstanding
+(see `docs/reference-matrix.md` §7 and §1 "PINNING ACTION"); items tagged TO_CAPTURE are not yet
+reproducible, so M0 cannot close until they are observed and committed as fixtures.
+
+M1 — Rust foundation
+
+    Create the Cargo workspace and Windows executable.
+    Configure logging, error reporting, and release builds.
+    Establish UI-thread and background-work boundaries.
+    Implement process startup and shutdown.
+    Support opening files through command-line arguments and Windows shell integration where required.
+    Add unit-test, integration-test, and CI infrastructure.
+
+Exit criteria: The application launches reliably, opens an initial window, and passes clean Windows builds.
+M2 — Native window and visual shell
+
+    Main window and title bar behavior
+    Client area, menus, and command routing
+    Editor viewport and scrollbars
+    Status bar
+    Context menus
+    Standard open/save dialogs
+    Resizing, maximizing, minimizing, and restoring
+    High-DPI scaling and theme handling
+    Window focus, activation, and keyboard navigation
+
+Exit criteria: The application's geometry, command structure, and major visual states match the reference screenshots within defined tolerances.
+M3 — Text engine
+
+    Unicode text model
+    Caret movement and selection
+    Mouse selection, double-click, and line selection
+    Insert, delete, backspace, and overwrite behavior if applicable
+    Multilevel undo and redo
+    Clipboard copy, cut, paste, and select all
+    Drag and drop
+    Word wrap and horizontal scrolling
+    Tabs and indentation behavior
+    Long lines and empty lines
+    CRLF, LF, and CR line-ending behavior
+    Unicode, surrogate pairs, combining marks, emoji, and IME input
+    Control characters and whitespace rendering where supported
+
+Exit criteria: All editing commands pass differential tests against the reference application.
+M4 — File I/O and data integrity
+
+    Open and save files
+    Save As and overwrite confirmation
+    New document and reopen behavior
+    Encoding detection and explicit encoding behavior
+    UTF-8, UTF-16, BOM, and legacy encodings where applicable
+    Preserve or correctly select line endings
+    Detect external file changes if the reference does
+    Handle permissions, locked files, and missing paths
+    Handle empty, malformed, and very large files
+    Dirty-state tracking
+    Unsaved-changes prompts
+    Recover gracefully from failed writes
+
+Exit criteria: Opening and saving supported fixtures produces the same expected bytes and prompts as the reference. No silent data loss is permitted.
+M5 — Editing commands and search
+
+    Find and find next/previous
+    Replace and Replace All
+    Search direction and wrap-around behavior
+    Match-case and other supported search options
+    Go To line, if supported
+    Date/time insertion, if supported
+    Select All and other Edit commands
+    Keyboard shortcuts and menu accelerators
+    Status-bar line and column calculations
+    Search feedback, empty results, and boundary behavior
+
+Exit criteria: Search and editing commands match reference behavior, including boundary cases and keyboard layouts.
+M6 — Tabs and application lifecycle
+
+    Multiple documents and tab switching
+    New-tab and new-window commands
+    Tab closing and close-all behavior
+    Dirty-state indicators
+    Save prompts during tab and application closure
+    Session restoration
+    Recent files and recent-document commands
+    Duplicate opens and document identity
+    Window and tab lifecycle edge cases
+    Command-line file opening and activation of existing instances, if applicable
+
+Exit criteria: Tab operations and application restarts preserve the expected documents and state without losing unsaved work.
+M7 — Markdown functionality
+
+Implement this milestone only to the extent supported by the selected reference build.
+
+    Markdown file association and .md / .markdown handling
+    Syntax view and formatted view
+    Heading formatting
+    Bold and italic
+    Strikethrough
+    Hyperlinks
+    Ordered and unordered lists
+    Nested lists and indentation
+    Tables, where supported
+    Formatting toolbar and context-menu commands
+    Markdown source serialization
+    Switching views without losing content or selection unexpectedly
+    Undo/redo across formatting operations
+    Malformed Markdown and unsupported syntax behavior
+
+Exit criteria: Formatting operations, Markdown serialization, and view transitions pass a reference-derived fixture suite.
+
+Markdown must not be silently normalized or rewritten in ways that differ from the reference application's behavior.
+M8 — Settings and Windows integration
+
+    Font family and size
+    Word wrap and supported view preferences
+    Theme and system-theme behavior
+    Settings persistence
+    Spell checking and autocorrect, if supported
+    Accessibility and screen-reader support
+    Keyboard access and focus order
+    File associations and shell integration, if in scope
+    Printing and page setup, if supported by the target
+    Localization and keyboard-layout correctness
+
+Exit criteria: Each supported setting persists correctly and produces the expected behavior across application restarts.
+M9 — Optional and service-dependent functionality
+
+Create separate compatibility specifications for features that require external services, accounts, entitlements, or device-specific capabilities.
+
+    AI writing, rewriting, and summarization, if part of the target
+    Optional onboarding or welcome experiences
+    Preview-only features
+    Service errors, authentication failures, and disabled-feature states
+
+Do not substitute a different service and claim 1:1 parity. Reproduce the observable experience only where legally and technically feasible. Keep service-dependent functionality isolated from the core editor.
+M10 — Performance and reliability
+
+    Measure startup time
+    Measure memory usage and idle CPU usage
+    Benchmark large files and extremely long lines
+    Benchmark search and Replace All
+    Benchmark scrolling, typing, and selection
+    Prevent unnecessary full-document copies
+    Profile allocations and rendering
+    Add stress tests for repeated tab and file operations
+    Test invalid encodings, inaccessible paths, and interrupted saves
+    Add crash diagnostics and regression tests
+
+Exit criteria: Performance is within predefined tolerances of the reference on identical hardware and datasets, without correctness regressions.
+M11 — Differential parity validation
+
+    Run the same test fixtures through both applications.
+    Compare saved output byte-for-byte.
+    Compare keyboard-command outcomes and selection state.
+    Compare screenshots at identical resolutions and scaling.
+    Compare dialogs, prompts, and state transitions.
+    Test Unicode and input methods.
+    Test all supported file encodings and line endings.
+    Run randomized editing sequences.
+    Verify fixes against the complete regression suite.
+    Publish a feature-by-feature parity report.
+
+Exit criteria: Every mandatory feature passes. Remaining differences are documented, reproducible, and explicitly excluded from the parity claim.
+M12 — Release engineering
+
+    Produce reproducible release builds.
+    Test installation, upgrade, and uninstall.
+    Sign binaries and installers where appropriate.
+    Validate Windows Defender and application reputation behavior.
+    Document supported Windows versions and architectures.
+    Prepare crash reporting and privacy documentation.
+    Create release notes and known-limitations documentation.
+
+Exit criteria: A clean Windows machine can install, launch, use, upgrade, and remove the application reliably.
+5. Repository Layout
+
+rust-notepad/
+├── AGENTS.md
+├── ROADMAP.md
+├── Cargo.toml
+├── Cargo.lock
+├── rust-toolchain.toml
+├── crates/
+│   ├── app/
+│   ├── ui/
+│   ├── editor/
+│   ├── document/
+│   ├── encoding/
+│   ├── filesystem/
+│   ├── search/
+│   ├── markdown/
+│   ├── session/
+│   └── platform/
+├── tests/
+│   ├── fixtures/
+│   ├── editing/
+│   ├── file_io/
+│   ├── keyboard/
+│   ├── markdown/
+│   └── visual/
+└── docs/
+    ├── reference-matrix.md
+    ├── feature-matrix.md
+    ├── architecture.md
+    ├── test-strategy.md
+    └── parity-report.md
+
+Adjust crate boundaries when evidence supports a simpler design. Avoid creating empty crates solely to match this template.
+6. Definition of Done
+
+A feature is complete only when:
+
+    Its reference behavior is documented.
+    Its implementation is integrated into the actual application.
+    Its keyboard, mouse, menu, and dialog entry points work as applicable.
+    Its edge cases are tested.
+    Its file output and state transitions match expectations.
+    It passes formatting, linting, and automated tests.
+    Its regression tests are committed.
+    Its parity status is updated in docs/feature-matrix.md.
+
+7. Parity Tracking
+
+Every feature must have one of these statuses:
+
+    NOT_STARTED
+    SPECIFIED
+    IN_PROGRESS
+    IMPLEMENTED
+    VERIFIED
+    BLOCKED
+    OUT_OF_SCOPE
+
+IMPLEMENTED does not mean parity is achieved. Only VERIFIED means the behavior has been tested against the reference.
+
+Track each feature with a stable ID, reference version, acceptance criteria, test location, implementation status, and known differences.
+8. Core Engineering Principles
+
+    Correctness before cosmetic polish.
+    Observable behavior before assumptions about internals.
+    Byte preservation before convenience transformations.
+    Native Windows integration where it materially improves fidelity.
+    Explicit error handling rather than silent recovery.
+    Automated regression tests for every fixed mismatch.
+    No unverified feature-parity claims.
+    No unnecessary dependencies or architecture complexity.
+    No feature removal merely because the reference behavior is inconvenient.
+
+The final objective is a maintainable Rust application whose behavior is demonstrably equivalent to the pinned Windows Notepad reference, within the explicitly documented scope.
