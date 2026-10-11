@@ -62,9 +62,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nc-commands"
+version = "0.0.0"
+
+[[package]]
 name = "nc-platform"
 version = "0.0.0"
 dependencies = [
+ "nc-commands",
  "thiserror",
  "tracing",
  "windows",

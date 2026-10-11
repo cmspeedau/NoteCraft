@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/app",
+    "crates/commands",
     "crates/platform",
     "crates/xtask",
 ]
@@ -15,6 +16,7 @@ repository = "https://github.com/CMSpeedAU/NoteCraft"
 authors = ["NoteCraft contributors"]
 
 [workspace.dependencies]
+nc-commands = { path = "crates/commands" }
 nc-platform = { path = "crates/platform" }
 
 anyhow = "1.0"

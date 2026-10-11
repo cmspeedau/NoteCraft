@@ -118,6 +118,20 @@ M2 — Native window and visual shell
     Window focus, activation, and keyboard navigation
 
 Exit criteria: The application's geometry, command structure, and major visual states match the reference screenshots within defined tolerances.
+
+Status: IN_PROGRESS — the command layer and the window shell are started. New `crates/commands`
+(`nc-commands`) is the single authoritative specification of commands, menus, shortcuts, and
+availability: Win32 virtual-key mapping, availability rules evaluated against a supplied
+context, the reference-matrix §3 registry with a per-row evidence grade and spec status, and a
+resolved menu-bar model. The Windows shell (`crates/platform`) now builds its menu bar from that
+registry and routes `WM_COMMAND` back through it; the headless backend resolves the same model,
+so the command surface has exactly one definition and is testable off Windows. Verification is
+green on Linux: fmt, clippy `-D warnings`, 46 tests, the crate-boundary guard, and
+`cargo check --target x86_64-pc-windows-msvc`. Outstanding for M2: the client area (editor
+viewport, scrollbars), status bar, context menus, standard open/save dialogs,
+resize/maximize/minimize/restore, high-DPI scaling and theming, and focus/activation/keyboard
+navigation — each needs the pinned reference machine to verify against screenshots
+(`docs/reference-matrix.md` §2 and §5).
 M3 — Text engine
 
     Unicode text model

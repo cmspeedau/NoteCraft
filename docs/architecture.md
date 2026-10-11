@@ -41,6 +41,9 @@ notepad/
 └── tests/                     # integration + fixtures (see test-strategy.md)
 ```
 
+Crates that exist today: `crates/app` (`nc-app`), `crates/platform` (`nc-platform`),
+`crates/commands` (`nc-commands`, landed in M2) and `crates/xtask`. The rest are planned.
+
 ## 3. Layering
 
 ```
@@ -82,10 +85,21 @@ or `nc-app`; this keeps them headless-testable and is enforced by `cargo xtask c
 
 ## 7. `nc-commands` — command layer
 
-- `CommandId` registry (see `reference-matrix.md` §3 tables).
-- `Availability` predicates over document/session state.
-- `Keymap`: shortcut → `CommandId`, layout-aware (es/pt fix).
-- Menus and toolbar are generated from the same registry.
+Landed in M2 as `crates/commands`, dependency-free and host-agnostic (it depends on nothing
+outside the standard library, so it is fully testable on any host).
+
+- `CommandId` registry (see `reference-matrix.md` §3 tables). Each row carries its evidence grade
+  and spec status, and `registry_integrity()` asserts the table is internally consistent, so the
+  registry cannot drift silently from the captured reference.
+- `Availability` predicates over document/session state, evaluated against an `AvailabilityContext`
+  the shell supplies — "why is this greyed out?" is answerable without a window.
+- `shortcut`: `Shortcut`, `Modifiers`, `Key` and the Win32 virtual-key numbers. Data lives here;
+  the native shell only maps a key press to a virtual key, so key handling is testable off Windows.
+- `menu`: `build_menu_bar(context)` resolves the registry into the ordered tree a shell renders,
+  applying availability and normalising separators at build time.
+- Menus and toolbar are generated from the same registry. `MenuBar` is the static node tree keyed
+  by `CommandId`; the shell translates it (Win32 `AppendMenuW`) and routes `WM_COMMAND` ids back
+  through `by_menu_id`.
 
 ## 8. `nc-platform` — Windows services
 

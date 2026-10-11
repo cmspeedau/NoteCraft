@@ -60,7 +60,7 @@ as golden data; the harness replays against our binary thereafter.
 
 - On every push: `cargo fmt --check`, `cargo clippy -D warnings`, unit + golden tests.
 - Dependency-boundary check: `nc-core`/`nc-textproc`/`nc-markdown`/`nc-commands` must not
-  depend on `nc-app`/`nc-platform` (assert in CI).
+  depend on `nc-app`/`nc-platform` (`cargo xtask check-boundaries`, run in CI).
 - Windows runner job: build + integration + visual smoke.
 - Visual/AI/differential suites are gated (manual or nightly) because they need the
   reference machine or the service.

@@ -30,6 +30,9 @@ pub enum PlatformError {
     /// `CreateWindowExW` failed.
     #[error("failed to create the main window (Win32 error {0})")]
     WindowCreation(u32),
+    /// Building the registry-driven menu bar failed.
+    #[error("failed to build the menu bar (Win32 error {0})")]
+    MenuCreation(u32),
 }
 
 /// Everything the platform layer needs to bring up the main window.

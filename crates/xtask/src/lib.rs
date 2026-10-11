@@ -12,6 +12,9 @@ use std::path::{Path, PathBuf};
 pub const APP_CRATE: &str = "nc-app";
 /// The crate that owns all native/OS integration.
 pub const PLATFORM_CRATE: &str = "nc-platform";
+/// Crates that must stay headless: no dependency on the platform or app crates,
+/// so they build and test on any host.
+pub const HEADLESS_CRATES: &[&str] = &["nc-commands"];
 
 /// A crate discovered under `<root>/crates`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,6 +151,23 @@ pub fn check_boundaries(root: &Path) -> Result<Vec<String>, Error> {
                 member.name,
                 relative(root, &member.dir)
             ));
+        }
+    }
+
+    // Rule 3: headless crates must never reach up to the shell or the native
+    // layer — that is what keeps them testable on a host without Windows.
+    for member in &members {
+        if !HEADLESS_CRATES.contains(&member.name.as_str()) {
+            continue;
+        }
+        for forbidden in [PLATFORM_CRATE, APP_CRATE] {
+            if member.dependencies.contains(forbidden) {
+                violations.push(format!(
+                    "{} ({}) is headless and must not depend on {forbidden}",
+                    member.name,
+                    relative(root, &member.dir)
+                ));
+            }
         }
     }
 
@@ -297,6 +317,40 @@ serde = { version = \"1\" }
         let root = scratch_workspace("clean");
         crate_at(&root, "app", "nc-app", &["nc-platform"]);
         crate_at(&root, "platform", "nc-platform", &[]);
+
+        let violations = check_boundaries(&root).unwrap();
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn flags_headless_crate_reaching_up() {
+        let root = scratch_workspace("headless");
+        crate_at(&root, "commands", "nc-commands", &["nc-platform"]);
+
+        let violations = check_boundaries(&root).unwrap();
+        // Both rules catch it: reaching a headless crate up to the native layer
+        // also breaks the "only the app may depend on the platform" rule.
+        assert_eq!(
+            violations.len(),
+            2,
+            "expected nc-commands->nc-platform to be flagged twice: {violations:?}"
+        );
+        assert!(violations.iter().any(|v| v.contains("headless")));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn headless_crate_without_native_dependencies_passes() {
+        let root = scratch_workspace("headless-clean");
+        crate_at(&root, "commands", "nc-commands", &[]);
+        crate_at(&root, "app", "nc-app", &["nc-platform"]);
+        crate_at(&root, "platform", "nc-platform", &["nc-commands"]);
 
         let violations = check_boundaries(&root).unwrap();
         assert!(
