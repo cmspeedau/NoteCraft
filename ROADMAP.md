@@ -96,6 +96,15 @@ M1 — Rust foundation
     Add unit-test, integration-test, and CI infrastructure.
 
 Exit criteria: The application launches reliably, opens an initial window, and passes clean Windows builds.
+
+Status: IN_PROGRESS — Cargo workspace (`crates/app` = `nc-app` with the `notepad` binary,
+`crates/platform` = `nc-platform`), command-line handling, logging, startup/shutdown lifecycle,
+unit + integration tests, and CI (fmt, clippy, host tests, Windows build/test, Windows
+cross-compile check, crate dependency-direction check) are in place and green on Linux
+(`cargo build/test/clippy/check --target x86_64-pc-windows-msvc`). A headless platform backend
+keeps the workspace buildable off Windows; creating a real window is exercised by the Windows CI
+job.
+
 M2 — Native window and visual shell
 
     Main window and title bar behavior

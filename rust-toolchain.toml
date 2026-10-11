@@ -1,0 +1,15 @@
+# Pinned Rust toolchain for reproducible builds.
+#
+# `stable` currently resolves to 1.99.0 (rustc 1.99.0, 2026-09-28). We track
+# `stable` deliberately: the CI matrix pins exact versions where it matters, and
+# no release artifact depends on a frozen compiler until M12. Do NOT pin the
+# channel to a bare version number — rustup treats "1.99.0" as a *separate*
+# toolchain from the installed `stable` and tries to download it on first build,
+# which is fragile on machines that cannot fetch a new toolchain.
+#
+# Target platforms are managed explicitly (`rustup target add <triple>`) rather
+# than listed here, so a checkout only fetches the targets it actually needs.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

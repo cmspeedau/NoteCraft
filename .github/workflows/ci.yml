@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test-linux:
+    name: test (host)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+
+  build-windows:
+    name: build + test (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+
+  cross-check-windows:
+    name: cross compile-check (windows from linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --target x86_64-pc-windows-msvc
+
+  dependency-boundaries:
+    name: crate boundary check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce crate dependency direction
+        run: |
+          set -euo pipefail
+          # 1. The platform crate must never depend on the app crate.
+          if grep -qE '^nc-app' crates/platform/Cargo.toml; then
+            echo "::error::nc-platform must not depend on nc-app"
+            exit 1
+          fi
+          # 2. Only the app (the composition root) may depend on nc-platform.
+          offenders=$(grep -rl --include=Cargo.toml 'nc-platform' crates \
+            | grep -v '^crates/app/' || true)
+          if [ -n "$offenders" ]; then
+            echo "::error::only crates/app may depend on nc-platform; found: $offenders"
+            exit 1
+          fi
+          echo "boundary check passed"
