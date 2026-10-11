@@ -46,6 +46,18 @@ name = "line_endings"
 path = "tests/editing/line_endings.rs"
 
 [[test]]
+name = "mouse"
+path = "tests/editing/mouse.rs"
+
+[[test]]
+name = "dnd"
+path = "tests/editing/dnd.rs"
+
+[[test]]
+name = "overwrite"
+path = "tests/editing/overwrite.rs"
+
+[[test]]
 name = "select_all"
 path = "tests/keyboard/select_all.rs"
 

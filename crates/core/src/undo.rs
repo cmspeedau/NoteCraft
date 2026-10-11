@@ -35,6 +35,38 @@ impl Edit {
     }
 }
 
+/// One step of history: either a single edit or a set that was applied together.
+///
+/// A drag-and-drop move touches the buffer at two offsets — the text leaves its
+/// old place and arrives at the new one — so it cannot be one [`Edit`]. Grouping
+/// keeps it *one* undo step all the same, which is what the user pressed the
+/// button on: undo takes the text back to where it was dragged from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Entry {
+    /// A single edit.
+    Edit(Edit),
+    /// Edits applied as one step; undone in reverse order, redone forwards.
+    Group(Vec<Edit>),
+}
+
+impl Entry {
+    /// The selection the entry restores when it is undone.
+    fn selection_before(&self) -> Option<Selection> {
+        match self {
+            Self::Edit(edit) => Some(edit.selection_before),
+            Self::Group(edits) => edits.first().map(|edit| edit.selection_before),
+        }
+    }
+
+    /// The selection the entry restores when it is redone.
+    fn selection_after(&self) -> Option<Selection> {
+        match self {
+            Self::Edit(edit) => Some(edit.selection_after),
+            Self::Group(edits) => edits.last().map(|edit| edit.selection_after),
+        }
+    }
+}
+
 /// A linear undo history with a redo stack.
 ///
 /// Two reference behaviours are *not* captured yet, so this type makes them
@@ -49,8 +81,8 @@ impl Edit {
 ///   pinned.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UndoStack {
-    done: Vec<Edit>,
-    undone: Vec<Edit>,
+    done: Vec<Entry>,
+    undone: Vec<Entry>,
 }
 
 impl UndoStack {
@@ -75,17 +107,17 @@ impl UndoStack {
         !self.undone.is_empty()
     }
 
-    /// The number of undoable edits.
+    /// The number of undoable steps.
     pub fn depth(&self) -> usize {
         self.done.len()
     }
 
-    /// The number of redoable edits.
+    /// The number of redoable steps.
     pub fn redo_depth(&self) -> usize {
         self.undone.len()
     }
 
-    /// Keeps at most `depth` undoable edits, dropping the oldest.
+    /// Keeps at most `depth` undoable steps, dropping the oldest.
     pub fn truncate(&mut self, depth: usize) {
         if self.done.len() > depth {
             self.done.drain(..self.done.len() - depth);
@@ -99,7 +131,7 @@ impl UndoStack {
     pub fn record(&mut self, edit: Edit, coalesce_typing: bool) {
         self.undone.clear();
         if coalesce_typing {
-            if let Some(last) = self.done.last_mut() {
+            if let Some(Entry::Edit(last)) = self.done.last_mut() {
                 if Self::mergeable(last, &edit) {
                     last.inserted.push_str(&edit.inserted);
                     last.selection_after = edit.selection_after;
@@ -107,7 +139,21 @@ impl UndoStack {
                 }
             }
         }
-        self.done.push(edit);
+        self.done.push(Entry::Edit(edit));
+    }
+
+    /// Records several edits as one undoable step.
+    ///
+    /// The edits must be given in the order they were applied to the buffer, so
+    /// that undo can reverse them and redo can replay them. An empty set
+    /// records nothing — a step that changes no text would be a button press
+    /// the user cannot see.
+    pub fn record_group(&mut self, edits: Vec<Edit>) {
+        if edits.is_empty() {
+            return;
+        }
+        self.undone.clear();
+        self.done.push(Entry::Group(edits));
     }
 
     fn mergeable(last: &Edit, next: &Edit) -> bool {
@@ -118,25 +164,47 @@ impl UndoStack {
             && last.start + last.inserted.len() == next.start
     }
 
-    /// Reverses the most recent edit, restoring its start selection.
+    /// Reverses the most recent step, restoring its start selection.
     pub fn undo(&mut self, buffer: &mut TextBuffer, selection: &mut Selection) -> bool {
-        let Some(edit) = self.done.pop() else {
+        let Some(entry) = self.done.pop() else {
             return false;
         };
-        buffer.replace(edit.inserted_range(), &edit.removed);
-        *selection = edit.selection_before;
-        self.undone.push(edit);
+        match &entry {
+            Entry::Edit(edit) => {
+                buffer.replace(edit.inserted_range(), &edit.removed);
+            }
+            Entry::Group(edits) => {
+                for edit in edits.iter().rev() {
+                    buffer.replace(edit.inserted_range(), &edit.removed);
+                }
+            }
+        }
+        if let Some(before) = entry.selection_before() {
+            *selection = before;
+        }
+        self.undone.push(entry);
         true
     }
 
-    /// Reapplies the most recently undone edit.
+    /// Reapplies the most recently undone step.
     pub fn redo(&mut self, buffer: &mut TextBuffer, selection: &mut Selection) -> bool {
-        let Some(edit) = self.undone.pop() else {
+        let Some(entry) = self.undone.pop() else {
             return false;
         };
-        buffer.replace(edit.removed_range(), &edit.inserted);
-        *selection = edit.selection_after;
-        self.done.push(edit);
+        match &entry {
+            Entry::Edit(edit) => {
+                buffer.replace(edit.removed_range(), &edit.inserted);
+            }
+            Entry::Group(edits) => {
+                for edit in edits.iter() {
+                    buffer.replace(edit.removed_range(), &edit.inserted);
+                }
+            }
+        }
+        if let Some(after) = entry.selection_after() {
+            *selection = after;
+        }
+        self.done.push(entry);
         true
     }
 }

@@ -12,7 +12,7 @@ use crate::selection::Selection;
 
 /// Lines moved by Page Up / Page Down until the viewport can report its own
 /// height (milestone M2). The reference's exact page step is a capture item
-/// (`docs/feature-matrix.md` NC-E005).
+/// (`docs/feature-matrix.md` NC-E004).
 pub const PAGE_LINES: usize = 10;
 
 /// A caret movement, as bound to a key or a menu command.

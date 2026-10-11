@@ -11,10 +11,14 @@
 
 use std::ops::Range;
 
+use unicode_segmentation::UnicodeSegmentation;
+
 use crate::buffer::{LineColumn, TextBuffer};
 use crate::caret::{self, CaretMovement, PAGE_LINES};
 use crate::clipboard::Clipboard;
+use crate::dnd;
 use crate::line_ending::{self, LineEnding, LineEndingReport};
+use crate::mouse::{self, ClickKind};
 use crate::selection::Selection;
 use crate::tabs::TabStop;
 use crate::undo::{Edit, UndoStack};
@@ -33,6 +37,7 @@ pub struct Document {
     word_wrap: bool,
     tab_stop: TabStop,
     desired_column: Option<usize>,
+    overwrite: bool,
 }
 
 impl Default for Document {
@@ -58,6 +63,7 @@ impl Document {
             word_wrap: false,
             tab_stop: TabStop::DEFAULT,
             desired_column: None,
+            overwrite: false,
         }
     }
 
@@ -172,6 +178,28 @@ impl Document {
         self.tab_stop = tab_stop;
     }
 
+    /// Whether typing replaces the text ahead of the caret (overwrite mode).
+    ///
+    /// The reference's overwrite behaviour is not captured, and there is no
+    /// matrix row for it yet (`ROADMAP.md` M3, "overwrite behavior if
+    /// applicable"), so what the engine guarantees is deliberately narrow: an
+    /// overwrite replaces one grapheme per grapheme typed and never eats the
+    /// line terminator.
+    pub fn overwrite(&self) -> bool {
+        self.overwrite
+    }
+
+    /// Turns overwrite mode on or off.
+    pub fn set_overwrite(&mut self, enabled: bool) {
+        self.overwrite = enabled;
+    }
+
+    /// Flips overwrite mode, as the Insert key does, and returns the new state.
+    pub fn toggle_overwrite(&mut self) -> bool {
+        self.overwrite = !self.overwrite;
+        self.overwrite
+    }
+
     /// Whether the document has been edited since it was last saved.
     pub fn is_dirty(&self) -> bool {
         self.dirty
@@ -265,9 +293,19 @@ impl Document {
         if normalized.is_empty() && range.is_empty() {
             return false;
         }
-        let removed = self.buffer.slice(range.clone()).unwrap_or("").to_owned();
         let start = self.selection.start();
         let before = self.selection;
+        // Overwrite mode replaces what is already there rather than pushing it
+        // aside, one grapheme per grapheme typed. A newline still breaks the
+        // line, and the terminator itself is never eaten, so typing over the
+        // last character of a line grows that line.
+        let range = if self.overwrite && range.is_empty() && !normalized.contains('\n') {
+            let typed = UnicodeSegmentation::graphemes(normalized.as_str(), true).count();
+            start..self.overwrite_end(start, typed)
+        } else {
+            range
+        };
+        let removed = self.buffer.slice(range.clone()).unwrap_or("").to_owned();
         self.buffer.replace(range, &normalized);
         let after = Selection::caret(start + normalized.len());
         self.selection = after;
@@ -352,6 +390,117 @@ impl Document {
             false,
         );
         true
+    }
+
+    // ---- mouse and drag and drop ----------------------------------------
+
+    /// Places the caret, or selects a word or line, as a click does.
+    ///
+    /// The click kind is the engine's, not the viewport's: the window shell
+    /// counts clicks and reports which kind it saw
+    /// (`docs/feature-matrix.md` NC-E005).
+    pub fn click(&mut self, byte: usize, kind: ClickKind) {
+        self.selection = mouse::click_selection(&self.buffer, byte, kind);
+        self.desired_column = None;
+    }
+
+    /// Extends the selection, as Shift+Click or a drag does.
+    ///
+    /// The anchor stays where the selection began — the click that started the
+    /// gesture — and the head follows the pointer. `kind` is that click's kind,
+    /// so a drag begun with a double-click extends by whole words.
+    pub fn extend_to(&mut self, byte: usize, kind: ClickKind) {
+        self.selection = mouse::drag_selection(&self.buffer, self.selection.anchor(), byte, kind);
+        self.desired_column = None;
+    }
+
+    /// Moves the selected text to `target`, as dropping a dragged selection
+    /// does (`docs/feature-matrix.md` NC-E009).
+    ///
+    /// A drop inside the selection, or at either end of it, does nothing.
+    /// Otherwise the move is *one* undo step however far apart the two places
+    /// are: undo puts the text back where it was dragged from. Returns whether
+    /// anything moved.
+    pub fn move_selection_to(&mut self, target: usize) -> bool {
+        if self.selection.is_empty() {
+            return false;
+        }
+        let range = self.selection.range();
+        let Some(at) = dnd::drop_target(range.clone(), self.buffer.clamp(target)) else {
+            return false;
+        };
+        let text = self.buffer.slice(range.clone()).unwrap_or("").to_owned();
+        if text.is_empty() {
+            return false;
+        }
+        let before = self.selection;
+        let removed = self.buffer.remove(range.clone());
+        self.buffer.insert(at, &text);
+        let after = Selection::new(at, at + text.len());
+        self.history.record_group(vec![
+            Edit {
+                start: range.start,
+                removed,
+                inserted: String::new(),
+                selection_before: before,
+                selection_after: Selection::caret(at),
+            },
+            Edit {
+                start: at,
+                removed: String::new(),
+                inserted: text,
+                selection_before: Selection::caret(at),
+                selection_after: after,
+            },
+        ]);
+        self.selection = after;
+        self.desired_column = None;
+        self.dirty = true;
+        true
+    }
+
+    /// Drops text dragged in from another application at `target`, and selects
+    /// it.
+    ///
+    /// The text is normalised to `\n` exactly as a paste is, so the buffer's
+    /// single-terminator invariant survives a drop from a program that uses
+    /// CRLF. Returns whether anything was inserted.
+    pub fn drop_text(&mut self, text: &str, target: usize) -> bool {
+        let normalized = line_ending::to_lf(text);
+        if normalized.is_empty() {
+            return false;
+        }
+        let at = self.buffer.clamp(target);
+        let before = self.selection;
+        self.buffer.insert(at, &normalized);
+        let after = Selection::new(at, at + normalized.len());
+        self.selection = after;
+        self.desired_column = None;
+        self.record(
+            Edit {
+                start: at,
+                removed: String::new(),
+                inserted: normalized,
+                selection_before: before,
+                selection_after: after,
+            },
+            false,
+        );
+        true
+    }
+
+    /// The end of the span an overwrite at `start` replaces: `want` whole
+    /// graphemes, never crossing the line terminator.
+    fn overwrite_end(&self, start: usize, want: usize) -> usize {
+        let line = self.buffer.line_of(start);
+        let limit = self.buffer.line_end(line).unwrap_or(self.buffer.len());
+        let mut end = start;
+        let mut taken = 0;
+        while end < limit && taken < want {
+            end = self.buffer.next_grapheme(end);
+            taken += 1;
+        }
+        end
     }
 
     fn record(&mut self, edit: Edit, coalesce: bool) {

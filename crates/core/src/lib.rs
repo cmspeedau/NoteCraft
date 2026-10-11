@@ -13,7 +13,7 @@
 //!   (`docs/feature-matrix.md` NC-E008).
 //! * `TextBuffer` holds `\n` terminators only. The style read from the file
 //!   lives on the `Document` and is written back on save
-//!   (`docs/feature-matrix.md` NC-E009).
+//!   (`docs/feature-matrix.md` NC-D004).
 //! * Positions are byte offsets into the buffer's text; every operation clamps
 //!   its arguments to the nearest character boundary rather than panicking.
 //!
@@ -34,8 +34,10 @@
 mod buffer;
 mod caret;
 mod clipboard;
+mod dnd;
 mod document;
 mod line_ending;
+mod mouse;
 mod selection;
 mod tabs;
 mod undo;
@@ -44,8 +46,10 @@ mod wrap;
 pub use buffer::{LineColumn, TextBuffer};
 pub use caret::{CaretMovement, PAGE_LINES};
 pub use clipboard::{Clipboard, MemoryClipboard};
+pub use dnd::{DragSource, drop_target};
 pub use document::Document;
 pub use line_ending::{LineEnding, LineEndingReport};
+pub use mouse::{ClickKind, click_selection, drag_selection};
 pub use selection::Selection;
 pub use tabs::{TabStop, display_width};
 pub use undo::{Edit, UndoStack};

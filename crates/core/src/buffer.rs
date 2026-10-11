@@ -258,6 +258,45 @@ impl TextBuffer {
         self.text.len()
     }
 
+    /// The extent of the word at `byte`.
+    ///
+    /// One UAX #29 word segment: the run of letters or digits a double-click
+    /// takes, or the whitespace run it landed in. A click past the last
+    /// character belongs to the last word rather than to an empty segment at
+    /// the end of the buffer. See [`TextBuffer::prev_word_bound`] for the
+    /// approximation this makes (`docs/feature-matrix.md` NC-E005).
+    pub fn word_range(&self, byte: usize) -> Range<usize> {
+        if self.text.is_empty() {
+            return 0..0;
+        }
+        let at = self.clamp(byte);
+        let at = if at >= self.text.len() {
+            self.prev_grapheme(self.text.len())
+        } else {
+            at
+        };
+        let bounds = self.word_boundaries();
+        let index = bounds.partition_point(|&bound| bound <= at).max(1);
+        let start = bounds[index - 1];
+        let end = bounds[index.min(bounds.len() - 1)];
+        start..end.max(start)
+    }
+
+    /// The extent of `byte`'s line, including its terminator.
+    ///
+    /// A triple-click takes the terminator as well, so the selected line can be
+    /// cut or moved as a whole (`docs/feature-matrix.md` NC-E005).
+    pub fn line_range(&self, byte: usize) -> Range<usize> {
+        let line = self.line_of(byte);
+        let start = self.line_starts.get(line).copied().unwrap_or(0);
+        let end = self
+            .line_starts
+            .get(line + 1)
+            .copied()
+            .unwrap_or(self.text.len());
+        start..end
+    }
+
     fn word_boundaries(&self) -> Vec<usize> {
         let mut bounds: Vec<usize> = self
             .text

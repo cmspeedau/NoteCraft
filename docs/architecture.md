@@ -67,6 +67,19 @@ or `nc-app`; this keeps them headless-testable and is enforced by `cargo xtask c
 - `Buffer`: UTF-8 (or transcoded) text storage; ro or rw.
 - `Selection` / `Caret`: positions, anchors, line/column projection.
 - `UndoStack`: grouped, multilevel, coalescing rules mirroring the reference.
+- `mouse` / `dnd`: the *meaning* of a click and a drop — word/line selection
+  arithmetic (`ClickKind`, `click_selection`, `drag_selection`) and the insertion
+  offset a drop lands on (`drop_target`). Hit-testing, the gesture itself, and the
+  cross-application half stay in the viewport and the platform, so the window shell
+  never re-implements selection math and the engine stays testable off Windows.
+  The reference's double/triple-click rule (`NC-E005`) and its copy-on-drag
+  modifier (`NC-E009`) are capture items, so the engine names what it does an
+  approximation: a double-click takes one UAX #29 word segment, a triple-click the
+  whole line including its terminator, and an internal drop *moves* — the copy case
+  is reachable through the clipboard commands.
+- Overwrite mode: typing replaces one grapheme per grapheme typed and never eats the
+  line terminator. The reference's behaviour is not captured and no matrix row covers
+  it yet, so the guarantee is deliberately narrow.
 - `Document`: id, path, dirty flag, encoding, EOL policy, view mode.
 - No I/O, no allocation policy leaks (all mutation APIs return new state or take `&mut`).
 

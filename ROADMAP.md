@@ -160,18 +160,22 @@ arithmetic, grapheme-aware soft wrap, a `Clipboard` trait with an in-memory impl
 engine never touches the platform clipboard, and the `Document` aggregate that ties them
 together. Scope so far is the pure text model: caret movement, insertion and deletion, multilevel
 undo/redo, copy/cut/paste/select-all, line-ending detection and round-tripping, word wrap, tabs,
-and Unicode/grapheme handling. The suites are named after the feature matrix (`NC-E001`,
-`NC-E002`, `NC-E003`, `NC-E006`, `NC-E007`, `NC-E008`, `NC-E009`) plus property tests over
-arbitrary input. Verification is green on Linux: fmt, clippy `-D warnings`, 127 tests, the
-crate-boundary guard, and `cargo check --target x86_64-pc-windows-msvc`. Outstanding for M3:
-mouse selection, double-click, and line selection; drag and drop; overwrite mode if the reference
-has one; horizontal scrolling for unwrapped long lines; IME input; and rendering of control
-characters and whitespace — the input/interaction items belong with the viewport in M2/M5, and
-differential testing against the reference is blocked until the pinned Windows reference machine
-is available. Where the reference's exact behaviour is not yet captured (`docs/reference-matrix.md`
-§4 and §5), the engine names its behaviour an approximation rather than parity: default tab width
-8, CRLF as the default style for untitled documents, a 10-line page step, and a greedy wrap rule
-that breaks at the last whitespace that fits.
+Unicode/grapheme handling, mouse selection (single-, double-, and triple-click rules resolved in
+the engine so the viewport only hit-tests), drag and drop of a selection within the document, and
+overwrite mode. The suites are named after the feature matrix (`NC-E001`–`NC-E003`, `NC-E005`–
+`NC-E009`) plus property tests over arbitrary input. Verification is green on Linux: fmt, clippy
+`-D warnings`, 179 tests, the crate-boundary guard, and `cargo check --target
+x86_64-pc-windows-msvc`. Outstanding for M3: horizontal scrolling for unwrapped long lines, IME
+input, and rendering of control characters and whitespace — the input/interaction and rendering
+items belong with the viewport in M2/M5, and differential testing against the reference is
+blocked until the pinned Windows reference machine is available. Where the reference's exact
+behaviour is not yet captured (`docs/reference-matrix.md` §4 and §5), the engine names its
+behaviour an approximation rather than parity: default tab width 8, CRLF as the default style for
+untitled documents, a 10-line page step, a greedy wrap rule that breaks at the last whitespace
+that fits, a double-click taking one UAX #29 word segment and a triple-click the whole line
+including its terminator (`NC-E005`), a drag moving in place with the copy modifier left to the
+viewport (`NC-E009`), and an overwrite replacing one grapheme per grapheme typed without ever
+eating a line terminator or splitting a character.
 
 M4 — File I/O and data integrity
 

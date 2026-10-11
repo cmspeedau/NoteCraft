@@ -7,9 +7,12 @@
 //! * a document read in and never edited is written back byte for byte;
 //! * an arbitrary offset never leaves the caret inside a character;
 //! * undoing every edit restores the text exactly;
+//! * a click or a drag never leaves the selection inside a character;
+//! * a move rearranges the same text and undoes as one edit;
+//! * an overwrite never eats a line terminator or splits a character;
 //! * wrapping lays every character out exactly once and never splits one.
 
-use nc_core::Document;
+use nc_core::{ClickKind, Document, TextBuffer, click_selection, drag_selection};
 use proptest::prelude::*;
 
 proptest! {
@@ -92,5 +95,98 @@ proptest! {
                 prop_assert_eq!(covered[index], 1, "a byte was laid out twice or not at all");
             }
         }
+    }
+
+    #[test]
+    fn a_click_lands_on_a_character_boundary(
+        text in ".{0,48}",
+        offset in 0usize..64,
+        kind in 0u8..3,
+    ) {
+        // The buffer holds `\n` terminators only, so build it from the
+        // normalized text rather than from the raw input.
+        let document = Document::from_text(&text);
+        let normalized = document.text().to_owned();
+        let buffer = TextBuffer::from_normalized(&normalized);
+        let kind = match kind {
+            0 => ClickKind::Single,
+            1 => ClickKind::Double,
+            _ => ClickKind::Triple,
+        };
+        let selection = click_selection(&buffer, offset, kind);
+        prop_assert!(normalized.is_char_boundary(selection.anchor()));
+        prop_assert!(normalized.is_char_boundary(selection.head()));
+        prop_assert!(selection.start() <= selection.end());
+        prop_assert!(selection.end() <= normalized.len());
+        prop_assert!(buffer.slice(selection.range()).is_some());
+    }
+
+    #[test]
+    fn a_drag_lands_on_a_character_boundary(text in ".{0,48}", anchor in 0usize..64, head in 0usize..64) {
+        let document = Document::from_text(&text);
+        let normalized = document.text().to_owned();
+        let buffer = TextBuffer::from_normalized(&normalized);
+        for kind in [ClickKind::Single, ClickKind::Double, ClickKind::Triple] {
+            let selection = drag_selection(&buffer, anchor, head, kind);
+            prop_assert!(normalized.is_char_boundary(selection.anchor()));
+            prop_assert!(normalized.is_char_boundary(selection.head()));
+            prop_assert!(selection.end() <= normalized.len());
+            prop_assert!(buffer.slice(selection.range()).is_some());
+            // The end that was not dragged does not move.
+            let mut document = Document::from_text(&normalized);
+            document.click(anchor, kind);
+            document.extend_to(head, kind);
+            prop_assert_eq!(document.selection(), selection);
+        }
+    }
+
+    #[test]
+    fn a_move_rearranges_the_text_and_undoes_in_one_step(
+        text in ".{0,40}",
+        anchor in 0usize..48,
+        head in 0usize..48,
+        target in 0usize..48,
+    ) {
+        let mut document = Document::from_text(&text);
+        document.select(anchor, head);
+        let before = document.text().to_owned();
+        let depth = document.undo_depth();
+        if document.move_selection_to(target) {
+            prop_assert_eq!(document.undo_depth(), depth + 1);
+            // A move neither invents nor destroys text: only its order changes.
+            let mut expected: Vec<u8> = before.bytes().collect();
+            let mut actual: Vec<u8> = document.text().bytes().collect();
+            expected.sort_unstable();
+            actual.sort_unstable();
+            prop_assert_eq!(expected, actual);
+            prop_assert_eq!(document.text().len(), before.len());
+            // The moved span is selected afterwards.
+            prop_assert_eq!(document.selected_text().map(str::len), Some(document.selection().len()));
+
+            prop_assert!(document.undo());
+            prop_assert_eq!(document.text(), before.as_str());
+        }
+    }
+
+    #[test]
+    fn an_overwrite_never_eats_a_terminator_or_splits_a_character(
+        text in ".{0,48}",
+        offset in 0usize..64,
+        typed in "[^\n\r]{0,6}",
+    ) {
+        let mut document = Document::from_text(&text);
+        let original = document.text().to_owned();
+        document.set_overwrite(true);
+        document.set_caret(offset);
+        if document.insert_str(&typed) {
+            prop_assert!(document.text().is_char_boundary(document.caret()));
+            prop_assert_eq!(
+                document.text().matches('\n').count(),
+                original.matches('\n').count(),
+                "an overwrite crossed a line terminator"
+            );
+        }
+        while document.undo() {}
+        prop_assert_eq!(document.text(), original.as_str());
     }
 }
