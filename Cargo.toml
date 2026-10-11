@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/app",
     "crates/commands",
+    "crates/core",
     "crates/platform",
     "crates/xtask",
 ]
@@ -17,12 +18,18 @@ authors = ["NoteCraft contributors"]
 
 [workspace.dependencies]
 nc-commands = { path = "crates/commands" }
+nc-core = { path = "crates/core" }
 nc-platform = { path = "crates/platform" }
 
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-segmentation = "1.12"
+
+# Test-only. `proptest` is used for the property tests named in
+# `docs/test-strategy.md` §5.
+proptest = "1.6"
 
 [profile.release]
 opt-level = "z"

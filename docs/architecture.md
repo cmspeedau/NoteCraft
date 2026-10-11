@@ -42,7 +42,8 @@ notepad/
 ```
 
 Crates that exist today: `crates/app` (`nc-app`), `crates/platform` (`nc-platform`),
-`crates/commands` (`nc-commands`, landed in M2) and `crates/xtask`. The rest are planned.
+`crates/commands` (`nc-commands`, landed in M2), `crates/core` (`nc-core`, landed in M3) and
+`crates/xtask`. The rest are planned.
 
 ## 3. Layering
 

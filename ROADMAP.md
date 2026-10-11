@@ -149,6 +149,30 @@ M3 — Text engine
     Control characters and whitespace rendering where supported
 
 Exit criteria: All editing commands pass differential tests against the reference application.
+
+Status: IN_PROGRESS — the text engine is started as a new dependency-light crate, `crates/core`
+(`nc-core`), which owns the document model and the editing primitives the command registry
+names. It provides `TextBuffer` (UTF-8-only, `\n` terminators, byte-offset positions clamped to
+character boundaries), `Selection`, `UndoStack` (edits store the removed text so undo restores
+text and caret without recomputing), `CaretMovement` (character, word, line, and page steps with
+a remembered desired column for vertical moves), `LineEnding` detection and reporting, `TabStop`
+arithmetic, grapheme-aware soft wrap, a `Clipboard` trait with an in-memory implementation so the
+engine never touches the platform clipboard, and the `Document` aggregate that ties them
+together. Scope so far is the pure text model: caret movement, insertion and deletion, multilevel
+undo/redo, copy/cut/paste/select-all, line-ending detection and round-tripping, word wrap, tabs,
+and Unicode/grapheme handling. The suites are named after the feature matrix (`NC-E001`,
+`NC-E002`, `NC-E003`, `NC-E006`, `NC-E007`, `NC-E008`, `NC-E009`) plus property tests over
+arbitrary input. Verification is green on Linux: fmt, clippy `-D warnings`, 127 tests, the
+crate-boundary guard, and `cargo check --target x86_64-pc-windows-msvc`. Outstanding for M3:
+mouse selection, double-click, and line selection; drag and drop; overwrite mode if the reference
+has one; horizontal scrolling for unwrapped long lines; IME input; and rendering of control
+characters and whitespace — the input/interaction items belong with the viewport in M2/M5, and
+differential testing against the reference is blocked until the pinned Windows reference machine
+is available. Where the reference's exact behaviour is not yet captured (`docs/reference-matrix.md`
+§4 and §5), the engine names its behaviour an approximation rather than parity: default tab width
+8, CRLF as the default style for untitled documents, a 10-line page step, and a greedy wrap rule
+that breaks at the last whitespace that fits.
+
 M4 — File I/O and data integrity
 
     Open and save files

@@ -1,0 +1,54 @@
+[package]
+name = "nc-core"
+description = "NoteCraft document model: text buffer, selection, caret, undo, clipboard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+unicode-segmentation.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+# Integration tests are named after the test files `docs/feature-matrix.md`
+# gives each feature (`tests/editing/undo.rs` for NC-E001, and so on), so the
+# matrix and the suite stay in step.
+[[test]]
+name = "undo"
+path = "tests/editing/undo.rs"
+
+[[test]]
+name = "clipboard"
+path = "tests/editing/clipboard.rs"
+
+[[test]]
+name = "caret"
+path = "tests/editing/caret.rs"
+
+[[test]]
+name = "word_wrap"
+path = "tests/editing/word_wrap.rs"
+
+[[test]]
+name = "tabs"
+path = "tests/editing/tabs.rs"
+
+[[test]]
+name = "unicode"
+path = "tests/editing/unicode.rs"
+
+[[test]]
+name = "line_endings"
+path = "tests/editing/line_endings.rs"
+
+[[test]]
+name = "select_all"
+path = "tests/keyboard/select_all.rs"
+
+[[test]]
+name = "properties"
+path = "tests/properties.rs"
