@@ -113,8 +113,16 @@ file can be read and written the way the reference does without a window on eith
   (unsaved changes), `before_saving` (characters that cannot be written), `before_overwriting`
   (an existing file in Save As) and `after_outside_change`. The data lives here so "would the
   reference ask?" is testable headlessly; the wording and the box belong to the shell.
-- Search/replace engine: still planned (M6). Combination/IME input stays in `nc-core`/the
-  viewport.
+- The editing engines of M5 sit here too, beside the file I/O, because none of them needs a
+  window. `search`: `SearchOptions` (*Match case*, *Match whole word only*, both off when the
+  dialog opens) with a `Direction`, `find_next`/`find_previous` returning a `SearchResult` that
+  keeps the reference's cases apart (`Found`; `Wrapped`, reached by going round one end;
+  `Boundary`, out of document while a match exists elsewhere — the reference stops and says so
+  before wrapping; `NoMatch`), `find_all` for Replace All, and `go_to_line`/`parse_line_number`
+  for Go to line. `time_date`: `TimeDate`, formatted the way F5 writes it (`3:47 PM
+  10/12/2026`). The rest is `nc-core`: `Document::select_all`, `replace_range`/`replace_ranges`
+  (one undo step per Replace All), and `status::StatusPosition` for the line and column the
+  status bar reads. Combination/IME input stays in `nc-core`/the viewport.
 
 ## 6. `nc-markdown` — formatting model
 

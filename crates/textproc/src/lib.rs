@@ -1,9 +1,9 @@
 //! How NoteCraft reads a file's bytes and writes them back.
 //!
-//! This crate is the second half of the text engine: `nc-core` holds the text
-//! and knows nothing about files, and `nc-textproc` holds the files and knows
-//! nothing about the viewport. It owns three things
-//! (`docs/architecture.md` §4, M4 in `ROADMAP.md`):
+//! This crate is the rest of the text engine: `nc-core` holds the text and
+//! knows nothing about files, and `nc-textproc` holds the files and knows
+//! nothing about the viewport. It owns five things
+//! (`docs/architecture.md` §4, M4 and M5 in `ROADMAP.md`):
 //!
 //! * **Encoding.** [`interpret`] reads a byte string as the encoding its bytes
 //!   and marks say — UTF-8, with or without a byte order mark, UTF-16 and
@@ -17,6 +17,10 @@
 //!   before destroying something — unsaved changes, an existing file in Save
 //!   As, characters the target encoding cannot hold, a file changed underneath
 //!   the editor.
+//! * **Searching.** [`search`] finds text — the engine behind Find, Find next
+//!   and Replace All — and [`time_date`] writes the time and date F5 inserts.
+//!   Both work on a document's own bytes and offsets, so a search can be tested
+//!   without a window and a replacement without a dialog.
 //!
 //! # Invariants
 //!
@@ -53,11 +57,18 @@ pub mod ansi;
 pub mod encoding;
 pub mod error;
 pub mod prompt;
+pub mod search;
 mod textfile;
+pub mod time_date;
 
 pub use encoding::{Detection, Encoding, Evidence, Interpreted, detect, interpret};
 pub use error::{DecodeError, EncodeError, Error, Result};
+pub use search::{
+    Direction, Match, SearchOptions, SearchResult, find_all, find_next, find_previous, go_to_line,
+    parse_line_number,
+};
 pub use textfile::{ExternalChange, Saved, TextFile};
+pub use time_date::{Meridiem, TimeDate};
 
 #[cfg(test)]
 mod tests {

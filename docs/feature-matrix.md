@@ -49,13 +49,13 @@ implementation status is `NOT_STARTED`.** Spec status is the column that is mean
 
 | ID | Feature | Priority | Milestone | Spec | Ref | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-S001 | Find (Ctrl+F) | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Flyout/bar matches reference UI | `tests/file_io/find.rs` |
-| NC-S002 | Find next / previous (F3 / Shift+F3) | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Direction + wrap semantics | `tests/file_io/find.rs` |
-| NC-S003 | Replace / Replace All (Ctrl+H) | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Count + undo as single action | `tests/file_io/replace.rs` |
-| NC-S004 | Search options (match case, whole word, direction) | MANDATORY | M5 | SPECIFIED | TC | NOT_STARTED | Reference-exact option set | `tests/file_io/find_options.rs` |
-| NC-S005 | Wrap-around + boundary notices | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Inline "Beginning/end of document reached" notice | `tests/file_io/find_boundary.rs` |
-| NC-S006 | Go to line (Ctrl+G) | OPTIONAL | M5 | SPECIFIED | DOC/TC | NOT_STARTED | Dialog + clamp behavior | `tests/file_io/go_to.rs` |
-| NC-S007 | Insert date/time (F5) | OPTIONAL | M5 | SPECIFIED | TC | NOT_STARTED | Format string reference-exact | `tests/file_io/time_date.rs` |
+| NC-S001 | Find (Ctrl+F) | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Flyout/bar matches reference UI | `tests/editing/find.rs` |
+| NC-S002 | Find next / previous (F3 / Shift+F3) | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Direction + wrap semantics | `tests/editing/find.rs` |
+| NC-S003 | Replace / Replace All (Ctrl+H) | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Count + undo as single action | `tests/editing/replace.rs` |
+| NC-S004 | Search options (match case, whole word, direction) | MANDATORY | M5 | SPECIFIED | TC | NOT_STARTED | Reference-exact option set | `tests/editing/find_options.rs` |
+| NC-S005 | Wrap-around + boundary notices | MANDATORY | M5 | SPECIFIED | DOC | NOT_STARTED | Inline "Beginning/end of document reached" notice | `tests/editing/find_boundary.rs` |
+| NC-S006 | Go to line (Ctrl+G) | OPTIONAL | M5 | SPECIFIED | DOC/TC | NOT_STARTED | Dialog + clamp behavior | `tests/editing/go_to.rs` |
+| NC-S007 | Insert date/time (F5) | OPTIONAL | M5 | SPECIFIED | TC | NOT_STARTED | Format string reference-exact | `tests/editing/time_date.rs` |
 
 ## D. Encoding & file I/O data integrity
 

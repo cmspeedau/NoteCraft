@@ -62,5 +62,9 @@ name = "select_all"
 path = "tests/keyboard/select_all.rs"
 
 [[test]]
+name = "status_bar"
+path = "tests/keyboard/status_bar.rs"
+
+[[test]]
 name = "properties"
 path = "tests/properties.rs"

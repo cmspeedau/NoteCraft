@@ -239,6 +239,38 @@ M5 — Editing commands and search
     Search feedback, empty results, and boundary behavior
 
 Exit criteria: Search and editing commands match reference behavior, including boundary cases and keyboard layouts.
+
+Status: IN_PROGRESS — the engines are in place and the shell is what is left. `nc-textproc`
+grew `search` and `time_date`; `nc-core` grew the document side of the commands. Search is
+`SearchOptions` (*Match case*, *Match whole word only*, both off when the dialog opens) plus a
+`Direction`, and `find_next`/`find_previous` answer with a `SearchResult` that keeps the
+reference's cases apart rather than collapsing them into an `Option`: `Found`, `Wrapped` for a
+match reached by going round one end, `Boundary` for running out of document while a match
+exists elsewhere — the reference stops and says so instead of silently wrapping — and `NoMatch`
+for a query that is nowhere. `find_all` reports every non-overlapping occurrence for Replace
+All, `go_to_line` and `parse_line_number` are Go to line (clamped, with a non-numeric entry
+reading as "no line"), and `TimeDate` formats the F5 insertion as `3:47 PM 10/12/2026`
+(month, day, year; a 12-hour clock where both midnight and noon read as `12`). `nc-core` holds
+`Document::select_all`, `replace_range` and `replace_ranges` — Replace All is a single undo
+step, and the ranges are all clamped against the text as it stood before any of them is
+applied, so a later occurrence cannot fall past an earlier edit and be dropped — and
+`status::StatusPosition`, the 1-based line and column the status bar reads, counted in
+characters rather than bytes and read from the selection *head*, so a backwards selection still
+reads where the caret is. The suites live beside the features they name: `tests/editing/`
+(`find.rs`, `replace.rs`, `find_options.rs`, `find_boundary.rs`, `go_to.rs`, `time_date.rs`)
+in `nc-textproc`, `tests/keyboard/status_bar.rs` in `nc-core`, and a search property in
+`crates/textproc/tests/properties.rs` that compares `find_all` against `str::match_indices` over
+generated text. Verification is green on Linux: fmt, clippy `-D warnings`, 368 tests, the
+crate-boundary guard, and `cargo check --target x86_64-pc-windows-msvc`. Outstanding for M5:
+the Find/Replace dialog and its options, the F3/Shift+F3 and Ctrl+F/Ctrl+H wiring, the search
+notification line ("Beginning/end of document reached") and its wording, the Go to line dialog,
+menu accelerators, and differential comparison against the reference (exit criterion), which is
+blocked until the pinned Windows reference machine is available. Where the reference's exact
+behaviour is not yet captured (`docs/reference-matrix.md` §5; the wrap rule itself is
+documented in §6), the crate names its behaviour an approximation rather than parity: the date
+and time format is the one documented above (no locale is selected anywhere yet), and the
+boundary and wrap results are values the shell is expected to render, with the reference's
+exact wording still to be captured.
 M6 — Tabs and application lifecycle
 
     Multiple documents and tab switching

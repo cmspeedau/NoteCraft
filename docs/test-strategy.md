@@ -58,7 +58,9 @@ as golden data; the harness replays against our binary thereafter.
 
 Encoding round-trip, EOL preservation, text-through-save-and-reopen, undo-to-start, and
 "a save leaves no partial file" run today in `crates/textproc/tests/properties.rs` (M4) over
-arbitrary byte strings and generated text; the rest arrive with their engines.
+arbitrary byte strings and generated text; the search property joined them in M5, comparing
+`find_all` against `str::match_indices` over generated text; the rest arrive with their
+engines.
 
 ## 6. CI
 

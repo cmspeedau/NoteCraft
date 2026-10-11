@@ -3,8 +3,10 @@
 //! This crate is the editing engine: the text buffer, the selection, the caret
 //! arithmetic, the undo history, the clipboard interface, soft wrap, and the
 //! document that ties them together. It is deliberately *not* a UI: the editor
-//! viewport, the status bar, find/replace, and file I/O hang off these types in
-//! later milestones (see `docs/architecture.md` §4).
+//! viewport, the find/replace dialogs, and file I/O hang off these types in
+//! later milestones, and the status bar's line-and-column reading
+//! ([`StatusPosition`]) lives here so the shell only formats what it is told
+//! (see `docs/architecture.md` §4).
 //!
 //! # Invariants
 //!
@@ -39,6 +41,7 @@ mod document;
 mod line_ending;
 mod mouse;
 mod selection;
+mod status;
 mod tabs;
 mod undo;
 mod wrap;
@@ -51,6 +54,7 @@ pub use document::Document;
 pub use line_ending::{LineEnding, LineEndingReport};
 pub use mouse::{ClickKind, click_selection, drag_selection};
 pub use selection::Selection;
+pub use status::StatusPosition;
 pub use tabs::{TabStop, display_width};
 pub use undo::{Edit, UndoStack};
 pub use wrap::{WrappedLine, wrap_document, wrap_line};

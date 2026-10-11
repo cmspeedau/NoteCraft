@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use nc_textproc::encoding::encode;
-use nc_textproc::{TextFile, interpret};
+use nc_textproc::{SearchOptions, TextFile, find_all, interpret};
 use proptest::prelude::*;
 
 static CASE: AtomicUsize = AtomicUsize::new(0);
@@ -164,5 +164,38 @@ proptest! {
             .map(|entry| entry.expect("an entry").file_name())
             .collect();
         prop_assert_eq!(leftovers, vec![path.file_name().expect("a name").to_owned()]);
+    }
+
+    /// Every match a search reports really is the query, read back out of the
+    /// text it was found in, and it reports every one of them.
+    ///
+    /// `docs/test-strategy.md` §5 asks for this by name — "every reported match
+    /// contains the query under the active options" — and this is the M5 engine
+    /// arriving to carry it. *Match case* is on so that the occurrences can be
+    /// counted a second way, with `str::match_indices`, and the two lists have
+    /// to agree.
+    #[test]
+    fn every_reported_match_is_the_query(
+        haystack in text(),
+        needle in text(),
+    ) {
+        prop_assume!(!needle.is_empty());
+
+        let found = find_all(&haystack, &needle, SearchOptions::new().matching_case());
+
+        for one in &found {
+            let range = one.range();
+            prop_assert!(range.end <= haystack.len(), "a match inside the text");
+            prop_assert_eq!(one.text(&haystack), needle.as_str());
+        }
+
+        // No overlapping matches, and none missed: reading the text a second
+        // way finds the same ones, in the same places.
+        let by_hand: Vec<usize> = haystack
+            .match_indices(needle.as_str())
+            .map(|(at, _)| at)
+            .collect();
+        let reported: Vec<usize> = found.iter().map(|one| one.start).collect();
+        prop_assert_eq!(reported, by_hand);
     }
 }

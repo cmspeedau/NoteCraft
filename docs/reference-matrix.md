@@ -207,6 +207,11 @@ Availability legend: `always`, `edited` (a document/tab exists), `dirty`, `selec
 - [ ] Ctrl+A on es-ES / pt-BR keyboard layouts (2026 regression)
 - [ ] Dirty prompt wording for Close vs Exit vs Restart
 - [ ] Tab drag-reorder and detach-to-window (if supported)
+- [ ] Find with *Match case* / *Match whole word only* on — what counts as a word boundary
+- [ ] Find wrap: first and last match, and the exact "Beginning/end of document reached" wording and placement
+- [ ] Replace All over many matches — one undo step? count shown?
+- [ ] Go to line: out-of-range and non-numeric entries — clamp, error, or ignore
+- [ ] F5 date/time string under this machine's locale, and what it does with a selection
 
 Each captured case becomes a fixture + acceptance test and its `TO_CAPTURE` tag flips to
 `CAPTURED` here.

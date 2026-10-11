@@ -20,6 +20,7 @@ use crate::dnd;
 use crate::line_ending::{self, LineEnding, LineEndingReport};
 use crate::mouse::{self, ClickKind};
 use crate::selection::Selection;
+use crate::status::StatusPosition;
 use crate::tabs::TabStop;
 use crate::undo::{Edit, UndoStack};
 use crate::wrap::{WrappedLine, wrap_document};
@@ -213,6 +214,17 @@ impl Document {
     /// Whether there is an edit to redo.
     pub fn can_redo(&self) -> bool {
         self.history.can_redo()
+    }
+
+    /// The caret's position as the status bar reads it: 1-based line and column
+    /// (`docs/feature-matrix.md` NC-E010).
+    ///
+    /// The position is read from the caret — the *end* of the selection, which
+    /// is the reference's own reading: with text selected the status bar shows
+    /// the end of the selection, and with no selection the caret. The column
+    /// counts graphemes within the line.
+    pub fn status_position(&self) -> StatusPosition {
+        StatusPosition::of(&self.buffer, self.selection.head())
     }
 
     // ---- selection ------------------------------------------------------
@@ -501,6 +513,84 @@ impl Document {
             taken += 1;
         }
         end
+    }
+
+    // ---- replacing spans ------------------------------------------------
+
+    /// Replaces `range` with `text` as one undo step.
+    ///
+    /// The range is clamped to the buffer and to character boundaries, so byte
+    /// offsets from a search never split a character, and `text` is normalised
+    /// to `\n` exactly as a paste is, so the buffer keeps its single-terminator
+    /// invariant. The caret ends after the replacement and the desired column is
+    /// cleared. Returns whether anything changed.
+    pub fn replace_range(&mut self, range: Range<usize>, text: &str) -> bool {
+        self.replace_ranges(&[(range, text)]) == 1
+    }
+
+    /// Replaces several ranges as a single undoable step, the way Replace All
+    /// does (`docs/feature-matrix.md` NC-S003: "Count + undo as single action").
+    ///
+    /// `replacements` must be sorted by start and must not overlap — a search's
+    /// match list is exactly that shape — and they are applied left to right,
+    /// each one's offsets shifted by the text inserted before it. Every range is
+    /// clamped to the buffer and to character boundaries. Returns how many ranges
+    /// changed text: a range that is empty and stays empty is not one of them, so
+    /// a Replace All over no matches is not an edit the user cannot see.
+    ///
+    /// The whole run is one entry in the history, so one undo takes the document
+    /// back to how it was before the call.
+    pub fn replace_ranges(&mut self, replacements: &[(Range<usize>, &str)]) -> usize {
+        // Clamp every range against the buffer as it stands now, before any of
+        // them is applied: the loop mutates the buffer, and a later range
+        // measured against an already-shrunk buffer would be clamped into the
+        // wrong place and silently dropped.
+        let clamped: Vec<(usize, usize)> = replacements
+            .iter()
+            .map(|(range, _)| {
+                let start = self.buffer.clamp(range.start);
+                let end = self.buffer.clamp(range.end.max(start));
+                (start, end)
+            })
+            .collect();
+
+        let mut edits: Vec<Edit> = Vec::new();
+        let mut delta = 0isize;
+        let mut previous_end = 0usize;
+        for (index, (_, text)) in replacements.iter().enumerate() {
+            let (start, end) = clamped[index];
+            debug_assert!(
+                start >= previous_end,
+                "replace_ranges wants sorted, non-overlapping ranges"
+            );
+            previous_end = end;
+            if start == end && text.is_empty() {
+                continue;
+            }
+            let normalized = line_ending::to_lf(text);
+            let at = (start as isize + delta) as usize;
+            let to = at + (end - start);
+            let removed = self.buffer.replace(at..to, &normalized);
+            let after = Selection::caret(at + normalized.len());
+            edits.push(Edit {
+                start: at,
+                removed,
+                inserted: normalized,
+                selection_before: Selection::caret(at),
+                selection_after: after,
+            });
+            delta += edits.last().map_or(0, |edit| edit.inserted.len()) as isize
+                - (end - start) as isize;
+        }
+        if edits.is_empty() {
+            return 0;
+        }
+        let count = edits.len();
+        self.selection = edits[count - 1].selection_after;
+        self.desired_column = None;
+        self.dirty = true;
+        self.history.record_group(edits);
+        count
     }
 
     fn record(&mut self, edit: Edit, coalesce: bool) {

@@ -67,5 +67,29 @@ name = "new_document"
 path = "tests/editing/new_document.rs"
 
 [[test]]
+name = "find"
+path = "tests/editing/find.rs"
+
+[[test]]
+name = "find_options"
+path = "tests/editing/find_options.rs"
+
+[[test]]
+name = "find_boundary"
+path = "tests/editing/find_boundary.rs"
+
+[[test]]
+name = "replace"
+path = "tests/editing/replace.rs"
+
+[[test]]
+name = "go_to"
+path = "tests/editing/go_to.rs"
+
+[[test]]
+name = "time_date"
+path = "tests/editing/time_date.rs"
+
+[[test]]
 name = "properties"
 path = "tests/properties.rs"
