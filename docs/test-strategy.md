@@ -56,6 +56,10 @@ as golden data; the harness replays against our binary thereafter.
 - Markdown formatting idempotence where the reference is idempotent (capture first).
 - Search: every reported match contains the query under the active options.
 
+Encoding round-trip, EOL preservation, text-through-save-and-reopen, undo-to-start, and
+"a save leaves no partial file" run today in `crates/textproc/tests/properties.rs` (M4) over
+arbitrary byte strings and generated text; the rest arrive with their engines.
+
 ## 6. CI
 
 - On every push: `cargo fmt --check`, `cargo clippy -D warnings`, unit + golden tests.

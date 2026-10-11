@@ -5,6 +5,7 @@ members = [
     "crates/commands",
     "crates/core",
     "crates/platform",
+    "crates/textproc",
     "crates/xtask",
 ]
 
@@ -20,6 +21,7 @@ authors = ["NoteCraft contributors"]
 nc-commands = { path = "crates/commands" }
 nc-core = { path = "crates/core" }
 nc-platform = { path = "crates/platform" }
+nc-textproc = { path = "crates/textproc" }
 
 anyhow = "1.0"
 thiserror = "2.0"

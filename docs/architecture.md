@@ -42,8 +42,8 @@ notepad/
 ```
 
 Crates that exist today: `crates/app` (`nc-app`), `crates/platform` (`nc-platform`),
-`crates/commands` (`nc-commands`, landed in M2), `crates/core` (`nc-core`, landed in M3) and
-`crates/xtask`. The rest are planned.
+`crates/commands` (`nc-commands`, landed in M2), `crates/core` (`nc-core`, landed in M3),
+`crates/textproc` (`nc-textproc`, landed in M4) and `crates/xtask`. The rest are planned.
 
 ## 3. Layering
 
@@ -85,10 +85,36 @@ or `nc-app`; this keeps them headless-testable and is enforced by `cargo xtask c
 
 ## 5. `nc-textproc` — text processing
 
-- `Encoding` enum + detection (BOM, heuristics, ANSI code page).
-- `Eol` detection and preservation (CRLF/LF/CR, mixed).
-- Search/replace engine (match case, whole word, direction, wrap notices).
-- Transcoding on Save-As.
+Landed in M4 as `crates/textproc`, depending on `nc-core` and the standard library only, so a
+file can be read and written the way the reference does without a window on either host.
+
+- `encoding`: `Encoding` (`Utf8`, `Utf16Le`, `Utf16Be`, `Utf32Le`, `Utf32Be`, `Ansi`) with
+  detection (byte order mark first, then byte-pattern heuristics, then the ANSI code page) and
+  transcoding both ways. A `Detection` records *why* the encoding was chosen (a mark, the
+  pattern, a decode failure, the user's choice, a new document) so the status bar and any
+  later prompt can say so; `decode` and `encode` are the strict paths and `encode_lossy` the
+  explicit substitution one. ANSI is Windows-1252, and every byte of it maps to a character
+  and back, so no file this crate reads can be silently corrupted.
+- `TextFile`: the path, the bytes as they were on disk, the `Document` read from them, and the
+  chosen `encoding`/BOM. `open` reads and detects, `save` re-serialises in the encoding the
+  file carries, `save_as` transcodes to an encoding the user picked (with or without a mark),
+  `save_lossy` writes what the target can hold and returns the characters it had to
+  substitute, and `reload` re-reads the file.
+- Writes are atomic per file: the text is serialised to a sibling temporary file which is
+  renamed over the target only once it is complete, so a failed write leaves the previous
+  contents intact and the document still dirty with its changes (`NC-D006`).
+- No silent data loss: text the target encoding cannot represent fails the save, and the
+  error names the characters. EOL style is detected on read and preserved on write; a mixed
+  file is reported, not normalised.
+- `ExternalChange`: whether the file on disk is still the one that was read (rewritten,
+  removed) so a Save can ask before clobbering work done outside the editor, rather than
+  assuming the in-memory copy is current.
+- `prompt`: the decisions the reference puts to the user as values — `before_discarding`
+  (unsaved changes), `before_saving` (characters that cannot be written), `before_overwriting`
+  (an existing file in Save As) and `after_outside_change`. The data lives here so "would the
+  reference ask?" is testable headlessly; the wording and the box belong to the shell.
+- Search/replace engine: still planned (M6). Combination/IME input stays in `nc-core`/the
+  viewport.
 
 ## 6. `nc-markdown` — formatting model
 

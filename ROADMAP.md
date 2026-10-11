@@ -193,6 +193,38 @@ M4 — File I/O and data integrity
     Recover gracefully from failed writes
 
 Exit criteria: Opening and saving supported fixtures produces the same expected bytes and prompts as the reference. No silent data loss is permitted.
+
+Status: IN_PROGRESS — file I/O is started as `crates/textproc` (`nc-textproc`), a
+dependency-light crate that owns how a note's bytes become text and text becomes bytes; it
+depends on `nc-core` and the standard library only, so the whole stage is testable headlessly.
+It provides `Encoding` detection and transcoding (UTF-8 with and without a byte order mark,
+UTF-16 and UTF-32 in either byte order, and ANSI — Windows-1252, the Western code page the
+reference falls back to), `nc-core`'s `LineEnding` detected on read and round-tripped on write
+(CRLF, LF and CR, with a mixed file reported and left alone rather than normalised), and
+`TextFile`: the path, the bytes as they are on
+disk, and the `Document` the text was read into. `open` reads and detects, `save` rewrites in
+the encoding the document carries, `save_as` transcodes to a chosen encoding with or without a
+mark, `save_lossy` is the explicit "write what you can, `?` the rest" path, and `reload`
+re-reads the file. A save serialises the whole file to a sibling temporary file and renames it
+into place only once it is complete, so a failed write leaves the original exactly as it was
+and the document keeps its changes and its path (`NC-D006`). Unrepresentable text fails the
+save and names the characters rather than substituting silently, and `external_change()` reports
+the file being rewritten or removed under the document instead of assuming the in-memory copy is
+current. `prompt` names the states in which the reference asks before destroying something —
+unsaved changes, an existing file in Save As, characters the target encoding cannot hold, and a
+file changed outside the editor — as values the shell can turn into a box; the wording and the
+dialog itself stay with the viewport. The suites are named after the feature matrix
+(`NC-F001`, `NC-F004`–`NC-F006`, `NC-D001`–`NC-D008`) plus property tests over arbitrary bytes
+and lines. Verification is green on Linux: fmt, clippy `-D warnings`, 275 tests, the
+crate-boundary guard, and `cargo check --target x86_64-pc-windows-msvc`. Outstanding for M4:
+the Open/Save/Save As dialogs and the encoding list they show, the wording of the
+unsaved-changes and overwrite prompts, dirty-state display, and differential byte comparison
+against the reference (exit criterion), which is blocked until the pinned Windows reference
+machine is available. Where the reference's exact behaviour is not yet captured
+(`docs/reference-matrix.md` §4 and §5), the crate names its behaviour an approximation rather
+than parity: ANSI is Windows-1252 (another locale's code page reads with the Western table,
+which is wrong for those languages but never lossy), a file with no byte order mark and no
+evidence to the contrary is UTF-8, and CRLF is the style a new document is written in.
 M5 — Editing commands and search
 
     Find and find next/previous

@@ -168,6 +168,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nc-textproc"
+version = "0.0.0"
+dependencies = [
+ "nc-core",
+ "proptest",
+ "thiserror",
+]
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
