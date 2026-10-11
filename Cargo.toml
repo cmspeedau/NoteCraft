@@ -29,6 +29,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 unicode-segmentation = "1.12"
 
+# The portable window backend (`nc-platform`'s `egui` feature). Pinned to the
+# version the port was written against.
+eframe = "0.36"
+egui = "0.36"
+
 # Test-only. `proptest` is used for the property tests named in
 # `docs/test-strategy.md` §5.
 proptest = "1.6"

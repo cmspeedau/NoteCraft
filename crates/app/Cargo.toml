@@ -23,3 +23,8 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[features]
+# Build against the portable egui/eframe window backend instead of the native
+# Win32 one: `cargo run -p nc-app --features egui`.
+egui = ["nc-platform/egui"]

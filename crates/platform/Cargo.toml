@@ -13,6 +13,15 @@ nc-commands.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+# The portable window backend, off by default: the shipped Windows build uses
+# the native backend, and the egui backend is there for hosts without Win32.
+eframe = { workspace = true, optional = true }
+egui = { workspace = true, optional = true }
+
+[features]
+# Present the shell through egui/eframe instead of the native Win32 backend.
+egui = ["dep:eframe", "dep:egui"]
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",

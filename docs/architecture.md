@@ -154,6 +154,12 @@ outside the standard library, so it is fully testable on any host).
 Traits + Win32 implementations: file dialogs, clipboard, print, DPI/theme, UIA exposure,
 shell association, single-instance activation. Fake implementations live in `tests/`.
 
+The window shell has three backends behind one `run()`: the Win32 window (`windows_backend`,
+default on Windows), a portable `egui`/`eframe` window (`egui_backend`, enabled with the
+`egui` feature: `cargo run -p nc-app --features egui`), and a headless stub that opens no
+window at all. All three build the same menu bar from `nc-commands` and route clicks back
+through `by_menu_id`, so the command surface is identical whichever backend is compiled in.
+
 ## 9. `nc-session` — tabs & windows
 
 Tab model, window model, dirty tracking, restore persistence, recent-files list.
