@@ -10,7 +10,7 @@ Do not optimize for the number of features implemented, the number of files crea
 ROADMAP.md defines the project milestones. docs/reference-matrix.md defines the target behavior. docs/feature-matrix.md is the source of truth for implementation and verification status.
 2. Non-Negotiable Rules
 
-    Use Rust as the primary implementation language.
+    Rust is the only implementation language. Do not introduce other languages, runtimes, or script interpreters anywhere in the repository — application code, tests, build tooling, and CI included. Do not add shell scripts, batch/PowerShell files, Python, or other-language tooling. All repository automation is written in Rust under `crates/xtask` and invoked as `cargo xtask <task>`.
     Target Windows first; do not introduce cross-platform abstractions without a concrete need.
     Do not invent reference behavior. Inspect the pinned reference application or consult reliable documentation.
     Do not mark a feature VERIFIED without a passing reference-derived test.
@@ -56,6 +56,7 @@ cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cargo xtask check-boundaries
 
 Run Windows-specific integration tests on the actual supported target. Do not report a check as passing unless it was executed and passed.
 

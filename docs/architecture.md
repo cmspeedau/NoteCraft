@@ -16,6 +16,9 @@ engineering constraint, and reflected in the PR that makes the change.
 5. **Native feel.** Uses Windows theming, DPI, and control conventions; not a web view.
 6. **Small, replaceable seams.** Platform services (file dialogs, print, clipboard,
    spell-check, AI) sit behind traits so they can be faked in tests.
+7. **Rust-only.** The repository has exactly one implementation language. Application code,
+   tests, and maintenance tooling are all Rust; no shell, batch/PowerShell, or Python scripts
+   are added. Repository tasks live in `crates/xtask` and run as `cargo xtask <task>`.
 
 ## 2. Workspace layout
 
@@ -32,10 +35,10 @@ notepad/
 │   ├── nc-settings/           # persisted preferences
 │   ├── nc-session/            # tabs, windows, restore, recent files
 │   ├── nc-ai/                 # optional service-backed AI commands (M9)
-│   └── nc-app/                # binary: window, chrome, wiring  -> notepad.exe
+│   ├── nc-app/                # binary: window, chrome, wiring  -> notepad.exe
+│   └── xtask/                 # repository tasks (cargo xtask check-boundaries)
 ├── docs/                      # this spec set
-├── tests/                     # integration + fixtures (see test-strategy.md)
-└── xtask/                     # build/verification helpers (fixtures, golden diffs)
+└── tests/                     # integration + fixtures (see test-strategy.md)
 ```
 
 ## 3. Layering
@@ -53,7 +56,7 @@ nc-session  nc-commands  nc-settings   nc-platform (Win32/UIA)
 ```
 
 `nc-core`, `nc-textproc`, `nc-markdown` and `nc-commands` **must not** depend on `nc-platform`
-or `nc-app`; this keeps them headless-testable and is enforced by a CI dependency check.
+or `nc-app`; this keeps them headless-testable and is enforced by `cargo xtask check-boundaries`.
 
 ## 4. `nc-core` — document model
 

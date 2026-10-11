@@ -57,19 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Enforce crate dependency direction
-        run: |
-          set -euo pipefail
-          # 1. The platform crate must never depend on the app crate.
-          if grep -qE '^nc-app' crates/platform/Cargo.toml; then
-            echo "::error::nc-platform must not depend on nc-app"
-            exit 1
-          fi
-          # 2. Only the app (the composition root) may depend on nc-platform.
-          offenders=$(grep -rl --include=Cargo.toml 'nc-platform' crates \
-            | grep -v '^crates/app/' || true)
-          if [ -n "$offenders" ]; then
-            echo "::error::only crates/app may depend on nc-platform; found: $offenders"
-            exit 1
-          fi
-          echo "boundary check passed"
+        run: cargo xtask check-boundaries
