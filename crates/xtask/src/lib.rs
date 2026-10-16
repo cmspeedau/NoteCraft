@@ -14,7 +14,7 @@ pub const APP_CRATE: &str = "nc-app";
 pub const PLATFORM_CRATE: &str = "nc-platform";
 /// Crates that must stay headless: no dependency on the platform or app crates,
 /// so they build and test on any host.
-pub const HEADLESS_CRATES: &[&str] = &["nc-commands"];
+pub const HEADLESS_CRATES: &[&str] = &["nc-commands", "nc-markdown"];
 
 /// A crate discovered under `<root>/crates`.
 #[derive(Debug, Clone, PartialEq, Eq)]

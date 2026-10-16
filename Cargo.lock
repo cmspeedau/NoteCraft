@@ -1870,6 +1870,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nc-markdown"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
 name = "nc-platform"
 version = "0.0.0"
 dependencies = [

@@ -31,9 +31,11 @@ the `nc-textproc` engines, with the unsaved-changes, overwrite, and
 unrepresentable prompts and the dirty indicator on the tab. M6 — tabs and
 lifecycle — is in progress: tab switching, Save all, duplicate-open identity,
 New window, recent files, and session restore (which reopens the previous
-documents, including unsaved work) are in place. Markdown, settings and desktop
-integration, optional features, performance, validation, and release engineering
-are still ahead.
+documents, including unsaved work) are in place, and seven of its behaviour
+criteria are verified by an acceptance suite. M7 has started: `nc-markdown`
+implements the Markdown formatting model, with its own acceptance suite, but
+nothing in the window calls it yet. Settings and desktop integration, optional
+features, performance, validation, and release engineering are still ahead.
 
 See [`docs/feature-matrix.md`](docs/feature-matrix.md) for per-feature
 implementation and verification status — it is the source of truth.
@@ -93,6 +95,7 @@ layer, and `cargo xtask check-boundaries` enforces that direction as a CI gate.
 | --- | --- | --- |
 | [`crates/core`](crates/core) | `nc-core` | Document model: text buffer, selection, caret, undo/redo, clipboard, word wrap, tabs, line endings. Headless. |
 | [`crates/textproc`](crates/textproc) | `nc-textproc` | Encoding detection and transcoding, search/replace, time/date insertion, atomic file I/O. Headless. |
+| [`crates/markdown`](crates/markdown) | `nc-markdown` | Loss-keeping Markdown parse, and formatting commands expressed as edits to the source. Headless. |
 | [`crates/commands`](crates/commands) | `nc-commands` | The command registry, menu model, shortcuts, and availability rules. Headless. |
 | [`crates/platform`](crates/platform) | `nc-platform` | The `egui`/`eframe` shell: window, tab strip, menus, toolbar, editor surface, status bar, settings page. |
 | [`crates/app`](crates/app) | `nc-app` | Startup, logging, command line, and process lifecycle. Produces the executable. |
@@ -170,6 +173,7 @@ crates/
   app/        # nc-app — startup, logging, CLI, lifecycle
   commands/   # nc-commands — command registry (headless)
   core/       # nc-core — document model (headless)
+  markdown/   # nc-markdown — Markdown formatting model (headless)
   platform/   # nc-platform — egui/eframe shell
   textproc/   # nc-textproc — encoding, search, atomic I/O (headless)
   xtask/      # cargo xtask tasks

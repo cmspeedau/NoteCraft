@@ -271,6 +271,25 @@ It needs a capture, or a recorded decision, before it can be built.
 Exit criteria: Formatting operations, Markdown serialization, and view
 transitions pass their acceptance tests.
 
+Status: IN_PROGRESS — the formatting model is landed as `crates/markdown`
+(`nc-markdown`), built to §6's three rules: it edits the Markdown source rather than
+a rich internal tree, its parse keeps every byte (each block carries the exact source
+it came from, and property tests assert a document reads back unchanged), and
+serialization is deterministic enough to assert on whole strings. Its acceptance
+suite lives at the paths the matrix names — `tests/markdown/inline.rs`,
+`headings.rs`, `lists.rs`, `links.rs`, `tables.rs`, `clear.rs`, `malformed.rs` — and
+covers bold/italic/strike serialization, ATX headings, bullets, numbering and
+two-space nesting, link syntax, table insertion, the clear-formatting result, and
+that unsupported syntax (`[^1]:`, raw HTML, fences, `==highlight==`) survives
+untouched. Commands return the new text *and* the remapped selection, so the shell
+can apply a format as one undoable edit.
+
+What is not yet done is the half the exit criteria also ask for: nothing in the
+window calls the crate yet, so `Ctrl+B` is registered but not dispatched, and the
+view transition has no implementation. `NC-M001`, `NC-M002`, and `NC-M010` remain
+`NOT_STARTED` for that reason, and the eight formatting rows are `IN_PROGRESS` until
+the shell reaches them.
+
 ### M8 — Settings and desktop integration
 
 - Font family and size.

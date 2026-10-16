@@ -32,6 +32,7 @@ NoteCraft/
 ├── crates/
 │   ├── core/                  # nc-core — document model, buffer, undo, selection
 │   ├── textproc/              # nc-textproc — encoding, EOL, search/replace, file I/O
+│   ├── markdown/              # nc-markdown — loss-keeping Markdown parse and formatting
 │   ├── commands/              # nc-commands — command registry, menus, shortcuts
 │   ├── platform/              # nc-platform — the egui/eframe shell
 │   ├── app/                   # nc-app — binary: startup, logging, lifecycle -> notepad
@@ -42,8 +43,8 @@ NoteCraft/
 
 Crates that exist today: `crates/app` (`nc-app`), `crates/platform`
 (`nc-platform`), `crates/commands` (`nc-commands`), `crates/core` (`nc-core`),
-`crates/textproc` (`nc-textproc`), and `crates/xtask`. A dedicated Markdown crate
-(`nc-markdown`) is planned for M7.
+`crates/textproc` (`nc-textproc`), `crates/markdown` (`nc-markdown`), and
+`crates/xtask`.
 
 ## 3. Layering
 
@@ -58,9 +59,10 @@ Crates that exist today: `crates/app` (`nc-app`), `crates/platform`
    nc-core ◄──── nc-textproc
 ```
 
-`nc-core`, `nc-textproc`, and `nc-commands` **must not** depend on `nc-platform`
-or `nc-app`; this keeps them headless-testable and is enforced by
-`cargo xtask check-boundaries`.
+`nc-core`, `nc-textproc`, `nc-commands`, and `nc-markdown` **must not** depend on
+`nc-platform` or `nc-app`; this keeps them headless-testable and is enforced by
+`cargo xtask check-boundaries`. `nc-markdown` depends on nothing at all — the
+shell calls it directly for the formatting commands.
 
 ## 4. `nc-core` — document model
 
@@ -113,6 +115,12 @@ written without a window.
 - Applies formatting commands by editing the *source*, never a rich internal
   tree that loses bytes; renders a formatted view derived from the source.
 - Serialization is deterministic.
+
+Landed in `crates/markdown` as M7's first step: `blocks` and `spans` for the
+tolerant read (every block carries the exact bytes it came from, so a document
+reads back byte for byte), and the formatting commands as source edits that return
+new text plus the remapped selection — which is what lets the shell treat a
+format as one ordinary undoable edit.
 
 ## 7. `nc-commands` — command layer
 

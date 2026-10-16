@@ -32,12 +32,15 @@ configuration directory on exit and reopens them on the next start when no files
 are named on the command line (`crates/platform/src/ui/session.rs`). `File ▸
 Recent` lists the documents opened so far, newest first, and choosing one opens
 it through the same path as `File ▸ Open`, so a document already open is focused
-rather than opened twice (`NC-F010`, `NC-F012`). The page-setup surface, the
-outside-change prompt, and the Markdown work are still ahead. Seven M6 behaviour
-criteria are now `VERIFIED` by an acceptance suite
-(`crates/platform/src/ui/lifecycle.rs`); the visual criteria and the tab context
-menu are not — see the verification summary for exactly which rows rest on what.
-Nothing is `VERIFIED` until its acceptance tests pass end to end.
+rather than opened twice (`NC-F010`, `NC-F012`). M7 has begun: `nc-markdown` holds
+the formatting model, tested against its acceptance criteria but not yet reachable
+from the window (see the verification summary). The page-setup surface and the
+outside-change prompt are still ahead. Seven M6 behaviour criteria are `VERIFIED` by
+an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the dirty marker by
+its painted shapes (`crates/platform/src/ui/appearance.rs`); the remaining visual
+criteria and the tab context menu are not — see the verification summary for exactly
+which rows rest on what. Nothing is `VERIFIED` until its acceptance tests pass end to
+end.
 
 Known limitation: `File ▸ Recent` is scoped to what the shell has open — a
 document opened and then closed drops off the list, and a restart rebuilds it
@@ -123,15 +126,15 @@ library exposes no local time zone and the project carries no time-zone database
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-M001 | `.md`/`.markdown` association & handling | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Correct path per extension | `tests/markdown/assoc.rs` |
 | NC-M002 | Syntax view vs formatted view toggle | MANDATORY | M7 | SPECIFIED | NOT_STARTED | No content/selection loss | `tests/markdown/view_switch.rs` |
-| NC-M003 | Bold / Italic (Ctrl+B / Ctrl+I) | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Serialization exact | `tests/markdown/inline.rs` |
-| NC-M004 | Strikethrough | MANDATORY | M7 | SPECIFIED | NOT_STARTED | `~~` serialization | `tests/markdown/inline.rs` |
-| NC-M005 | Headings | MANDATORY | M7 | SPECIFIED | NOT_STARTED | ATX output | `tests/markdown/headings.rs` |
-| NC-M006 | Ordered/unordered lists + nesting | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Nested indent correct | `tests/markdown/lists.rs` |
-| NC-M007 | Hyperlinks | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Link syntax exact | `tests/markdown/links.rs` |
-| NC-M008 | Tables | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Insert/expand semantics | `tests/markdown/tables.rs` |
-| NC-M009 | Clear formatting | OPTIONAL | M7 | SPECIFIED | NOT_STARTED | Result | `tests/markdown/clear.rs` |
+| NC-M003 | Bold / Italic (Ctrl+B / Ctrl+I) | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Serialization exact | `crates/markdown/tests/markdown/inline.rs` |
+| NC-M004 | Strikethrough | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | `~~` serialization | `crates/markdown/tests/markdown/inline.rs` |
+| NC-M005 | Headings | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | ATX output | `crates/markdown/tests/markdown/headings.rs` |
+| NC-M006 | Ordered/unordered lists + nesting | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Nested indent correct | `crates/markdown/tests/markdown/lists.rs` |
+| NC-M007 | Hyperlinks | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Link syntax exact | `crates/markdown/tests/markdown/links.rs` |
+| NC-M008 | Tables | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Insert/expand semantics | `crates/markdown/tests/markdown/tables.rs` |
+| NC-M009 | Clear formatting | OPTIONAL | M7 | SPECIFIED | IN_PROGRESS | Result | `crates/markdown/tests/markdown/clear.rs` |
 | NC-M010 | Formatting participates in undo/redo | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Single-step undo | `tests/markdown/undo.rs` |
-| NC-M011 | Malformed / unsupported syntax preserved | MANDATORY | M7 | SPECIFIED | NOT_STARTED | No silent normalization | `tests/markdown/malformed.rs` |
+| NC-M011 | Malformed / unsupported syntax preserved | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | No silent normalization | `crates/markdown/tests/markdown/malformed.rs` |
 
 ## G. Settings & desktop integration (M8)
 
@@ -166,8 +169,8 @@ library exposes no local time zone and the project carries no time-zone database
 | --- | --- |
 | Total tracked features | 68 |
 | IMPLEMENTED | 34 |
-| IN_PROGRESS | 2 |
-| NOT_STARTED | 23 |
+| IN_PROGRESS | 10 |
+| NOT_STARTED | 15 |
 | VERIFIED | 8 |
 | BLOCKED | 1 |
 
@@ -200,6 +203,19 @@ not earn `VERIFIED` on that. Whether the shell *looks* like the screenshot still
 needs a person looking at a running window. `NC-F003` needs a second real
 top-level window, and `NC-F010`'s Recent submenu needs its drawing observed — its
 list, ordering and capping are tested, the rendering is not.
+
+**What M7's `IN_PROGRESS` rows mean.** `nc-markdown` has landed, and eight of its
+rows are `IN_PROGRESS` rather than `IMPLEMENTED` — deliberately. The engine is
+tested against exactly the criteria the rows name (exact serialization, ATX output,
+nested indent, link syntax, the clear result, no silent normalization), but through
+`nc_markdown::…` rather than through the running application. `Ctrl+B` is registered
+in the registry and not yet dispatched, so nobody can trigger any of it from the
+window. Wiring the commands into the shell is what makes them `IMPLEMENTED`. Three
+M7 rows stay `NOT_STARTED` because the formatter cannot answer them at all:
+`NC-M001` (per-extension paths), `NC-M002` (the view toggle), and `NC-M010`
+(single-step undo) are properties of the shell and the document buffer, not of
+Markdown parsing. `NC-M008` has a second reason to wait: insertion is implemented
+and tested, expanding an existing table is not.
 
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no

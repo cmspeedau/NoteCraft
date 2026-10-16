@@ -1,0 +1,45 @@
+[package]
+name = "nc-markdown"
+description = "NoteCraft Markdown formatting model: loss-keeping parse, source-editing formatting commands, deterministic serialization"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest.workspace = true
+
+# Integration tests are named after the test files `docs/feature-matrix.md`
+# gives each feature (`tests/markdown/inline.rs` for NC-M003, and so on), so the
+# matrix and the suite stay in step.
+[[test]]
+name = "inline"
+path = "tests/markdown/inline.rs"
+
+[[test]]
+name = "headings"
+path = "tests/markdown/headings.rs"
+
+[[test]]
+name = "lists"
+path = "tests/markdown/lists.rs"
+
+[[test]]
+name = "links"
+path = "tests/markdown/links.rs"
+
+[[test]]
+name = "clear"
+path = "tests/markdown/clear.rs"
+
+[[test]]
+name = "tables"
+path = "tests/markdown/tables.rs"
+
+[[test]]
+name = "malformed"
+path = "tests/markdown/malformed.rs"

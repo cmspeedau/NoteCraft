@@ -4,6 +4,7 @@ members = [
     "crates/app",
     "crates/commands",
     "crates/core",
+    "crates/markdown",
     "crates/platform",
     "crates/textproc",
     "crates/xtask",
@@ -20,6 +21,7 @@ authors = ["NoteCraft contributors"]
 [workspace.dependencies]
 nc-commands = { path = "crates/commands" }
 nc-core = { path = "crates/core" }
+nc-markdown = { path = "crates/markdown" }
 nc-platform = { path = "crates/platform" }
 nc-textproc = { path = "crates/textproc" }
 
