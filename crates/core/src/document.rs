@@ -81,6 +81,22 @@ impl Document {
         document
     }
 
+    /// A document rebuilt from its parts, for session restore (`NC-F011`).
+    ///
+    /// `text` uses `\n` terminators and is written in `line_ending`. Nothing is
+    /// remembered as the unedited original — a restored document is written
+    /// from its text — and `dirty` is the unsaved-changes flag the session
+    /// recorded, so a restored document with unsaved work still prompts to be
+    /// saved.
+    pub fn from_parts(text: &str, line_ending: LineEnding, dirty: bool) -> Self {
+        let mut document = Self::new();
+        document.buffer = TextBuffer::from_normalized(&line_ending::to_lf(text));
+        document.line_ending = line_ending;
+        document.line_ending_report = LineEndingReport::uniform(line_ending);
+        document.dirty = dirty;
+        document
+    }
+
     // ---- accessors ------------------------------------------------------
 
     /// The document text, with `\n` terminators.

@@ -484,7 +484,16 @@ pub fn confirm_file_dialog(shell: &mut Shell) {
 ///
 /// A path already open — in any spelling, compared canonically — focuses the
 /// tab that shows it rather than opening the file a second time (`NC-F012`).
-fn open_path(shell: &mut Shell, path: &Path, encoding: Option<(Encoding, bool)>) {
+/// Opens `path` in a new tab, or focuses the tab that already shows it.
+///
+/// Reachable from the Recent submenu as well as the Open dialog, so both go
+/// through one path (`NC-F004`, `NC-F012`).
+pub(crate) fn open_path(shell: &mut Shell, path: &Path, encoding: Option<(Encoding, bool)>) {
+    // A file is recent as soon as it is asked for, whether or not the read below
+    // succeeds: the entry names what the user wanted, and a document that has
+    // gone away is still something they opened.
+    shell.remember_recent(path);
+
     if let Some(existing) = shell.tabs.iter().position(|tab| tab.matches_path(path)) {
         shell.active = existing;
         shell.file_dialog = None;

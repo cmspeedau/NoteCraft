@@ -26,12 +26,22 @@ whose canonical path is already open focuses its tab instead of opening twice
 (NC-F012, including command-line arguments), and `File ▸ New window` opens an
 independent window with its own document set (`crates/platform/src/ui/windows.rs`).
 The Find/Replace, Go-to, and Open/Save-as dialogs are built and their commands
-wired, with the unsaved-changes, overwrite, and unrepresentable prompts. The
-page-setup surface, the outside-change prompt, recent files (NC-F010), session
-restore (NC-F011), and the Markdown and session work are still ahead. Nothing is
-`VERIFIED` until its acceptance tests pass end to end.
+wired, with the unsaved-changes, overwrite, and unrepresentable prompts. Session
+restore (NC-F011) now writes the open documents — including unsaved text — to the
+configuration directory on exit and reopens them on the next start when no files
+are named on the command line (`crates/platform/src/ui/session.rs`). `File ▸
+Recent` lists the documents opened so far, newest first, and choosing one opens
+it through the same path as `File ▸ Open`, so a document already open is focused
+rather than opened twice (`NC-F010`, `NC-F012`). The page-setup surface, the
+outside-change prompt, the tab context menu (NC-T003), and the Markdown work are
+still ahead. Nothing is `VERIFIED` until its acceptance tests pass end to end.
 
-Known limitation: the F5 time/date insertion writes **UTC**, because the standard
+Known limitation: `File ▸ Recent` is scoped to what the shell has open — a
+document opened and then closed drops off the list, and a restart rebuilds it
+from the restored tabs rather than from a history of its own (`NC-F010`). The
+session does not keep each tab's undo history or caret either — the shell tracks
+neither per tab, so a restored document starts with a fresh history (NC-F011).
+The F5 time/date insertion writes **UTC**, because the standard
 library exposes no local time zone and the project carries no time-zone database
 (NC-S007; to revisit with the M8 localisation work).
 
@@ -50,8 +60,8 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-F007 | Print / Page setup (Ctrl+P) | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Page-setup dialog (§8); print pipeline | `tests/file_io/print.rs` |
 | NC-F008 | Close tab (Ctrl+W) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Closes the active tab; last tab resets to untitled | `crates/platform/src/ui/state.rs` |
 | NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Closes the window | `crates/platform/src/ui/actions.rs` |
-| NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | NOT_STARTED | File ▸ Recent lists prior documents | `tests/session/recent.rs` |
-| NC-F011 | Session restore | MANDATORY | M6 | SPECIFIED | NOT_STARTED | Restores tabs incl. unsaved state | `tests/session/restore.rs` |
+| NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | IMPLEMENTED | File ▸ Recent lists prior documents | `crates/platform/src/ui/state.rs` |
+| NC-F011 | Session restore | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Restores tabs incl. unsaved state | `crates/platform/src/ui/session.rs` |
 | NC-F012 | Duplicate-open / document identity | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | New tab vs focus existing | `crates/platform/src/ui/actions.rs` |
 
 ## B. Editing, selection, undo
@@ -152,15 +162,16 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 40 |
+| IMPLEMENTED | 42 |
 | IN_PROGRESS | 2 |
-| NOT_STARTED | 26 |
+| NOT_STARTED | 24 |
 | VERIFIED | 0 |
 
 > The engines (`nc-core`, `nc-textproc`) and the shell's core surfaces are
 > `IMPLEMENTED`, and the Find/Replace, Go-to, and Open/Save-as dialogs are built
 > on them, with the unsaved-changes, overwrite, and unrepresentable prompts. M6
-> core — tab switching, Save all, duplicate-open identity (NC-F012), and New
-> window — is in place. The page-setup surface, the outside-change prompt, recent
-> files, session restore, Markdown, and the remaining session work are still
-> ahead. Nothing is `VERIFIED` until its acceptance tests pass end to end.
+> core — tab switching, Save all, duplicate-open identity (NC-F012), New
+> window, session restore (NC-F011), and recent files (NC-F010) — is in place.
+> The page-setup surface, the outside-change prompt, the tab context menu,
+> Markdown, and the remaining session work are still ahead. Nothing is
+> `VERIFIED` until its acceptance tests pass end to end.

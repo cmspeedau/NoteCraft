@@ -5,6 +5,7 @@ mod dialogs;
 mod editor;
 mod input;
 mod menu_bar;
+mod session;
 mod settings;
 mod state;
 mod status_bar;
@@ -20,7 +21,7 @@ use crate::{PlatformError, RunOutcome, StartupOptions};
 
 /// Brings up the window and runs the event loop to completion.
 pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> {
-    let mut shell = Shell::new();
+    let mut shell = initial_shell(&options.open_paths);
     seed_documents(&mut shell, &options.open_paths);
 
     let native_options = eframe::NativeOptions {
@@ -48,6 +49,17 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
     Ok(RunOutcome { exit_code: 0 })
 }
 
+/// The documents the window starts with: the files named on the command line,
+/// or the previous session when none were (`NC-F011`). Naming files is an
+/// explicit request, so it replaces the session rather than adding to it.
+fn initial_shell(paths: &[PathBuf]) -> Shell {
+    if paths.is_empty() {
+        session::restore_shell()
+    } else {
+        Shell::new()
+    }
+}
+
 /// Replaces the initial untitled document with the files named on the command
 /// line, reading each one best-effort. A file named twice is opened once
 /// (`NC-F012`), so the tab strip never shows two tabs for one document.
@@ -60,6 +72,9 @@ fn seed_documents(shell: &mut Shell, paths: &[PathBuf]) {
         if shell.tabs.iter().any(|tab| tab.matches_path(path)) {
             continue;
         }
+        // A file named on the command line is an opened document like any other,
+        // so it belongs in `File ▸ Recent`.
+        shell.remember_recent(path);
         // A file that cannot be read leaves an untitled tab in its place;
         // reporting why is a later milestone's job.
         let tab = Tab::open(path).unwrap_or_else(|_| Tab::plain());
@@ -84,6 +99,14 @@ impl eframe::App for ShellApp {
         // frame after that.
         self.windows.create_requested(&mut self.shell);
         self.windows.show(&ui.ctx().clone());
+    }
+
+    /// Records the session on shutdown, so the next start reopens these
+    /// documents (`NC-F011`). Only the main window's shell is kept.
+    fn on_exit(&mut self) {
+        if let Err(error) = session::save(&self.shell) {
+            tracing::warn!(%error, "could not write the session");
+        }
     }
 }
 

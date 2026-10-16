@@ -57,7 +57,9 @@ fn menu_items(ui: &mut egui::Ui, items: &[MenuItem], shell: &mut Shell, ctx: &Co
                 }
             }
             MenuItem::Submenu { title, items } => {
-                if all_disabled(items) {
+                if is_recent_submenu(items) && !shell.recent_files.is_empty() {
+                    recent_submenu(title, shell, ui);
+                } else if all_disabled(items) {
                     let _ = ui.add_enabled(false, egui::Button::new(*title));
                 } else {
                     let _ = ui.menu_button(*title, |ui| menu_items(ui, items, shell, ctx));
@@ -65,6 +67,45 @@ fn menu_items(ui: &mut egui::Ui, items: &[MenuItem], shell: &mut Shell, ctx: &Co
             }
         }
     }
+}
+
+/// Whether this submenu is the one the registry defines for recent documents —
+/// the one holding `cmd.file.recent_empty`, whose placeholder text the real list
+/// stands in for. Recognized by its command rather than its label, so relabelling
+/// the menu cannot leave the list unreachable.
+fn is_recent_submenu(items: &[MenuItem]) -> bool {
+    items
+        .iter()
+        .any(|item| item.command().map(|spec| spec.id.as_str()) == Some("cmd.file.recent_empty"))
+}
+
+/// `File ▸ Recent`: the documents opened this session, newest first, each of which
+/// opens again on click (`NC-F010`). The `title` is the registry's own, so the
+/// submenu is labelled whatever the menu model says it should be.
+///
+/// The list is read out before any of it is acted on, because opening a file
+/// rewrites it and an entry may move to the front. An empty list is not drawn
+/// here at all: the registry's `cmd.file.recent_empty` says "No recent files",
+/// which is what the menu already shows for it.
+fn recent_submenu(title: &'static str, shell: &mut Shell, ui: &mut egui::Ui) {
+    let paths = shell.recent_files.clone();
+    let _ = ui.menu_button(title, |ui| {
+        for path in &paths {
+            let name = path.file_name().map_or_else(
+                || path.to_string_lossy().into_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            );
+            let button = egui::Button::new(name).min_size(egui::vec2(210.0, 0.0));
+            if ui
+                .add(button)
+                .on_hover_text(path.display().to_string())
+                .clicked()
+            {
+                actions::open_path(shell, path, None);
+                ui.close();
+            }
+        }
+    });
 }
 
 /// Prefixes a check mark (or the equivalent space) for a toggle item.

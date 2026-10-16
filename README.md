@@ -28,9 +28,12 @@ UI capture — is complete. M1 through M5 — the Rust foundation, the
 search — are in progress and partly implemented; the shell backs each tab with a
 `TextFile`, and the Find/Replace, Go-to, and Open/Save-as dialogs are built on
 the `nc-textproc` engines, with the unsaved-changes, overwrite, and
-unrepresentable prompts and the dirty indicator on the tab. M6 and later (tabs
-and lifecycle, Markdown, settings and desktop integration, optional features,
-performance, validation, and release engineering) are still ahead.
+unrepresentable prompts and the dirty indicator on the tab. M6 — tabs and
+lifecycle — is in progress: tab switching, Save all, duplicate-open identity,
+New window, recent files, and session restore (which reopens the previous
+documents, including unsaved work) are in place. Markdown, settings and desktop
+integration, optional features, performance, validation, and release engineering
+are still ahead.
 
 See [`docs/feature-matrix.md`](docs/feature-matrix.md) for per-feature
 implementation and verification status — it is the source of truth.
@@ -42,6 +45,10 @@ implementation and verification status — it is the source of truth.
 - New document and new tab (`Ctrl+N`), close tab (`Ctrl+W`).
 - Open (`Ctrl+O`), Save (`Ctrl+S`), Save As with encoding selection
   (`Ctrl+Shift+S`).
+- Session restore: the previous session's tabs, including unsaved work, reopen
+  on the next start when no files are named on the command line.
+- Recent files: `File ▸ Recent` lists the documents opened so far, newest first,
+  and choosing one reopens it — focusing the tab if it is already open.
 - Encoding detection and transcoding, with atomic writes that never overwrite a
   file before the replacement data is safely prepared.
 - Explicit BOM, line-ending (CRLF/LF/CR), and dirty-state handling.

@@ -123,6 +123,28 @@ impl TextFile {
         }
     }
 
+    /// Rebuilds a file from stored parts, for session restore (`NC-F011`).
+    ///
+    /// `text` uses `\n` terminators. There are no bytes on disk behind this
+    /// file, so a save writes the text; `dirty` carries the unsaved-changes
+    /// flag the session recorded, and `line_ending` is the style it is written
+    /// in.
+    pub fn restore(
+        path: impl AsRef<Path>,
+        encoding: Encoding,
+        bom: bool,
+        line_ending: nc_core::LineEnding,
+        text: &str,
+        dirty: bool,
+    ) -> Self {
+        Self {
+            path: path.as_ref().to_path_buf(),
+            detection: Detection::chosen(encoding, bom),
+            on_disk: None,
+            document: Document::from_parts(text, line_ending, dirty),
+        }
+    }
+
     // ---- what the file is -----------------------------------------------
 
     /// The path this file came from, or empty if it has never been saved.
@@ -450,5 +472,50 @@ mod tests {
             file.save().unwrap_err().to_string(),
             "the document has no path yet"
         );
+    }
+
+    #[test]
+    fn a_restored_file_keeps_its_parts_and_its_unsaved_state() {
+        let file = TextFile::restore(
+            "/notes/idea.md",
+            Encoding::Utf16Le,
+            true,
+            nc_core::LineEnding::Lf,
+            "# Idea\nsecond line",
+            true,
+        );
+
+        assert!(file.has_path());
+        assert_eq!(file.path(), Path::new("/notes/idea.md"));
+        assert_eq!(file.encoding(), Encoding::Utf16Le);
+        assert!(file.has_bom());
+        assert_eq!(file.line_ending(), nc_core::LineEnding::Lf);
+        assert_eq!(file.text(), "# Idea\nsecond line");
+        assert!(file.is_dirty(), "unsaved work stays unsaved");
+        assert!(file.on_disk().is_none(), "there are no bytes behind it yet");
+    }
+
+    #[test]
+    fn a_restored_file_writes_its_text_in_its_own_line_ending() {
+        let directory =
+            std::env::temp_dir().join(format!("notecraft-restore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        let path = directory.join("note.txt");
+
+        let mut file = TextFile::restore(
+            &path,
+            Encoding::Utf8,
+            false,
+            nc_core::LineEnding::CrLf,
+            "one\ntwo\n",
+            true,
+        );
+        file.save().expect("the restored file saves");
+
+        assert_eq!(std::fs::read(&path).expect("the file"), b"one\r\ntwo\r\n");
+        assert!(!file.is_dirty());
+
+        let _ = std::fs::remove_dir_all(&directory);
     }
 }

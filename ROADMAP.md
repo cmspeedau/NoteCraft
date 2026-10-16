@@ -224,8 +224,13 @@ or a command-line argument — focuses its existing tab rather than opening a
 second (`NC-F012`). `File ▸ New window` opens an independent window with its own
 tabs and active document (`crates/platform/src/ui/windows.rs`). Closing the
 window, and `Exit`, walk the dirty documents with the unsaved-changes prompt
-(`NC-T005`). Outstanding: recent files (NC-F010), session restore (NC-F011), and
-the tab context menu (NC-T003).
+(`NC-T005`). Session restore (`NC-F011`) is in place: on exit the shell writes its
+open documents — paths, encodings, line endings, and the text of anything with
+unsaved changes — under the user's configuration directory, and on the next start
+reads them back when no files are named on the command line
+(`crates/platform/src/ui/session.rs`). `File ▸ Recent` lists the documents opened
+this session, most recent first, and opening one from it follows the same identity
+rule as `File ▸ Open` (`NC-F010`). Outstanding: the tab context menu (NC-T003).
 
 ### M7 — Markdown functionality
 

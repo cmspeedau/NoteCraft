@@ -541,6 +541,18 @@ impl Tab {
         })
     }
 
+    /// Rebuilds a tab from a file and the kind the session recorded, for session
+    /// restore (`NC-F011`). Unlike [`open`](Self::open) the kind is given rather
+    /// than deduced from a path, so an unsaved Markdown document keeps its kind.
+    pub fn restore(file: TextFile, kind: DocKind) -> Self {
+        Self {
+            file,
+            kind,
+            paragraph: ParagraphStyle::Body,
+            formatted: kind == DocKind::Markdown,
+        }
+    }
+
     /// The name shown on the tab and in the title bar.
     pub fn title(&self) -> String {
         self.file
@@ -609,12 +621,19 @@ fn is_markdown(path: &Path) -> bool {
 /// The editor font families offered in Settings.
 pub const FONT_FAMILIES: [&str; 4] = ["Consolas", "Cascadia Mono", "Segoe UI", "Courier New"];
 
+/// How many paths `File ▸ Recent` keeps (`NC-F010`).
+pub const RECENT_LIMIT: usize = 10;
+
 /// The whole shell state.
 pub struct Shell {
     /// The open documents, in tab order.
     pub tabs: Vec<Tab>,
     /// The index of the active tab.
     pub active: usize,
+    /// The documents opened this session, most recent first (`NC-F010`). Shown
+    /// as `File ▸ Recent`; a path opened twice moves back to the front rather
+    /// than appearing twice.
+    pub recent_files: Vec<PathBuf>,
     /// Whether the settings page is shown instead of the editor.
     pub show_settings: bool,
     /// Whether the status bar is visible (`View ▸ Status bar`).
@@ -671,6 +690,7 @@ impl Shell {
         Self {
             tabs: vec![Tab::plain()],
             active: 0,
+            recent_files: Vec::new(),
             show_settings: false,
             status_bar_visible: true,
             word_wrap: true,
@@ -734,6 +754,20 @@ impl Shell {
         };
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
+    }
+
+    /// Records `path` as the most recently opened document (`NC-F010`).
+    ///
+    /// Identity follows [`Tab::matches_path`]: two spellings of one file are one
+    /// entry, so reopening a document moves it back to the front instead of
+    /// adding a second line for it. Older entries past [`RECENT_LIMIT`] are
+    /// dropped, which is why the newest entry leads.
+    pub fn remember_recent(&mut self, path: &Path) {
+        let wanted = canonical_path(path);
+        self.recent_files
+            .retain(|open| canonical_path(open) != wanted);
+        self.recent_files.insert(0, path.to_path_buf());
+        self.recent_files.truncate(RECENT_LIMIT);
     }
 
     /// Closes the tab at `index`. The last remaining tab is replaced by a fresh
@@ -814,6 +848,121 @@ mod tests {
 
         // A new, untitled tab matches no path.
         assert!(!Tab::plain().matches_path(&path));
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    /// A scratch directory, removed again by the caller.
+    fn scratch(name: &str) -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("notecraft-recent-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        directory
+    }
+
+    /// The file names of `paths`, so a test can read the list the way the menu
+    /// shows it without depending on how each path was spelled on the way in.
+    fn names(paths: &[PathBuf]) -> Vec<std::ffi::OsString> {
+        paths
+            .iter()
+            .map(|path| path.file_name().expect("a named file").to_os_string())
+            .collect()
+    }
+
+    /// One entry of a [`names`] comparison, spelled as the bare file name.
+    fn name(text: &str) -> std::ffi::OsString {
+        std::ffi::OsString::from(text)
+    }
+
+    #[test]
+    fn recent_files_lead_with_the_most_recent() {
+        let directory = scratch("order");
+        let mut shell = Shell::new();
+        shell.remember_recent(&directory.join("first.txt"));
+        shell.remember_recent(&directory.join("second.txt"));
+
+        assert_eq!(
+            names(&shell.recent_files),
+            vec![name("second.txt"), name("first.txt")],
+            "the newest entry leads, because that is what the menu lists first"
+        );
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn reopening_a_file_moves_it_to_the_front_instead_of_duplicating_it() {
+        let directory = scratch("dedupe");
+        let one = directory.join("one.txt");
+        let two = directory.join("two.txt");
+        std::fs::write(&one, b"one").expect("a file");
+        std::fs::write(&two, b"two").expect("a file");
+
+        let mut shell = Shell::new();
+        shell.remember_recent(&one);
+        shell.remember_recent(&two);
+        shell.remember_recent(&one);
+        assert_eq!(
+            names(&shell.recent_files),
+            vec![name("one.txt"), name("two.txt")]
+        );
+
+        // A second spelling of one file is the same entry, by the same identity
+        // rule a tab uses (`NC-F012`).
+        shell.remember_recent(&directory.join(".").join("two.txt"));
+        assert_eq!(
+            names(&shell.recent_files),
+            vec![name("two.txt"), name("one.txt")],
+            "the file moves to the front rather than appearing twice"
+        );
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn recent_files_keep_the_newest_and_drop_the_oldest() {
+        let directory = scratch("limit");
+        let mut shell = Shell::new();
+        for index in 0..=RECENT_LIMIT {
+            shell.remember_recent(&directory.join(format!("note-{index}.txt")));
+        }
+
+        assert_eq!(shell.recent_files.len(), RECENT_LIMIT);
+        assert_eq!(
+            names(&shell.recent_files).first().cloned(),
+            Some(name(&format!("note-{RECENT_LIMIT}.txt"))),
+            "the newest entry survives"
+        );
+        assert!(
+            names(&shell.recent_files)
+                .iter()
+                .all(|name| name != std::ffi::OsStr::new("note-0.txt")),
+            "the oldest entry is the one dropped"
+        );
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn opening_a_file_records_it_as_recent_and_reuses_its_tab() {
+        let directory = scratch("open");
+        let path = directory.join("note.txt");
+        std::fs::write(&path, b"hello").expect("the file");
+
+        let mut shell = Shell::new();
+        crate::ui::actions::open_path(&mut shell, &path, None);
+
+        assert_eq!(names(&shell.recent_files), vec![name("note.txt")]);
+        assert_eq!(shell.active, 1, "the opened file is the tab shown");
+        assert!(shell.tabs[1].matches_path(&path), "and it is the file");
+
+        // Reopening it focuses that tab rather than opening the file again, and
+        // leaves one Recent entry rather than adding a second.
+        crate::ui::actions::open_path(&mut shell, &path, None);
+        assert_eq!(shell.tabs.len(), 2, "the file is not opened twice");
+        assert_eq!(shell.active, 1);
+        assert_eq!(shell.recent_files.len(), 1);
 
         let _ = std::fs::remove_dir_all(&directory);
     }
