@@ -1,9 +1,31 @@
 name: CI
 
+# Runner settings. The gate itself — fmt, clippy, workspace tests, crate
+# boundary check — is defined by `docs/test-strategy.md` §6 and is unchanged
+# here; everything below is about how the work is scheduled, not what it checks.
+#
+# Toolchain: `rust-toolchain.toml` is authoritative and tracks `stable` on
+# purpose (see the note in that file about why a bare version number is
+# avoided). CI resolves the same channel rather than pinning its own version,
+# and each job prints `rustc -vV` so a "passes locally, fails on CI" report can
+# say which stable actually ran.
+
 on:
   push:
     branches: [main]
   pull_request:
+
+# A pull request or branch push that supersedes an in-flight run replaces it:
+# the older run was testing a commit nobody is going to merge. Runs on `main`
+# are never cancelled, so the record of what landed stays complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least privilege: every job here only reads the repository. No job publishes,
+# deploys, or writes to the API, so the token asks for read-only access.
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,11 +35,15 @@ jobs:
   lint:
     name: fmt + clippy
     runs-on: ubuntu-latest
+    # A cold build of the egui/eframe/wgpu tree is minutes, not hours; 20 is
+    # roomy headroom while still bounding a hang, against the 6-hour default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - run: rustc -vV
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -25,18 +51,22 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
 
   dependency-boundaries:
     name: crate boundary check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       - uses: Swatinem/rust-cache@v2
       - name: Enforce crate dependency direction
         run: cargo xtask check-boundaries
