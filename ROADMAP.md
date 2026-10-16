@@ -239,13 +239,21 @@ tab switching cycles for N tabs; a path already open is focused, a symlink to it
 recognised as the same document; and `Exit` emits the window-close command only
 once nothing is dirty.
 
-What remains is not code: the four visual criteria — tab strip geometry
-(`NC-T001`), the painted unsaved dot (`NC-T004`), a real second window
-(`NC-F003`), and the Recent submenu's drawing (`NC-F010`) — need a display this
-crate has no test access to, and the tab context menu (`NC-T003`) is blocked on
-the reference: `docs/ui-reference.md` documents no context menu at all, so its
-"Reference item set" does not exist to build against. It needs a capture, or a
-recorded decision, before it can be built.
+What remains is not code. `NC-T004`'s dirty marker is now verified by painting the
+shell headlessly and reading back the shapes
+(`crates/platform/src/ui/appearance.rs`): an accent dot on exactly the dirty tabs,
+none on a clean one, and the marker gone once the unsaved prompt is answered —
+mutation-checked, so the assertions are known to fail if the paint is removed.
+Three rows are left, each for a reason worth naming. `NC-T001` asks that tab strip
+geometry "match the reference", and the reference gives the strip no coordinates;
+the structural claims it does make (§1 — one tab per document, side by side, one
+accent underline) are now asserted, but that is the shell agreeing with itself, not
+a comparison against the capture, and judging the likeness still takes a person
+looking at a running window. `NC-F003` needs a second real top-level window.
+`NC-F010`'s Recent submenu needs its drawing observed. And the tab context menu
+(`NC-T003`) is blocked on the reference: `docs/ui-reference.md` documents no
+context menu at all, so its "Reference item set" does not exist to build against.
+It needs a capture, or a recorded decision, before it can be built.
 
 ### M7 — Markdown functionality
 

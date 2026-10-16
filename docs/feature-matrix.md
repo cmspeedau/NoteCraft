@@ -111,10 +111,10 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-T001 | Tab strip + add-tab button | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Geometry matches the reference | `crates/platform/src/ui/title_bar.rs` |
+| NC-T001 | Tab strip + add-tab button | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Geometry matches the reference | `crates/platform/src/ui/appearance.rs` (structural only) |
 | NC-T002 | Tab switching Ctrl+Tab / Ctrl+Shift+Tab | MANDATORY | M6 | SPECIFIED | VERIFIED | Cyclic; works with N tabs | `crates/platform/src/ui/lifecycle.rs` |
 | NC-T003 | Tab context menu | OPTIONAL | M6 | SPECIFIED | BLOCKED | Reference item set | blocked — see note below |
-| NC-T004 | Dirty indicator on tab/title | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Marker shown when dirty | `crates/platform/src/ui/title_bar.rs` |
+| NC-T004 | Dirty indicator on tab/title | MANDATORY | M6 | SPECIFIED | VERIFIED | Marker shown when dirty | `crates/platform/src/ui/appearance.rs` |
 | NC-T005 | Close all | MANDATORY | M6 | SPECIFIED | VERIFIED | Prompt per dirty doc | `crates/platform/src/ui/lifecycle.rs` |
 
 ## F. Markdown / formatting (M7)
@@ -165,27 +165,41 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 35 |
+| IMPLEMENTED | 34 |
 | IN_PROGRESS | 2 |
 | NOT_STARTED | 23 |
-| VERIFIED | 7 |
+| VERIFIED | 8 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** The seven verified rows are M6's behaviour
-criteria, settled by the acceptance suite at
-`crates/platform/src/ui/lifecycle.rs`, which drives the shell's own state and the
-real session file: what a tab operation does to the documents, what each prompt
-asks and how each answer behaves, and what a restart brings back — including byte
-tests that a clean file is left untouched and an unsaved one comes back and saves
-in its own encoding and line endings.
+**What `VERIFIED` means here.** Eight rows are verified, by two suites that drive
+the real shell rather than a model of it.
 
-Four M6 rows stay `IMPLEMENTED` because their acceptance criteria are *visual* or
-need a real window, and this crate has neither in a test: `NC-T001` (tab strip
-geometry), `NC-T004` (the unsaved dot is painted), `NC-F003` (a second top-level
-window appears), and `NC-F010` (the Recent submenu draws its list — its list,
-ordering, and capping are tested, the drawing is not). `NC-F009` is verified
-against the observable the shell actually controls: the `Close` viewport command
-it emits.
+`crates/platform/src/ui/lifecycle.rs` settles M6's **behaviour** criteria: what a
+tab operation does to the documents, what each prompt asks and how each answer
+behaves, and what a restart brings back — including byte tests that a clean file
+is left untouched and an unsaved one comes back and saves in its own encoding and
+line endings. That covers `NC-F002`, `NC-F008`, `NC-F009`, `NC-F011`, `NC-F012`,
+`NC-T002`, `NC-T005`. `NC-F009` is verified against the observable the shell
+actually controls — the `Close` viewport command it emits — not against an
+internal flag that `run` consumes before a test could read it.
+
+`crates/platform/src/ui/appearance.rs` settles `NC-T004` by painting the shell
+headlessly and reading back the shapes: an accent dot of the marker's radius
+appears on exactly the dirty tabs, on a clean document none appears, two dirty
+documents make two dots, and answering the unsaved prompt clears the marker. The
+assertions were mutation-checked — disabling the dot's paint condition fails four
+of them, so they are not reading a shape list that would pass either way.
+
+Three M6 rows stay `IMPLEMENTED`, and the reason is stated rather than glossed.
+`NC-T001` reads "Geometry matches the reference", and `docs/ui-reference.md` gives
+the tab strip no coordinates — `appearance.rs` now asserts the §1 claims that *are*
+structural (one tab per document, laid out side by side, exactly one carrying the
+accent underline, tabs within their stated 120..=220 width), but that is the
+shell agreeing with itself, not a comparison against the capture, so the row does
+not earn `VERIFIED` on that. Whether the shell *looks* like the screenshot still
+needs a person looking at a running window. `NC-F003` needs a second real
+top-level window, and `NC-F010`'s Recent submenu needs its drawing observed — its
+list, ordering and capping are tested, the rendering is not.
 
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no
