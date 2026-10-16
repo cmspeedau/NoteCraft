@@ -1,12 +1,30 @@
-//! The editor surface: a monospaced, zoomable text area.
+//! The editor surface: a monospaced, zoomable text area over the document.
+//!
+//! The text is not a `String` the shell owns: it is the `nc-core` [`Document`]
+//! inside the tab's [`TextFile`](nc_textproc::TextFile), edited through a thin
+//! [`egui::TextBuffer`] adapter. That keeps one authoritative copy of the text
+//! — the one the file saves and the searches read.
 
+use std::ops::Range;
+
+use egui::text::{CCursor, CCursorRange, CharIndex};
 use egui::{FontId, Margin};
+use nc_core::Document;
 
 use crate::ui::state::Shell;
 use crate::ui::theme;
 
-/// Draws the editor for the active tab and updates the caret position.
+/// The editor widget's id. Fixed so a queued selection can be stored under it
+/// and tests can read the caret back.
+pub const EDITOR_ID: &str = "notecraft_editor";
+
+/// Draws the editor for the active tab, updates the caret position, and applies
+/// any selection the shell has queued (Find / Go to).
 pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
+    // Taken before the document is borrowed: a search or Go to sets this and
+    // the editor applies it this frame.
+    let pending = shell.pending_selection.take();
+
     egui::CentralPanel::no_frame()
         .frame(
             egui::Frame::NONE
@@ -26,19 +44,106 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
                 f32::INFINITY
             };
 
-            let text = &mut shell.tabs[index].text;
-            let output = egui::TextEdit::multiline(text)
-                .font(FontId::monospace(15.0 * zoom))
-                .desired_width(width)
-                .frame(egui::Frame::NONE)
-                .show(ui);
+            let tab = &mut shell.tabs[index];
+            let output = {
+                let mut buffer = DocBuffer(tab.document_mut());
+                egui::TextEdit::multiline(&mut buffer)
+                    .id(egui::Id::new(EDITOR_ID))
+                    .font(FontId::monospace(15.0 * zoom))
+                    .desired_width(width)
+                    .frame(egui::Frame::NONE)
+                    .show(ui)
+            };
 
-            if let Some(range) = output.cursor_range {
-                let (line, column) = line_column(text, usize::from(range.primary.index));
-                shell.line = line;
-                shell.column = column;
-            }
+            // The caret a queued selection moves to, or the one the user left
+            // the editor with.
+            let caret = match pending {
+                Some((primary, secondary)) => {
+                    apply_selection(ui.ctx(), &output, primary, secondary);
+                    primary
+                }
+                None => output
+                    .cursor_range
+                    .map(|range| usize::from(range.primary.index))
+                    .unwrap_or(shell.caret),
+            };
+
+            shell.caret = caret;
+            let (line, column) = line_column(tab.text(), caret);
+            shell.line = line;
+            shell.column = column;
         });
+}
+
+/// Moves the editor's caret and selection to the given character indices.
+///
+/// `egui` keeps the selection in per-widget state, so this stores the new
+/// cursor back under the widget's own id and focuses the editor.
+fn apply_selection(
+    ctx: &egui::Context,
+    output: &egui::text_edit::TextEditOutput,
+    primary: usize,
+    secondary: usize,
+) {
+    let mut state = output.state.clone();
+    state.cursor.set_char_range(Some(CCursorRange {
+        primary: CCursor::new(primary),
+        secondary: CCursor::new(secondary),
+        h_pos: None,
+    }));
+    state.store(ctx, output.response.id);
+    output.response.request_focus();
+}
+
+/// An [`egui::TextBuffer`] over an `nc-core` document.
+///
+/// `egui` addresses text by character index; the document by byte offset, so
+/// every call converts at the boundary — the rule `AGENT.md` §4 sets for the
+/// editor.
+struct DocBuffer<'a>(&'a mut Document);
+
+impl egui::TextBuffer for DocBuffer<'_> {
+    fn is_mutable(&self) -> bool {
+        true
+    }
+
+    fn as_str(&self) -> &str {
+        self.0.text()
+    }
+
+    fn insert_text(&mut self, text: &str, char_index: CharIndex) -> usize {
+        if text.is_empty() {
+            return 0;
+        }
+        let byte = byte_index(self.0.text(), usize::from(char_index));
+        self.0.set_caret(byte);
+        self.0.insert_str(text);
+        text.chars().count()
+    }
+
+    fn delete_char_range(&mut self, range: Range<CharIndex>) {
+        let start = usize::from(range.start);
+        let end = usize::from(range.end);
+        if start >= end {
+            return;
+        }
+        let text = self.0.text();
+        let start_byte = byte_index(text, start);
+        let end_byte = byte_index(text, end);
+        self.0.replace_range(start_byte..end_byte, "");
+    }
+
+    fn type_id(&self) -> core::any::TypeId {
+        core::any::TypeId::of::<DocBuffer<'_>>()
+    }
+}
+
+/// The byte offset of a character index, clamped to the text.
+fn byte_index(text: &str, char_index: usize) -> usize {
+    text.char_indices()
+        .nth(char_index)
+        .map(|(byte, _)| byte)
+        .unwrap_or(text.len())
 }
 
 /// Converts a character index into a 1-based (line, column).
@@ -62,6 +167,7 @@ fn line_column(text: &str, char_index: usize) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::TextBuffer;
 
     #[test]
     fn caret_position_is_one_based() {
@@ -70,5 +176,31 @@ mod tests {
         assert_eq!(line_column("abc", 2), (1, 3));
         assert_eq!(line_column("ab\ncd", 3), (2, 1));
         assert_eq!(line_column("ab\ncd", 5), (2, 3));
+    }
+
+    #[test]
+    fn the_buffer_edits_the_document_at_character_indices() {
+        let mut document = Document::from_text("héllo wörld");
+        {
+            let mut buffer = DocBuffer(&mut document);
+            // Insert after the first 'é' (character index 2).
+            buffer.insert_text("!", CharIndex(2));
+            assert_eq!(buffer.as_str(), "hé!llo wörld");
+            // Delete "!" (character range 2..3).
+            buffer.delete_char_range(CharIndex(2)..CharIndex(3));
+            assert_eq!(buffer.as_str(), "héllo wörld");
+        }
+        assert_eq!(document.text(), "héllo wörld");
+    }
+
+    #[test]
+    fn byte_and_char_indices_agree_across_multibyte_text() {
+        let text = "aé€b";
+        assert_eq!(byte_index(text, 0), 0);
+        assert_eq!(byte_index(text, 1), 1);
+        assert_eq!(byte_index(text, 2), 3);
+        assert_eq!(byte_index(text, 3), 6);
+        assert_eq!(byte_index(text, 4), 7);
+        assert_eq!(byte_index(text, 99), 7);
     }
 }

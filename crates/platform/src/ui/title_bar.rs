@@ -3,7 +3,7 @@
 use egui::{Align, Align2, Context, CornerRadius, FontId, Layout, Sense, Stroke, ViewportCommand};
 
 use crate::ui::state::{DocKind, Shell, Tab};
-use crate::ui::{theme, widgets};
+use crate::ui::{actions, theme, widgets};
 
 /// The height of the title bar, in points.
 pub const HEIGHT: f32 = 40.0;
@@ -61,7 +61,7 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
                 new_tab.on_hover_text("New tab");
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    window_controls(ui, ctx);
+                    window_controls(ui, ctx, shell);
                 });
             });
 
@@ -69,15 +69,16 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
                 shell.active = index;
             }
             if let Some(index) = to_close {
-                shell.close_tab(index);
+                actions::close_tab(shell, index);
             }
         });
 }
 
 /// The three window buttons, right to left.
-fn window_controls(ui: &mut egui::Ui, ctx: &Context) {
+fn window_controls(ui: &mut egui::Ui, ctx: &Context, shell: &mut Shell) {
     if widgets::icon_button(ui, "✕").clicked() {
-        ctx.send_viewport_cmd(ViewportCommand::Close);
+        // Closing the window prompts for unsaved documents (`NC-D005`).
+        actions::close_window(shell);
     }
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
     let maximize_glyph = if maximized { "❐" } else { "▢" };
@@ -110,7 +111,8 @@ fn app_icon(ui: &mut egui::Ui) {
 /// A single tab, returning what was clicked.
 fn tab_widget(ui: &mut egui::Ui, index: usize, tab: &Tab, active: bool) -> TabHit {
     let height = 34.0;
-    let width = (tab.title.chars().count() as f32 * 7.5 + 52.0).clamp(120.0, 220.0);
+    let title = tab.title();
+    let width = (title.chars().count() as f32 * 7.5 + 52.0).clamp(120.0, 220.0);
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
 
     let close_rect = egui::Rect::from_center_size(
@@ -153,10 +155,20 @@ fn tab_widget(ui: &mut egui::Ui, index: usize, tab: &Tab, active: bool) -> TabHi
     painter.text(
         egui::pos2(rect.left() + 12.0, rect.center().y),
         Align2::LEFT_CENTER,
-        &tab.title,
+        &title,
         FontId::proportional(13.0),
         text_color,
     );
+
+    // An unsaved change shows as a dot where the close button sits, the way a
+    // tab strip usually reports it (`docs/ui-reference.md` §1).
+    if tab.is_dirty() {
+        painter.circle_filled(
+            egui::pos2(close_rect.center().x, close_rect.center().y),
+            3.0,
+            theme::ACCENT,
+        );
+    }
 
     if active || response.hovered() {
         if close.hovered() {

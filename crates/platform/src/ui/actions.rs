@@ -4,21 +4,31 @@
 //! module is the one place that turns a fired command into a change in the
 //! shell. Commands that belong to a later milestone are present in the menu but
 //! have no effect yet, and are simply ignored here.
+//!
+//! The Find / Replace and Go to operations come from `nc-textproc::search`;
+//! this module only moves the caret, applies the replacement, and spells the
+//! notices (`docs/ui-reference.md` §5–§6).
+
+use std::ops::Range;
+use std::path::Path;
 
 use egui::Context;
 
-use crate::ui::state::{DocKind, ParagraphStyle, Shell};
+use crate::ui::state::{DocKind, FileDialog, FileDialogMode, ParagraphStyle, Prompt, Shell, Tab};
 use nc_commands::CommandId;
+use nc_textproc::search::find;
+use nc_textproc::{Direction, Encoding, SearchResult, find_all, go_to_line};
 
 /// Runs the command with the given id against the shell.
 pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
     match id.as_str() {
         "cmd.file.new_tab" => shell.open_tab(DocKind::Plain),
         "cmd.file.new_markdown" => shell.open_tab(DocKind::Markdown),
-        "cmd.file.close_tab" => shell.close_tab(shell.active),
-        "cmd.file.close_window" | "cmd.file.exit" => {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
+        "cmd.file.open" => open_file_dialog(shell),
+        "cmd.file.save" => save(shell),
+        "cmd.file.save_as" => save_as_dialog(shell),
+        "cmd.file.close_tab" => close_tab(shell, shell.active),
+        "cmd.file.close_window" | "cmd.file.exit" => close_window(shell),
         "cmd.view.status_bar" => shell.status_bar_visible = !shell.status_bar_visible,
         "cmd.view.word_wrap" => shell.word_wrap = !shell.word_wrap,
         "cmd.view.zoom_in" => shell.zoom = (shell.zoom + 10).min(500),
@@ -37,6 +47,11 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
             shell.formatted_view = true;
         }
         "cmd.app.settings" => shell.show_settings = !shell.show_settings,
+        "cmd.edit.find" => open_find(shell, false),
+        "cmd.edit.replace" => open_find(shell, true),
+        "cmd.edit.find_next" => search_step(shell, Direction::Forward),
+        "cmd.edit.find_prev" => search_step(shell, Direction::Backward),
+        "cmd.edit.go_to" => open_go_to(shell),
         "cmd.format.title" => set_paragraph(shell, ParagraphStyle::Title),
         "cmd.format.subtitle" => set_paragraph(shell, ParagraphStyle::Subtitle),
         "cmd.format.heading" => set_paragraph(shell, ParagraphStyle::Heading),
@@ -48,10 +63,883 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
         // milestone lands.
         _ => {}
     }
+
+    // A window close asked for by a command is acted on at the end of the frame
+    // the same way one asked for by the title bar is.
+    pump(shell, ctx);
+}
+
+/// Opens the Find / Replace dialog, in Find or Replace mode.
+pub fn open_find(shell: &mut Shell, replace: bool) {
+    shell.find.open = true;
+    shell.find.replace = replace;
+    shell.find.focus = true;
+}
+
+/// Opens the Go to line dialog with the caret's current line pre-filled.
+pub fn open_go_to(shell: &mut Shell) {
+    shell.go_to.line = shell.line.to_string();
+    shell.go_to.open = true;
+    shell.go_to.focus = true;
+}
+
+/// Opens the Open dialog (`File ▸ Open`, `Ctrl+O`).
+pub fn open_file_dialog(shell: &mut Shell) {
+    shell.file_dialog = Some(FileDialog::open());
+}
+
+/// Saves the active document (`File ▸ Save`, `Ctrl+S`).
+pub fn save(shell: &mut Shell) {
+    save_tab(shell, shell.active, false);
+}
+
+/// Opens Save As for the active document (`File ▸ Save as`, `Ctrl+Shift+S`).
+pub fn save_as_dialog(shell: &mut Shell) {
+    open_save_as(shell, shell.active);
+}
+
+/// Opens Save As for `tab`, named after the file it already has, or blank.
+fn open_save_as(shell: &mut Shell, tab: usize) {
+    let Some(document) = shell.tabs.get(tab) else {
+        return;
+    };
+    let name = if document.file.has_path() {
+        document.title()
+    } else {
+        String::new()
+    };
+    let encoding = document.file.encoding();
+    let bom = document.file.has_bom();
+    shell.file_dialog = Some(FileDialog::save_as(tab, name, encoding, bom));
+}
+
+/// Saves `tab`. With `close_after`, the tab is closed once the write succeeds —
+/// the answer to the unsaved-changes prompt (`docs/ui-reference.md` §9).
+pub fn save_tab(shell: &mut Shell, tab: usize, close_after: bool) {
+    let Some(has_path) = shell.tabs.get(tab).map(|tab| tab.file.has_path()) else {
+        return;
+    };
+    if !has_path {
+        // There is nowhere to write yet, so Save becomes Save As; the close it
+        // was answering resumes when that write succeeds.
+        open_save_as(shell, tab);
+        if close_after {
+            shell.close_after_save = Some(tab);
+        }
+        return;
+    }
+
+    // Characters the file's own encoding cannot hold are asked about before
+    // anything is written (NC-D003).
+    let unrepresentable =
+        shell
+            .tabs
+            .get(tab)
+            .and_then(|tab| match nc_textproc::prompt::before_saving(&tab.file) {
+                Some(nc_textproc::prompt::Question::Unrepresentable {
+                    encoding,
+                    characters,
+                }) => Some((encoding, characters)),
+                _ => None,
+            });
+    if let Some((encoding, characters)) = unrepresentable {
+        shell.prompt = Some(Prompt::Unrepresentable {
+            tab,
+            encoding,
+            characters,
+        });
+        return;
+    }
+
+    let name = shell
+        .tabs
+        .get(tab)
+        .map(|tab| tab.title())
+        .unwrap_or_default();
+    match shell.tabs[tab].file.save() {
+        Ok(_) => {
+            if close_after {
+                shell.close_tab(tab);
+                if shell.closing_window {
+                    advance_close(shell);
+                }
+            }
+        }
+        Err(_) => {
+            shell.notification = Some(format!("Could not save \"{name}\""));
+        }
+    }
+}
+
+/// Closes a tab, raising the unsaved-changes prompt when it is dirty
+/// (`docs/ui-reference.md` §9, NC-D005). The last tab is replaced by a fresh
+/// document rather than leaving the window with none.
+pub fn close_tab(shell: &mut Shell, index: usize) {
+    if shell
+        .tabs
+        .get(index)
+        .map(|tab| tab.is_dirty())
+        .unwrap_or(false)
+    {
+        shell.prompt = Some(Prompt::UnsavedChanges { tab: index });
+        return;
+    }
+    shell.close_tab(index);
+}
+
+/// Asks the window to close (`File ▸ Exit`, the title bar's ✕), prompting for
+/// each dirty document first.
+pub fn close_window(shell: &mut Shell) {
+    shell.closing_window = true;
+    advance_close(shell);
+}
+
+/// Prompts for the next dirty document, or asks the window to close when none
+/// is left.
+fn advance_close(shell: &mut Shell) {
+    match shell.tabs.iter().position(|tab| tab.is_dirty()) {
+        Some(tab) => shell.prompt = Some(Prompt::UnsavedChanges { tab }),
+        None => {
+            shell.closing_window = false;
+            shell.exit_pending = true;
+        }
+    }
+}
+
+/// Acts on a request that outlives the input event, once per frame: a window
+/// close asked for by the window manager, and one queued by [`close_window`].
+pub fn pump(shell: &mut Shell, ctx: &Context) {
+    // A close the window manager asked for is intercepted while a document is
+    // dirty, so it can be asked about (NC-D005). A clean window closes normally.
+    let closing = ctx.input(|input| input.viewport().close_requested());
+    if closing && !shell.closing_window && shell.tabs.iter().any(|tab| tab.is_dirty()) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        close_window(shell);
+        return;
+    }
+
+    if std::mem::take(&mut shell.exit_pending) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+}
+
+/// Confirms the file dialog: opens the named file, or saves the tab to it.
+pub fn confirm_file_dialog(shell: &mut Shell) {
+    let Some(dialog) = shell.file_dialog.as_ref() else {
+        return;
+    };
+    if dialog.file_name.trim().is_empty() {
+        return;
+    }
+    let mode = dialog.mode;
+    let tab = dialog.tab;
+    let target = dialog.target();
+    let encoding = dialog.encoding.chosen();
+
+    match mode {
+        FileDialogMode::Open => open_path(shell, &target, encoding),
+        FileDialogMode::SaveAs => {
+            let (encoding, bom) = encoding.unwrap_or((Encoding::Utf8, false));
+            if let Some(nc_textproc::prompt::Question::Overwrite { path }) =
+                nc_textproc::prompt::before_overwriting(&target)
+            {
+                shell.prompt = Some(Prompt::Overwrite {
+                    path,
+                    tab,
+                    encoding,
+                    bom,
+                });
+                return;
+            }
+            write_save_as(shell, tab, &target, encoding, bom);
+        }
+    }
+}
+
+/// Opens `path` into a new tab, or reports why it could not be opened.
+fn open_path(shell: &mut Shell, path: &Path, encoding: Option<(Encoding, bool)>) {
+    let opened = match encoding {
+        Some((encoding, bom)) => Tab::open_as(path, encoding, bom),
+        None => Tab::open(path),
+    };
+    match opened {
+        Ok(tab) => {
+            shell.tabs.push(tab);
+            shell.active = shell.tabs.len() - 1;
+            shell.file_dialog = None;
+            shell.notification = None;
+        }
+        Err(error) => {
+            if let Some(dialog) = shell.file_dialog.as_mut() {
+                dialog.error = Some(open_error(path, &error));
+            }
+        }
+    }
+}
+
+/// Why an Open failed, in the dialog's own words.
+fn open_error(path: &Path, error: &nc_textproc::Error) -> String {
+    match error {
+        nc_textproc::Error::Read { .. } => format!("Cannot find \"{}\"", path.display()),
+        nc_textproc::Error::Decode { encoding, .. } => {
+            format!("The file is not {encoding} text")
+        }
+        other => other.to_string(),
+    }
+}
+
+/// Writes `tab` to `path` as `encoding`, reporting a failure in the dialog.
+fn write_save_as(shell: &mut Shell, tab: usize, path: &Path, encoding: Encoding, bom: bool) {
+    let result = shell
+        .tabs
+        .get_mut(tab)
+        .map(|document| document.file.save_as(path, encoding, bom));
+
+    match result {
+        None => shell.file_dialog = None,
+        Some(Ok(_)) => {
+            shell.file_dialog = None;
+            shell.notification = None;
+            if shell.close_after_save == Some(tab) {
+                shell.close_after_save = None;
+                shell.close_tab(tab);
+                if shell.closing_window {
+                    advance_close(shell);
+                }
+            }
+        }
+        Some(Err(nc_textproc::Error::Encode(nc_textproc::EncodeError { characters, .. }))) => {
+            if let Some(dialog) = shell.file_dialog.as_mut() {
+                dialog.error = Some(format!(
+                    "{} characters cannot be saved in {encoding}",
+                    characters.len()
+                ));
+            }
+        }
+        Some(Err(error)) => {
+            if let Some(dialog) = shell.file_dialog.as_mut() {
+                dialog.error = Some(format!("Cannot write \"{}\": {error}", path.display()));
+            }
+        }
+    }
+}
+
+/// The answer to the unsaved-changes prompt: save the document (`Save`).
+pub fn answer_unsaved_save(shell: &mut Shell) {
+    let Some(Prompt::UnsavedChanges { tab }) = shell.prompt.take() else {
+        return;
+    };
+    save_tab(shell, tab, true);
+}
+
+/// The answer to the unsaved-changes prompt: discard the edits (`Don't save`).
+pub fn answer_unsaved_dont_save(shell: &mut Shell) {
+    let Some(Prompt::UnsavedChanges { tab }) = shell.prompt.take() else {
+        return;
+    };
+    shell.close_tab(tab);
+    if shell.closing_window {
+        advance_close(shell);
+    }
+}
+
+/// The answer to the overwrite prompt: replace the file (`Replace`).
+pub fn answer_overwrite_replace(shell: &mut Shell) {
+    let Some(Prompt::Overwrite {
+        path,
+        tab,
+        encoding,
+        bom,
+    }) = shell.prompt.take()
+    else {
+        return;
+    };
+    write_save_as(shell, tab, &path, encoding, bom);
+}
+
+/// The answer to the unrepresentable prompt: write the characters as `?`
+/// (`Save anyway`).
+pub fn answer_unrepresentable_save(shell: &mut Shell) {
+    let Some(Prompt::Unrepresentable { tab, .. }) = shell.prompt.take() else {
+        return;
+    };
+    let name = shell
+        .tabs
+        .get(tab)
+        .map(|document| document.title())
+        .unwrap_or_default();
+    if shell.tabs[tab].file.save_lossy().is_ok() {
+        if shell.close_after_save == Some(tab) {
+            shell.close_after_save = None;
+            shell.close_tab(tab);
+            if shell.closing_window {
+                advance_close(shell);
+            }
+        }
+    } else {
+        shell.notification = Some(format!("Could not save \"{name}\""));
+    }
+}
+
+/// The answer to the unrepresentable prompt: go back to Save As to pick another
+/// encoding (`Choose another encoding`).
+pub fn answer_unrepresentable_choose_encoding(shell: &mut Shell) {
+    let Some(Prompt::Unrepresentable { tab, .. }) = shell.prompt.take() else {
+        return;
+    };
+    open_save_as(shell, tab);
+}
+
+/// The answer to any prompt that has a `Cancel`: do nothing.
+pub fn answer_cancel(shell: &mut Shell) {
+    shell.prompt = None;
+    shell.closing_window = false;
+}
+
+/// Steps the search in `direction` from the caret, keeping the options and the
+/// wrap choice the dialog holds. This is what `Find Next`, `F3` and
+/// `Shift+F3` run.
+pub fn search_step(shell: &mut Shell, direction: Direction) {
+    let needle = shell.find.query.clone();
+    if needle.is_empty() {
+        return;
+    }
+    let options = shell.find.options;
+    let wraps = shell.find.wraps;
+    let Some(tab) = shell.active_tab() else {
+        return;
+    };
+    let text = tab.text().to_owned();
+    let from = char_to_byte(&text, shell.caret);
+    let result = find(&text, &needle, from, direction, options, wraps);
+
+    match result {
+        SearchResult::Found(found) | SearchResult::Wrapped(found) => {
+            let start = char_index(&text, found.start);
+            let end = char_index(&text, found.end);
+            // `egui`'s primary end is the one a following search travels from,
+            // so travel out of the match: past it forwards, before it
+            // backwards.
+            let (primary, secondary) = match direction {
+                Direction::Forward => (end, start),
+                Direction::Backward => (start, end),
+            };
+            shell.caret = primary;
+            shell.pending_selection = Some((primary, secondary));
+            shell.notification = match result {
+                SearchResult::Wrapped(_) => Some(wrapped_notice(direction)),
+                _ => None,
+            };
+        }
+        SearchResult::Boundary => shell.notification = Some(boundary_notice(direction)),
+        SearchResult::NoMatch => shell.notification = Some(not_found_notice(&needle)),
+    }
+}
+
+/// Replaces the match at or after the caret and moves the caret past the
+/// replacement. This is the dialog's `Replace` button.
+pub fn replace(shell: &mut Shell) {
+    let needle = shell.find.query.clone();
+    if needle.is_empty() {
+        return;
+    }
+    let replacement = shell.find.replacement.clone();
+    let options = shell.find.options;
+    let Some(tab) = shell.active_tab() else {
+        return;
+    };
+    let text = tab.text().to_owned();
+    let from = char_to_byte(&text, shell.caret);
+    let result = find(
+        &text,
+        &needle,
+        from,
+        Direction::Forward,
+        options,
+        shell.find.wraps,
+    );
+    let Some(found) = result.matched() else {
+        shell.notification = Some(match result {
+            SearchResult::NoMatch => not_found_notice(&needle),
+            _ => boundary_notice(Direction::Forward),
+        });
+        return;
+    };
+
+    let caret = char_index(&text, found.start) + replacement.chars().count();
+    let tab = shell.active_tab_mut().expect("checked above");
+    tab.document_mut()
+        .replace_range(found.range(), &replacement);
+
+    shell.caret = caret;
+    shell.pending_selection = Some((caret, caret));
+    shell.notification = None;
+}
+
+/// Replaces every match, left to right, in one pass. This is the dialog's
+/// `Replace All` button.
+pub fn replace_all(shell: &mut Shell) {
+    let needle = shell.find.query.clone();
+    if needle.is_empty() {
+        return;
+    }
+    let replacement = shell.find.replacement.clone();
+    let options = shell.find.options;
+    let Some(tab) = shell.active_tab() else {
+        return;
+    };
+    let text = tab.text().to_owned();
+    let matches = find_all(&text, &needle, options);
+    if matches.is_empty() {
+        shell.notification = Some(not_found_notice(&needle));
+        return;
+    }
+
+    let replacements: Vec<(Range<usize>, &str)> = matches
+        .iter()
+        .map(|found| (found.range(), replacement.as_str()))
+        .collect();
+
+    let tab = shell.active_tab_mut().expect("checked above");
+    // One call, so the whole run is a single undo step (`NC-S003`).
+    tab.document_mut().replace_ranges(&replacements);
+
+    shell.caret = 0;
+    shell.pending_selection = Some((0, 0));
+    shell.notification = None;
+}
+
+/// Moves the caret to the start of the line named in the Go to dialog and
+/// closes it. The line number clamps (`nc-textproc::go_to_line`).
+pub fn go_to(shell: &mut Shell) {
+    let Some(line) = nc_textproc::parse_line_number(&shell.go_to.line) else {
+        return;
+    };
+    let Some(tab) = shell.active_tab() else {
+        return;
+    };
+    let text = tab.text().to_owned();
+    let caret = char_index(&text, go_to_line(&text, line));
+    shell.caret = caret;
+    shell.pending_selection = Some((caret, caret));
+    shell.go_to.open = false;
+    shell.notification = None;
+}
+
+/// The notice for a search that ran out of document without wrapping.
+fn boundary_notice(direction: Direction) -> String {
+    match direction {
+        Direction::Forward => "Reached the end of the document".to_owned(),
+        Direction::Backward => "Reached the beginning of the document".to_owned(),
+    }
+}
+
+/// The notice for a search that carried on from the other end.
+fn wrapped_notice(direction: Direction) -> String {
+    match direction {
+        Direction::Forward => "Reached the end of the document and wrapped around".to_owned(),
+        Direction::Backward => {
+            "Reached the beginning of the document and wrapped around".to_owned()
+        }
+    }
+}
+
+/// The notice for a search that found nothing at all.
+fn not_found_notice(needle: &str) -> String {
+    format!("Cannot find \"{needle}\"")
+}
+
+/// The byte offset of a character index, clamped to the text.
+fn char_to_byte(text: &str, char_index: usize) -> usize {
+    text.char_indices()
+        .nth(char_index)
+        .map(|(byte, _)| byte)
+        .unwrap_or(text.len())
+}
+
+/// The character index of a byte offset. `byte` must be on a character
+/// boundary, which a search's match always is.
+fn char_index(text: &str, byte: usize) -> usize {
+    text[..byte].chars().count()
 }
 
 fn set_paragraph(shell: &mut Shell, style: ParagraphStyle) {
     if let Some(tab) = shell.active_tab_mut() {
         tab.paragraph = style;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::state::Shell;
+    use nc_core::Document;
+    use std::path::PathBuf;
+
+    /// A scratch directory of its own, removed when the test ends.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let directory = std::env::temp_dir()
+                .join(format!("notecraft-actions-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&directory);
+            std::fs::create_dir_all(&directory).expect("a scratch directory");
+            Self(directory)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn shell_with(text: &str) -> Shell {
+        let mut shell = Shell::new();
+        *shell.tabs[0].document_mut() = Document::from_text(text);
+        shell
+    }
+
+    /// A shell whose one document has been typed into, so it is dirty.
+    fn shell_edited(text: &str) -> Shell {
+        let mut shell = Shell::new();
+        shell.tabs[0].document_mut().insert_str(text);
+        shell
+    }
+
+    #[test]
+    fn find_next_selects_the_match_and_reports_nothing() {
+        let mut shell = shell_with("one two one");
+        shell.find.query = "one".to_owned();
+        search_step(&mut shell, Direction::Forward);
+        assert_eq!(shell.pending_selection, Some((3, 0)));
+        assert_eq!(shell.caret, 3);
+        assert!(shell.notification.is_none());
+
+        // A second step travels from the caret, past the first match.
+        search_step(&mut shell, Direction::Forward);
+        assert_eq!(shell.pending_selection, Some((11, 8)));
+    }
+
+    #[test]
+    fn a_wrapped_search_says_so() {
+        let mut shell = shell_with("one two");
+        shell.find.query = "one".to_owned();
+        shell.caret = 4;
+        search_step(&mut shell, Direction::Forward);
+        assert_eq!(shell.pending_selection, Some((3, 0)));
+        assert_eq!(
+            shell.notification.as_deref(),
+            Some("Reached the end of the document and wrapped around")
+        );
+    }
+
+    #[test]
+    fn a_missing_needle_reports_it() {
+        let mut shell = shell_with("one two");
+        shell.find.query = "three".to_owned();
+        search_step(&mut shell, Direction::Forward);
+        assert_eq!(shell.notification.as_deref(), Some("Cannot find \"three\""));
+        assert!(shell.pending_selection.is_none());
+    }
+
+    #[test]
+    fn searching_backwards_carries_the_caret_before_the_match() {
+        let mut shell = shell_with("one two one");
+        shell.find.query = "one".to_owned();
+        // From the start of the second match, the previous match is the first.
+        shell.caret = 8;
+        search_step(&mut shell, Direction::Backward);
+        assert_eq!(shell.pending_selection, Some((0, 3)));
+        assert_eq!(shell.caret, 0);
+    }
+
+    #[test]
+    fn replace_swaps_the_match_and_advances() {
+        let mut shell = shell_with("one two one");
+        shell.find.query = "one".to_owned();
+        shell.find.replacement = "1".to_owned();
+        replace(&mut shell);
+        assert_eq!(shell.tabs[0].text(), "1 two one");
+        assert_eq!(shell.pending_selection, Some((1, 1)));
+        assert!(shell.tabs[0].is_dirty());
+    }
+
+    #[test]
+    fn replace_all_rewrites_every_match_at_once() {
+        let mut shell = shell_with("one two one");
+        shell.find.query = "one".to_owned();
+        shell.find.replacement = "1".to_owned();
+        replace_all(&mut shell);
+        assert_eq!(shell.tabs[0].text(), "1 two 1");
+        assert!(shell.notification.is_none());
+    }
+
+    #[test]
+    fn replace_all_with_no_match_keeps_the_text() {
+        let mut shell = shell_with("one two");
+        shell.find.query = "three".to_owned();
+        shell.find.replacement = "3".to_owned();
+        replace_all(&mut shell);
+        assert_eq!(shell.tabs[0].text(), "one two");
+        assert_eq!(shell.notification.as_deref(), Some("Cannot find \"three\""));
+    }
+
+    #[test]
+    fn go_to_moves_the_caret_and_clamps() {
+        let mut shell = shell_with("ab\ncd\nef");
+        shell.go_to.line = "2".to_owned();
+        go_to(&mut shell);
+        assert_eq!(shell.pending_selection, Some((3, 3)));
+        assert!(!shell.go_to.open);
+
+        shell.go_to.line = "99".to_owned();
+        shell.go_to.open = true;
+        go_to(&mut shell);
+        assert_eq!(shell.pending_selection, Some((6, 6)));
+    }
+
+    #[test]
+    fn go_to_ignores_a_non_number() {
+        let mut shell = shell_with("ab\ncd");
+        shell.go_to.line = "two".to_owned();
+        go_to(&mut shell);
+        assert!(shell.pending_selection.is_none());
+    }
+
+    #[test]
+    fn byte_and_char_offsets_agree_across_multibyte_text() {
+        let text = "aé€b";
+        assert_eq!(char_to_byte(text, 0), 0);
+        assert_eq!(char_to_byte(text, 1), 1);
+        assert_eq!(char_to_byte(text, 2), 3);
+        assert_eq!(char_to_byte(text, 3), 6);
+        assert_eq!(char_to_byte(text, 4), 7);
+        assert_eq!(char_to_byte(text, 99), 7);
+        assert_eq!(char_index(text, 0), 0);
+        assert_eq!(char_index(text, 3), 2);
+        assert_eq!(char_index(text, 6), 3);
+    }
+
+    #[test]
+    fn find_searches_across_multibyte_text() {
+        let mut shell = shell_with("héllo wörld héllo");
+        shell.find.query = "héllo".to_owned();
+        search_step(&mut shell, Direction::Forward);
+        // The second match starts at char 12 ("héllo wörld ").
+        search_step(&mut shell, Direction::Forward);
+        assert_eq!(shell.pending_selection, Some((17, 12)));
+    }
+
+    #[test]
+    fn saving_a_document_with_no_path_opens_save_as() {
+        let mut shell = shell_edited("hello");
+        save(&mut shell);
+
+        let dialog = shell.file_dialog.as_ref().expect("Save As opens");
+        assert_eq!(dialog.mode, FileDialogMode::SaveAs);
+        assert_eq!(dialog.tab, 0);
+        assert!(
+            dialog.file_name.is_empty(),
+            "a new document has no name yet"
+        );
+    }
+
+    #[test]
+    fn closing_a_clean_tab_just_closes_it() {
+        let mut shell = Shell::new();
+        shell.open_tab(DocKind::Plain);
+
+        close_tab(&mut shell, 1);
+
+        assert!(shell.prompt.is_none());
+        assert_eq!(shell.tabs.len(), 1);
+    }
+
+    #[test]
+    fn closing_a_dirty_tab_asks_before_discarding() {
+        let mut shell = shell_edited("hello");
+        close_tab(&mut shell, 0);
+
+        assert_eq!(shell.prompt, Some(Prompt::UnsavedChanges { tab: 0 }));
+        assert_eq!(shell.tabs.len(), 1, "nothing has closed yet");
+
+        answer_unsaved_dont_save(&mut shell);
+        assert!(shell.prompt.is_none());
+        assert!(shell.tabs[0].text().is_empty(), "the last tab is replaced");
+    }
+
+    #[test]
+    fn cancelling_a_prompt_keeps_the_document() {
+        let mut shell = shell_edited("hello");
+        close_tab(&mut shell, 0);
+
+        answer_cancel(&mut shell);
+
+        assert!(shell.prompt.is_none());
+        assert_eq!(shell.tabs[0].text(), "hello");
+    }
+
+    #[test]
+    fn saving_from_the_prompt_opens_save_as_and_remembers_the_close() {
+        let mut shell = shell_edited("hello");
+        close_tab(&mut shell, 0);
+
+        answer_unsaved_save(&mut shell);
+
+        assert!(shell.prompt.is_none());
+        let dialog = shell.file_dialog.as_ref().expect("Save As opens");
+        assert_eq!(dialog.tab, 0);
+        assert_eq!(shell.close_after_save, Some(0));
+    }
+
+    #[test]
+    fn save_as_writes_the_file_and_finishes_a_pending_close() {
+        let scratch = Scratch::new("save-as");
+        let path = scratch.0.join("note.txt");
+
+        let mut shell = shell_edited("hello");
+        close_tab(&mut shell, 0);
+        answer_unsaved_save(&mut shell);
+        // Fill the File name field the way the dialog's own field would.
+        if let Some(dialog) = shell.file_dialog.as_mut() {
+            dialog.file_name = path.display().to_string();
+        }
+
+        confirm_file_dialog(&mut shell);
+
+        assert!(shell.file_dialog.is_none());
+        assert_eq!(shell.close_after_save, None);
+        assert_eq!(std::fs::read_to_string(&path).expect("the file"), "hello");
+        assert!(shell.tabs[0].text().is_empty(), "the close resumed");
+        assert!(!shell.tabs[0].is_dirty());
+    }
+
+    #[test]
+    fn save_as_over_an_existing_file_asks_first() {
+        let scratch = Scratch::new("overwrite");
+        let path = scratch.0.join("note.txt");
+        std::fs::write(&path, b"old").expect("the existing file");
+
+        let mut shell = shell_edited("new");
+        save_as_dialog(&mut shell);
+        if let Some(dialog) = shell.file_dialog.as_mut() {
+            dialog.file_name = path.display().to_string();
+        }
+
+        confirm_file_dialog(&mut shell);
+        assert!(matches!(shell.prompt, Some(Prompt::Overwrite { .. })));
+        assert_eq!(
+            std::fs::read(&path).expect("the file"),
+            b"old",
+            "nothing written"
+        );
+        assert!(shell.file_dialog.is_some(), "the dialog stays open");
+
+        answer_overwrite_replace(&mut shell);
+        assert!(shell.prompt.is_none());
+        assert!(shell.file_dialog.is_none());
+        assert_eq!(std::fs::read(&path).expect("the file"), b"new");
+    }
+
+    #[test]
+    fn confirming_open_reads_the_file_into_a_new_tab() {
+        let scratch = Scratch::new("open");
+        let path = scratch.0.join("note.txt");
+        std::fs::write(&path, b"one\r\ntwo\r\n").expect("the file");
+
+        let mut shell = Shell::new();
+        open_file_dialog(&mut shell);
+        if let Some(dialog) = shell.file_dialog.as_mut() {
+            dialog.file_name = path.display().to_string();
+        }
+
+        confirm_file_dialog(&mut shell);
+
+        assert!(shell.file_dialog.is_none());
+        assert_eq!(shell.tabs.len(), 2);
+        assert_eq!(shell.active, 1);
+        assert_eq!(shell.tabs[1].text(), "one\ntwo\n");
+        assert_eq!(shell.tabs[1].title(), "note.txt");
+        assert!(!shell.tabs[1].is_dirty(), "opening is not an edit");
+    }
+
+    #[test]
+    fn opening_a_missing_file_reports_it_and_keeps_the_dialog() {
+        let scratch = Scratch::new("open-missing");
+        let mut shell = Shell::new();
+        open_file_dialog(&mut shell);
+        if let Some(dialog) = shell.file_dialog.as_mut() {
+            dialog.file_name = scratch.0.join("nowhere.txt").display().to_string();
+        }
+
+        confirm_file_dialog(&mut shell);
+
+        assert_eq!(shell.tabs.len(), 1, "no tab was opened");
+        let dialog = shell.file_dialog.as_ref().expect("the dialog stays open");
+        assert!(dialog.error.is_some(), "the failure is reported");
+    }
+
+    #[test]
+    fn saving_ansi_text_that_does_not_fit_asks_before_replacing() {
+        let scratch = Scratch::new("unrepresentable");
+        let path = scratch.0.join("ansi.txt");
+        std::fs::write(&path, b"caf\xE9").expect("an ANSI file");
+
+        let mut shell = Shell::new();
+        shell.tabs[0] = Tab::open(&path).expect("the file opens");
+        assert_eq!(shell.tabs[0].file.encoding(), Encoding::Ansi);
+
+        // A Cyrillic letter has no ANSI byte, so Save must ask first.
+        shell.tabs[0].file.insert_str("Ж");
+        save(&mut shell);
+        assert!(matches!(shell.prompt, Some(Prompt::Unrepresentable { .. })));
+        assert_eq!(
+            std::fs::read(&path).expect("the file"),
+            b"caf\xE9",
+            "nothing written yet"
+        );
+
+        answer_unrepresentable_save(&mut shell);
+        assert!(shell.prompt.is_none());
+        assert_eq!(std::fs::read(&path).expect("the file"), b"?caf\xE9");
+    }
+
+    #[test]
+    fn choosing_another_encoding_reopens_save_as() {
+        let scratch = Scratch::new("choose-encoding");
+        let path = scratch.0.join("ansi.txt");
+        std::fs::write(&path, b"caf\xE9").expect("an ANSI file");
+
+        let mut shell = Shell::new();
+        shell.tabs[0] = Tab::open(&path).expect("the file opens");
+        shell.tabs[0].file.insert_str("Ж");
+        save(&mut shell);
+
+        answer_unrepresentable_choose_encoding(&mut shell);
+
+        assert!(shell.prompt.is_none());
+        let dialog = shell.file_dialog.as_ref().expect("Save As opens");
+        assert_eq!(dialog.mode, FileDialogMode::SaveAs);
+        assert_eq!(dialog.tab, 0);
+    }
+
+    #[test]
+    fn closing_the_window_walks_the_dirty_documents() {
+        let mut shell = shell_edited("one");
+        shell.open_tab(DocKind::Plain);
+
+        close_window(&mut shell);
+        assert_eq!(shell.prompt, Some(Prompt::UnsavedChanges { tab: 0 }));
+
+        answer_unsaved_dont_save(&mut shell);
+
+        assert!(shell.prompt.is_none());
+        assert!(
+            shell.exit_pending,
+            "the window closes once nothing is dirty"
+        );
+        assert!(!shell.closing_window);
     }
 }

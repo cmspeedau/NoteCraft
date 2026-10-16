@@ -23,12 +23,19 @@ pub fn show(shell: &Shell, ui: &mut egui::Ui) {
                 ui.label(item(format!("Ln {}, Col {}", shell.line, shell.column)));
                 ui.separator();
                 ui.label(item(format!("{} characters", shell.char_count())));
+                if let Some(note) = &shell.notification {
+                    ui.separator();
+                    ui.label(RichText::new(note).size(12.0).color(theme::TEXT));
+                }
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add_space(6.0);
-                    ui.label(item(tab.map(|t| t.encoding).unwrap_or("UTF-8")));
+                    ui.label(item(tab.map(|t| t.encoding_label()).unwrap_or("UTF-8")));
                     ui.separator();
-                    ui.label(item(tab.map(|t| t.line_ending).unwrap_or("Windows (CRLF)")));
+                    ui.label(item(
+                        tab.map(|t| t.line_ending_label())
+                            .unwrap_or("Windows (CRLF)"),
+                    ));
                     ui.separator();
                     ui.label(item(format!("{}%", shell.zoom)));
                 });

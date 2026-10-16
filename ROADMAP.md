@@ -63,10 +63,16 @@ anywhere; `cargo xtask check-boundaries` enforces the direction.
 Exit criteria: Every in-scope feature has a place in `docs/ui-reference.md` or
 the command registry, with acceptance criteria.
 
-Status: IN_PROGRESS — `docs/ui-reference.md`, `docs/feature-matrix.md`,
-`docs/architecture.md`, and `docs/test-strategy.md` are drafted; the command
-registry is defined. Screens for the remaining dialogs (Find/Replace, Go to,
-Open/Save As, Page setup) are still to be captured.
+Status: COMPLETE — `docs/ui-reference.md` captures the main window, the menus,
+the toolbar dropdowns and the settings page, and specifies the remaining
+dialogs (Find/Replace, Go to, Open/Save As, Page setup, and the unsaved /
+overwrite / unrepresentable / outside-change prompts) as design decisions.
+`docs/feature-matrix.md` is the feature inventory with IDs, priorities, and
+acceptance criteria; `docs/architecture.md` and `docs/test-strategy.md` record
+the structural and testing decisions; the command registry is defined; and the
+service-dependent features are separated in the matrix (section H). Every
+in-scope feature has a place in the reference or the registry with acceptance
+criteria.
 
 ### M1 — Rust foundation
 
@@ -102,8 +108,9 @@ Status: IN_PROGRESS — the shell is built in `nc-platform` from the command
 registry: the custom title bar with tabs and window controls, the
 File/Edit/View menus, the formatting toolbar with the paragraph-style and list
 dropdowns, the editor surface, the status bar, and the settings page, all in the
-dark theme. Outstanding: dialog surfaces (Open/Save As, Find/Replace, Go to,
-Page setup), context menus, and high-DPI polish.
+dark theme. The Find/Replace and Go to line dialogs are built on the search
+engine (NC-S001, NC-S006). Outstanding: the Open/Save As and Page setup
+surfaces, context menus, and high-DPI polish.
 
 ### M3 — Text engine
 
@@ -151,11 +158,16 @@ and prompts. No silent data loss.
 Status: IN_PROGRESS — `crates/textproc` (`nc-textproc`) owns bytes-to-text and
 text-to-bytes: `Encoding` detection and transcoding (UTF-8 with/without a mark,
 UTF-16/UTF-32 in either order, and ANSI as Windows-1252), `LineEnding`
-round-tripping, and `TextFile` (`open`, `save`, `save_as`, `save_lossy`,
-`reload`). Saves are atomic: the file is written to a sibling temporary file and
-renamed into place, so a failed write leaves the original intact. Outstanding:
-the Open/Save/Save As surfaces, the encoding list they show, prompt wording, and
-dirty-state display.
+round-tripping, and `TextFile` (`open`, `open_as`, `save`, `save_as`,
+`save_lossy`, `reload`). Saves are atomic: the file is written to a sibling
+temporary file and renamed into place, so a failed write leaves the original
+intact. The shell now backs each tab with a `TextFile` — the document, its
+encoding and its dirty flag have one source — edits it through a thin
+`egui::TextBuffer` adapter, and draws the Open / Save As dialog (filesystem
+browsing and the encoding list), with Save / Save As / Open wired and the dirty
+indicator on the tab. The unsaved-changes, overwrite, and unrepresentable
+prompts are built on `nc-textproc::prompt`. Outstanding: the outside-change
+prompt, and end-to-end verification.
 
 ### M5 — Editing commands and search
 
@@ -177,9 +189,13 @@ is left. `nc-textproc` provides `search` (`SearchOptions`, `Direction`,
 `find_next`/`find_previous` returning `Found`/`Wrapped`/`Boundary`/`NoMatch`,
 `find_all`, `go_to_line`) and `time_date`; `nc-core` provides
 `Document::select_all`, `replace_range`/`replace_ranges` (one undo step per
-Replace All), and `status::StatusPosition`. Outstanding: the Find/Replace dialog
-and its options, the F3/Shift+F3 and Ctrl+F/Ctrl+H wiring, the Go to line
-dialog, and the status-notification line.
+Replace All), and `status::StatusPosition`. The dialog surface is built in
+`nc-platform`: the Find/Replace dialog with match case, whole word, direction
+and wrap options; the Ctrl+F / Ctrl+H / F3 / Shift+F3 wiring; the Go to line
+dialog; and the status-notification line, all over `nc-textproc::search`.
+Outstanding: routing the remaining Edit commands (undo/redo, cut/copy/paste,
+Select all) through the shell rather than leaving them to the editor widget,
+and the F5 time/date insertion.
 
 ### M6 — Tabs and application lifecycle
 

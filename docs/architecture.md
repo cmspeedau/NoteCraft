@@ -90,7 +90,8 @@ written without a window.
   every byte of it maps to a character and back, so no file can be silently
   corrupted.
 - `TextFile`: the path, the bytes as they were on disk, the `Document` read from
-  them, and the chosen encoding/BOM. `open` reads and detects, `save`
+  them, and the chosen encoding/BOM. `open` reads and detects, `open_as` reads as
+  an explicitly chosen encoding (the Open dialog's list), `save`
   re-serialises in the encoding the file carries, `save_as` transcodes to a
   chosen encoding (with or without a mark), `save_lossy` writes what the target
   can hold, and `reload` re-reads the file.

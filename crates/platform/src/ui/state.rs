@@ -1,7 +1,11 @@
 //! The shell's observable state: open tabs, the active document, and the view
 //! options the chrome reflects.
 
+use std::path::{Path, PathBuf};
+
 use nc_commands::AvailabilityContext;
+use nc_core::{Document, LineEnding};
+use nc_textproc::{Direction, Encoding, SearchOptions, TextFile};
 
 /// Whether a document is plain text or Markdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,20 +115,368 @@ impl OpenBehavior {
     }
 }
 
-/// A single open document.
+/// The Find and Replace dialog (`docs/ui-reference.md` §5).
+///
+/// One dialog in two modes: **Find** shows the find row alone, **Replace** adds
+/// the replace row and the Replace buttons. The find text, both options, the
+/// direction and the wrap choice are kept between shows, which is what lets
+/// `F3` repeat a find after the dialog has been closed.
+pub struct FindDialog {
+    /// Whether the dialog is on screen.
+    pub open: bool,
+    /// Whether the Replace row and buttons are shown (`Ctrl+H`, not `Ctrl+F`).
+    pub replace: bool,
+    /// The search text.
+    pub query: String,
+    /// The replacement text.
+    pub replacement: String,
+    /// Match case / match whole word, kept between finds.
+    pub options: SearchOptions,
+    /// The direction `Find Next` travels in.
+    pub direction: Direction,
+    /// Whether the search wraps around.
+    pub wraps: bool,
+    /// Set when the dialog opens, so its first field takes focus once.
+    pub focus: bool,
+}
+
+impl FindDialog {
+    /// A closed dialog with the reference defaults: both options off,
+    /// searching down, wrapping on.
+    pub fn new() -> Self {
+        Self {
+            open: false,
+            replace: false,
+            query: String::new(),
+            replacement: String::new(),
+            options: SearchOptions::new(),
+            direction: Direction::Forward,
+            wraps: true,
+            focus: false,
+        }
+    }
+}
+
+impl Default for FindDialog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The Go to line dialog (`docs/ui-reference.md` §6).
+pub struct GoToDialog {
+    /// Whether the dialog is on screen.
+    pub open: bool,
+    /// The typed line number.
+    pub line: String,
+    /// Set when the dialog opens, so the field takes focus once.
+    pub focus: bool,
+}
+
+impl GoToDialog {
+    /// A closed dialog with an empty field.
+    pub fn new() -> Self {
+        Self {
+            open: false,
+            line: String::new(),
+            focus: false,
+        }
+    }
+}
+
+impl Default for GoToDialog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Which file dialog is open (`docs/ui-reference.md` §7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileDialogMode {
+    /// Read a file into a new tab.
+    Open,
+    /// Write a tab to a named file.
+    SaveAs,
+}
+
+/// The encoding the Open / Save As dialog will use (`docs/ui-reference.md` §7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EncodingChoice {
+    /// Work it out from the bytes (Open only).
+    Auto,
+    /// A chosen encoding, and whether the file carries a byte order mark.
+    Chosen {
+        /// The encoding to read or write.
+        encoding: Encoding,
+        /// Whether a mark is written.
+        bom: bool,
+    },
+}
+
+impl EncodingChoice {
+    /// The list Open offers, in the order the dropdown shows it.
+    pub const OPEN: &'static [Self] = &[
+        Self::Auto,
+        Self::Chosen {
+            encoding: Encoding::Utf8,
+            bom: false,
+        },
+        Self::Chosen {
+            encoding: Encoding::Utf8,
+            bom: true,
+        },
+        Self::Chosen {
+            encoding: Encoding::Utf16Le,
+            bom: true,
+        },
+        Self::Chosen {
+            encoding: Encoding::Utf16Be,
+            bom: true,
+        },
+        Self::Chosen {
+            encoding: Encoding::Ansi,
+            bom: false,
+        },
+    ];
+
+    /// The list Save As offers: the same, without `Auto-detect`.
+    pub const SAVE_AS: &'static [Self] = &[
+        Self::Chosen {
+            encoding: Encoding::Utf8,
+            bom: false,
+        },
+        Self::Chosen {
+            encoding: Encoding::Utf8,
+            bom: true,
+        },
+        Self::Chosen {
+            encoding: Encoding::Utf16Le,
+            bom: true,
+        },
+        Self::Chosen {
+            encoding: Encoding::Utf16Be,
+            bom: true,
+        },
+        Self::Chosen {
+            encoding: Encoding::Ansi,
+            bom: false,
+        },
+    ];
+
+    /// The label the dropdown shows.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Auto-detect",
+            Self::Chosen { encoding, bom } => match (encoding, bom) {
+                (Encoding::Utf8, false) => "UTF-8",
+                (Encoding::Utf8, true) => "UTF-8 with BOM",
+                (Encoding::Utf16Le, _) => "UTF-16 LE",
+                (Encoding::Utf16Be, _) => "UTF-16 BE",
+                (Encoding::Ansi, _) => "ANSI",
+                (Encoding::Utf32Le, _) => "UTF-32 LE",
+                (Encoding::Utf32Be, _) => "UTF-32 BE",
+            },
+        }
+    }
+
+    /// The chosen encoding and mark, or `None` for `Auto-detect`.
+    pub const fn chosen(self) -> Option<(Encoding, bool)> {
+        match self {
+            Self::Auto => None,
+            Self::Chosen { encoding, bom } => Some((encoding, bom)),
+        }
+    }
+}
+
+/// One row in the file dialog's list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirEntry {
+    /// The file or folder's name.
+    pub name: String,
+    /// Its full path.
+    pub path: PathBuf,
+    /// Whether it is a folder.
+    pub is_dir: bool,
+}
+
+/// The Open / Save As dialog (`docs/ui-reference.md` §7).
+///
+/// One frame in two modes: Open browses and reads, Save As names a file and
+/// writes it. The browsing, the reading and the writing are the shell's; the
+/// dialog only holds what is on screen.
+pub struct FileDialog {
+    /// Whether this dialog opens or saves.
+    pub mode: FileDialogMode,
+    /// The tab Save As writes.
+    pub tab: usize,
+    /// The folder being browsed.
+    pub directory: PathBuf,
+    /// The folder's contents, folders first.
+    pub entries: Vec<DirEntry>,
+    /// The File name field, which may be a bare name or a path.
+    pub file_name: String,
+    /// The chosen encoding.
+    pub encoding: EncodingChoice,
+    /// Why the last Open or Save failed, shown in the dialog.
+    pub error: Option<String>,
+    /// Set when the dialog opens, so the File name field takes focus once.
+    pub focus: bool,
+}
+
+impl FileDialog {
+    /// The dialog as `File ▸ Open` shows it, browsing the working folder.
+    pub fn open() -> Self {
+        let mut dialog = Self {
+            mode: FileDialogMode::Open,
+            tab: 0,
+            directory: default_directory(),
+            entries: Vec::new(),
+            file_name: String::new(),
+            encoding: EncodingChoice::Auto,
+            error: None,
+            focus: true,
+        };
+        dialog.refresh();
+        dialog
+    }
+
+    /// The dialog as `File ▸ Save as` shows it, named after `tab`.
+    pub fn save_as(tab: usize, name: String, encoding: Encoding, bom: bool) -> Self {
+        let mut dialog = Self {
+            mode: FileDialogMode::SaveAs,
+            tab,
+            directory: default_directory(),
+            entries: Vec::new(),
+            file_name: name,
+            encoding: EncodingChoice::Chosen { encoding, bom },
+            error: None,
+            focus: true,
+        };
+        dialog.refresh();
+        dialog
+    }
+
+    /// The encoding choices this mode offers.
+    pub fn choices(&self) -> &'static [EncodingChoice] {
+        match self.mode {
+            FileDialogMode::Open => EncodingChoice::OPEN,
+            FileDialogMode::SaveAs => EncodingChoice::SAVE_AS,
+        }
+    }
+
+    /// Re-reads the folder being browsed.
+    pub fn refresh(&mut self) {
+        self.entries = read_directory(&self.directory);
+    }
+
+    /// Goes up one folder. Returns whether there was one to go to.
+    pub fn go_up(&mut self) -> bool {
+        let Some(parent) = self.directory.parent() else {
+            return false;
+        };
+        self.directory = parent.to_path_buf();
+        self.refresh();
+        true
+    }
+
+    /// Enters `path` if it names a folder.
+    pub fn enter(&mut self, path: impl AsRef<Path>) -> bool {
+        let path = path.as_ref();
+        if !path.is_dir() {
+            return false;
+        }
+        self.directory = path.to_path_buf();
+        self.file_name.clear();
+        self.refresh();
+        true
+    }
+
+    /// The path the File name field names: as typed when it is absolute,
+    /// otherwise inside the browsed folder.
+    pub fn target(&self) -> PathBuf {
+        let typed = Path::new(&self.file_name);
+        if typed.is_absolute() {
+            typed.to_path_buf()
+        } else {
+            self.directory.join(typed)
+        }
+    }
+}
+
+/// The folder a dialog opens on.
+fn default_directory() -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Reads a folder for the dialog: folders before files, each alphabetical and
+/// case-insensitive. An unreadable folder lists nothing.
+fn read_directory(directory: &Path) -> Vec<DirEntry> {
+    let Ok(read) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut entries: Vec<DirEntry> = read
+        .flatten()
+        .map(|entry| {
+            let is_dir = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+            DirEntry {
+                name: entry.file_name().to_string_lossy().into_owned(),
+                path: entry.path(),
+                is_dir,
+            }
+        })
+        .collect();
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    entries
+}
+
+/// A prompt raised before something is destroyed (`docs/ui-reference.md` §9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Prompt {
+    /// A dirty tab is closing.
+    UnsavedChanges {
+        /// The tab about to close.
+        tab: usize,
+    },
+    /// Save As names a file that already exists.
+    Overwrite {
+        /// The file that would be replaced.
+        path: PathBuf,
+        /// The tab being written.
+        tab: usize,
+        /// The encoding Save As chose.
+        encoding: Encoding,
+        /// Whether to write a byte order mark.
+        bom: bool,
+    },
+    /// Saving would replace characters the encoding cannot hold.
+    Unrepresentable {
+        /// The tab being written.
+        tab: usize,
+        /// The encoding the file would be written in.
+        encoding: Encoding,
+        /// The characters with no representation.
+        characters: Vec<char>,
+    },
+}
+
+/// A single open document: the file behind it, plus the shell-only state the
+/// toolbar and tab strip show.
+///
+/// The [`TextFile`] is the single authoritative source for the text, the path,
+/// the encoding, the line endings and the dirty flag. `nc-platform` only adds
+/// what the viewport needs on top.
 pub struct Tab {
-    /// The name shown on the tab and in the title bar.
-    pub title: String,
-    /// The document text.
-    pub text: String,
-    /// Whether the document has unsaved changes.
-    pub dirty: bool,
+    /// The file: its path, encoding, bytes, text, and undo history.
+    pub file: TextFile,
     /// Whether the document is plain text or Markdown.
     pub kind: DocKind,
-    /// The encoding the status bar reports.
-    pub encoding: &'static str,
-    /// The line-ending style the status bar reports.
-    pub line_ending: &'static str,
     /// The paragraph style selected in the toolbar.
     pub paragraph: ParagraphStyle,
     /// Whether the paragraph style is being edited in formatted view.
@@ -135,12 +487,8 @@ impl Tab {
     /// A new, empty plain-text document.
     pub fn plain() -> Self {
         Self {
-            title: "Untitled".to_owned(),
-            text: String::new(),
-            dirty: false,
+            file: TextFile::untitled(),
             kind: DocKind::Plain,
-            encoding: "UTF-8",
-            line_ending: "Windows (CRLF)",
             paragraph: ParagraphStyle::Body,
             formatted: false,
         }
@@ -149,31 +497,85 @@ impl Tab {
     /// A new, empty Markdown document.
     pub fn markdown() -> Self {
         Self {
-            title: "Untitled".to_owned(),
-            text: String::new(),
-            dirty: false,
+            file: TextFile::untitled(),
             kind: DocKind::Markdown,
-            encoding: "UTF-8",
-            line_ending: "Windows (CRLF)",
             paragraph: ParagraphStyle::Body,
             formatted: true,
         }
     }
 
-    /// A document with the given title and text (used when opening a file).
-    pub fn from_file(title: String, text: String) -> Self {
-        let markdown = title.to_ascii_lowercase().ends_with(".md")
-            || title.to_ascii_lowercase().ends_with(".markdown");
-        Self {
+    /// Opens `path`, detecting its encoding and line endings (`NC-F004`).
+    pub fn open(path: impl AsRef<Path>) -> nc_textproc::Result<Self> {
+        let file = TextFile::open(path)?;
+        let markdown = is_markdown(file.path());
+        Ok(Self {
+            file,
             kind: if markdown {
                 DocKind::Markdown
             } else {
                 DocKind::Plain
             },
-            title,
-            text,
+            paragraph: ParagraphStyle::Body,
             formatted: markdown,
-            ..Tab::plain()
+        })
+    }
+
+    /// Opens `path` as `encoding` rather than detecting it — the Open dialog's
+    /// encoding list (`docs/ui-reference.md` §7).
+    pub fn open_as(
+        path: impl AsRef<Path>,
+        encoding: Encoding,
+        bom: bool,
+    ) -> nc_textproc::Result<Self> {
+        let file = TextFile::open_as(path, encoding, bom)?;
+        let markdown = is_markdown(file.path());
+        Ok(Self {
+            file,
+            kind: if markdown {
+                DocKind::Markdown
+            } else {
+                DocKind::Plain
+            },
+            paragraph: ParagraphStyle::Body,
+            formatted: markdown,
+        })
+    }
+
+    /// The name shown on the tab and in the title bar.
+    pub fn title(&self) -> String {
+        self.file
+            .path()
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Untitled".to_owned())
+    }
+
+    /// The document text.
+    pub fn text(&self) -> &str {
+        self.file.text()
+    }
+
+    /// The document, to edit in place.
+    pub fn document_mut(&mut self) -> &mut Document {
+        self.file.document_mut()
+    }
+
+    /// Whether the document has unsaved changes.
+    pub fn is_dirty(&self) -> bool {
+        self.file.is_dirty()
+    }
+
+    /// The encoding name the status bar shows.
+    pub fn encoding_label(&self) -> &'static str {
+        self.file.encoding_label()
+    }
+
+    /// The line-ending name the status bar shows.
+    pub fn line_ending_label(&self) -> &'static str {
+        match self.file.line_ending() {
+            LineEnding::CrLf => "Windows (CRLF)",
+            LineEnding::Lf => "Unix (LF)",
+            LineEnding::Cr => "Mac (CR)",
         }
     }
 
@@ -184,6 +586,12 @@ impl Tab {
             DocKind::Markdown => "Markdown",
         }
     }
+}
+
+/// Whether a path names a Markdown document.
+fn is_markdown(path: &Path) -> bool {
+    let name = path.to_string_lossy().to_ascii_lowercase();
+    name.ends_with(".md") || name.ends_with(".markdown")
 }
 
 /// The editor font families offered in Settings.
@@ -217,6 +625,29 @@ pub struct Shell {
     pub line: usize,
     /// The 1-based caret column, for the status bar.
     pub column: usize,
+    /// The caret's character index in the active document.
+    pub caret: usize,
+    /// A selection the editor applies on its next frame, as
+    /// `(primary, secondary)` character indices — `egui` calls the moving end
+    /// the primary one, so it is the end a following Find travels from.
+    pub pending_selection: Option<(usize, usize)>,
+    /// A one-line notice for the status bar (`docs/ui-reference.md` §5).
+    pub notification: Option<String>,
+    /// The Find and Replace dialog.
+    pub find: FindDialog,
+    /// The Go to line dialog.
+    pub go_to: GoToDialog,
+    /// The Open / Save As dialog, when one is on screen.
+    pub file_dialog: Option<FileDialog>,
+    /// The prompt on screen, when one is waiting for an answer.
+    pub prompt: Option<Prompt>,
+    /// The tab to close once a Save As opened for it succeeds
+    /// (`docs/ui-reference.md` §9: Save continues the close).
+    pub close_after_save: Option<usize>,
+    /// Whether the window is closing, prompting for each dirty tab in turn.
+    pub closing_window: bool,
+    /// Set when the window should close once the prompts are answered.
+    pub exit_pending: bool,
 }
 
 impl Shell {
@@ -236,6 +667,16 @@ impl Shell {
             ai_enabled: false,
             line: 1,
             column: 1,
+            caret: 0,
+            pending_selection: None,
+            notification: None,
+            find: FindDialog::new(),
+            go_to: GoToDialog::new(),
+            file_dialog: None,
+            prompt: None,
+            close_after_save: None,
+            closing_window: false,
+            exit_pending: false,
         }
     }
 
@@ -254,7 +695,7 @@ impl Shell {
         let tab = self.active_tab();
         AvailabilityContext {
             document_present: tab.is_some(),
-            dirty: tab.map(|tab| tab.dirty).unwrap_or(false),
+            dirty: tab.map(Tab::is_dirty).unwrap_or(false),
             has_selection: false,
             markdown_enabled: tab
                 .map(|tab| tab.kind == DocKind::Markdown)
@@ -297,7 +738,7 @@ impl Shell {
     /// The number of characters in the active document.
     pub fn char_count(&self) -> usize {
         self.active_tab()
-            .map(|tab| tab.text.chars().count())
+            .map(|tab| tab.text().chars().count())
             .unwrap_or(0)
     }
 }
@@ -318,7 +759,7 @@ mod tests {
         shell.close_tab(0);
         assert_eq!(shell.tabs.len(), 1);
         assert_eq!(shell.active, 0);
-        assert!(shell.tabs[0].text.is_empty());
+        assert!(shell.tabs[0].text().is_empty());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! The window shell: layout composition and the eframe application.
 
 mod actions;
+mod dialogs;
 mod editor;
 mod menu_bar;
 mod settings;
@@ -50,14 +51,10 @@ fn seed_documents(shell: &mut Shell, paths: &[PathBuf]) {
     }
     shell.tabs.clear();
     for path in paths {
-        let title = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
-        let text = std::fs::read(path)
-            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-            .unwrap_or_default();
-        shell.tabs.push(Tab::from_file(title, text));
+        // A file that cannot be read leaves an untitled tab in its place;
+        // reporting why is a later milestone's job.
+        let tab = Tab::open(path).unwrap_or_else(|_| Tab::plain());
+        shell.tabs.push(tab);
     }
     shell.active = 0;
 }
@@ -96,13 +93,21 @@ pub(crate) fn draw(shell: &mut Shell, ui: &mut egui::Ui) {
     } else {
         editor::show(shell, ui);
     }
+
+    // Dialogs sit over either surface; a prompt can be raised from Settings too.
+    dialogs::show(shell, &ctx);
+
+    // Act on a window close the window manager asked for, and on one queued by
+    // the shell.
+    actions::pump(shell, &ctx);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::{Key, Modifiers};
 
-    fn frame(shell: &mut Shell) -> egui::FullOutput {
+    fn run(shell: &mut Shell, events: Vec<egui::Event>) -> (egui::Context, egui::FullOutput) {
         let ctx = egui::Context::default();
         theme::install(&ctx);
         let input = egui::RawInput {
@@ -110,11 +115,43 @@ mod tests {
                 egui::Pos2::ZERO,
                 egui::vec2(1180.0, 720.0),
             )),
+            events,
             ..Default::default()
         };
         let mut output = ctx.run_ui(input, |ui| draw(shell, ui));
         output.textures_delta.clear();
-        output
+        (ctx, output)
+    }
+
+    fn frame(shell: &mut Shell) -> egui::FullOutput {
+        run(shell, Vec::new()).1
+    }
+
+    fn key(key: Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn a_queued_selection_moves_the_editor_caret() {
+        let mut shell = Shell::new();
+        *shell.tabs[0].document_mut() = nc_core::Document::from_text("one two one");
+        shell.pending_selection = Some((3, 0));
+
+        let (ctx, _) = run(&mut shell, Vec::new());
+
+        let state = egui::TextEdit::load_state(&ctx, egui::Id::new(editor::EDITOR_ID))
+            .expect("editor state stored");
+        let range = state.cursor.char_range().expect("a selection");
+        assert_eq!(usize::from(range.primary.index), 3);
+        assert_eq!(usize::from(range.secondary.index), 0);
+        assert_eq!(shell.caret, 3);
+        assert!(shell.pending_selection.is_none());
     }
 
     #[test]
@@ -133,5 +170,89 @@ mod tests {
             !output.shapes.is_empty(),
             "the settings page painted nothing"
         );
+    }
+
+    #[test]
+    fn the_find_dialog_paints_a_frame() {
+        let mut shell = Shell::new();
+        shell.find.open = true;
+        shell.find.replace = true;
+        let output = frame(&mut shell);
+        assert!(!output.shapes.is_empty(), "the find dialog painted nothing");
+    }
+
+    #[test]
+    fn the_go_to_dialog_paints_a_frame() {
+        let mut shell = Shell::new();
+        shell.go_to.open = true;
+        let output = frame(&mut shell);
+        assert!(
+            !output.shapes.is_empty(),
+            "the go to dialog painted nothing"
+        );
+    }
+
+    #[test]
+    fn the_file_dialog_paints_a_frame() {
+        let mut shell = Shell::new();
+        actions::open_file_dialog(&mut shell);
+        let output = frame(&mut shell);
+        assert!(!output.shapes.is_empty(), "the file dialog painted nothing");
+
+        shell.file_dialog = Some(state::FileDialog::save_as(
+            0,
+            "note.txt".to_owned(),
+            nc_textproc::Encoding::Utf8,
+            false,
+        ));
+        let output = frame(&mut shell);
+        assert!(!output.shapes.is_empty(), "Save As painted nothing");
+    }
+
+    #[test]
+    fn the_prompt_paints_a_frame() {
+        let mut shell = Shell::new();
+        shell.prompt = Some(state::Prompt::UnsavedChanges { tab: 0 });
+        let output = frame(&mut shell);
+        assert!(!output.shapes.is_empty(), "the prompt painted nothing");
+    }
+
+    #[test]
+    fn escape_closes_the_find_dialog() {
+        let mut shell = Shell::new();
+        shell.find.open = true;
+        run(&mut shell, vec![key(Key::Escape)]);
+        assert!(!shell.find.open);
+    }
+
+    #[test]
+    fn escape_closes_the_go_to_dialog() {
+        let mut shell = Shell::new();
+        shell.go_to.open = true;
+        run(&mut shell, vec![key(Key::Escape)]);
+        assert!(!shell.go_to.open);
+    }
+
+    #[test]
+    fn the_replace_command_opens_the_dialog_in_replace_mode() {
+        let mut shell = Shell::new();
+        let ctx = egui::Context::default();
+        actions::run(&mut shell, &ctx, nc_commands::CommandId("cmd.edit.replace"));
+        assert!(shell.find.open);
+        assert!(shell.find.replace);
+
+        actions::run(&mut shell, &ctx, nc_commands::CommandId("cmd.edit.find"));
+        assert!(shell.find.open);
+        assert!(!shell.find.replace);
+    }
+
+    #[test]
+    fn the_go_to_command_pre_fills_the_current_line() {
+        let mut shell = Shell::new();
+        shell.line = 7;
+        let ctx = egui::Context::default();
+        actions::run(&mut shell, &ctx, nc_commands::CommandId("cmd.edit.go_to"));
+        assert!(shell.go_to.open);
+        assert_eq!(shell.go_to.line, "7");
     }
 }

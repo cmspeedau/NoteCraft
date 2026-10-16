@@ -27,6 +27,8 @@ pub const BORDER: Color32 = Color32::from_rgb(0x3a, 0x3a, 0x3a);
 pub const ACCENT: Color32 = Color32::from_rgb(0x4c, 0xc2, 0xff);
 /// The accent, dimmed for selection backgrounds.
 pub const ACCENT_SOFT: Color32 = Color32::from_rgba_premultiplied(0x2a, 0x6a, 0x8c, 255);
+/// Warning text: a dialog's error line.
+pub const DANGER: Color32 = Color32::from_rgb(0xff, 0x8a, 0x80);
 
 /// Installs the theme on the egui context.
 pub fn install(ctx: &Context) {
