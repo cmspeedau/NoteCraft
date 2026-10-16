@@ -82,6 +82,31 @@ impl TextFile {
         Ok(Self::from_bytes(path, bytes))
     }
 
+    /// Reads `path` as `encoding`, rather than detecting it
+    /// (`docs/ui-reference.md` §7: the Open dialog's encoding list).
+    ///
+    /// `bom` is remembered, so saving reproduces the file's mark. Unlike
+    /// [`open`](Self::open) this can fail: bytes that are not text in the
+    /// chosen encoding are reported rather than silently read as ANSI.
+    pub fn open_as(path: impl AsRef<Path>, encoding: Encoding, bom: bool) -> Result<Self> {
+        let path = path.as_ref();
+        let bytes = fs::read(path).map_err(|source| Error::Read {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let text = encoding::decode(&bytes, encoding).map_err(|source| Error::Decode {
+            path: path.to_path_buf(),
+            encoding,
+            source,
+        })?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            detection: Detection::chosen(encoding, bom),
+            on_disk: Some(bytes),
+            document: Document::from_text(&text),
+        })
+    }
+
     /// A file over `bytes` that were already read from `path`.
     ///
     /// This never fails: bytes that are not UTF-8 are read as ANSI, which can

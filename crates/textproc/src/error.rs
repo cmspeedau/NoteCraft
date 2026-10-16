@@ -94,6 +94,21 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+    /// The file's bytes are not text in the encoding it was asked to be read as.
+    ///
+    /// This only happens when the encoding was chosen rather than detected
+    /// (`TextFile::open_as`); detection always falls back to ANSI, which reads
+    /// any byte string.
+    #[error("could not read {path} as {encoding}")]
+    Decode {
+        /// The file that could not be decoded.
+        path: PathBuf,
+        /// The encoding the file was asked to be read as.
+        encoding: Encoding,
+        /// The underlying reason.
+        #[source]
+        source: DecodeError,
+    },
     /// The text cannot be written in the encoding it would be saved in.
     #[error(transparent)]
     Encode(#[from] EncodeError),

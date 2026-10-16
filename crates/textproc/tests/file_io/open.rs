@@ -138,6 +138,67 @@ fn a_directory_is_not_a_file_to_open() {
 }
 
 #[test]
+fn open_as_reads_the_encoding_it_was_told() {
+    let scratch = Scratch::new("open-as");
+    // Bytes that are not UTF-8, read as ANSI on purpose: the Open dialog's
+    // encoding list (`docs/ui-reference.md` §7).
+    let path = scratch.file("note.txt", b"caf\xE9");
+
+    let file = TextFile::open_as(&path, Encoding::Ansi, false).expect("the file opens as ANSI");
+    assert_eq!(file.text(), "café");
+    assert_eq!(file.encoding(), Encoding::Ansi);
+    assert_eq!(file.detection().evidence, Evidence::Chosen);
+    assert_eq!(file.on_disk(), Some(b"caf\xE9".as_slice()));
+    assert!(!file.is_dirty());
+}
+
+#[test]
+fn open_as_reports_bytes_the_encoding_cannot_read() {
+    let scratch = Scratch::new("open-as-bad");
+    let path = scratch.file("note.txt", b"caf\xE9");
+
+    match TextFile::open_as(&path, Encoding::Utf8, false) {
+        Err(Error::Decode {
+            path: named,
+            encoding,
+            ..
+        }) => {
+            assert_eq!(named, path);
+            assert_eq!(encoding, Encoding::Utf8);
+        }
+        other => panic!("bytes that are not UTF-8 should not open as UTF-8, got {other:?}"),
+    }
+}
+
+#[test]
+fn open_as_remembers_a_mark_so_a_save_reproduces_it() {
+    let scratch = Scratch::new("open-as-bom");
+    let path = scratch.file("note.txt", b"\xFF\xFEo\x00n\x00e\x00");
+
+    let mut file =
+        TextFile::open_as(&path, Encoding::Utf16Le, true).expect("the file opens as UTF-16 LE");
+    assert_eq!(file.text(), "one");
+    assert!(file.has_bom());
+
+    file.save().expect("the file saves");
+    assert_eq!(
+        std::fs::read(&path).expect("the file"),
+        b"\xFF\xFEo\x00n\x00e\x00"
+    );
+}
+
+#[test]
+fn open_as_reports_a_missing_file() {
+    let scratch = Scratch::new("open-as-missing");
+    let missing = scratch.0.join("nowhere.txt");
+
+    match TextFile::open_as(&missing, Encoding::Utf8, false) {
+        Err(Error::Read { path, .. }) => assert_eq!(path, missing),
+        other => panic!("a missing file should be a read error, got {other:?}"),
+    }
+}
+
+#[test]
 fn opening_does_not_touch_the_bytes_on_disk() {
     let scratch = Scratch::new("open-untouched");
     // A mixture the reader has to cope with without rewriting anything: a mark
