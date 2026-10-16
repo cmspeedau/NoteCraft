@@ -224,6 +224,25 @@ pub const REGISTRY: &[CommandSpec] = &[
         Availability::Always,
         2,
     ),
+    // --- Tabs (keyboard only; the reference menu bar has no tab entries) ---
+    cmd(
+        "cmd.tab.next",
+        120,
+        "Next tab",
+        None,
+        Some(CTRL_TAB),
+        Availability::MultipleTabs,
+        6,
+    ),
+    cmd(
+        "cmd.tab.previous",
+        121,
+        "Previous tab",
+        None,
+        Some(CTRL_SHIFT_TAB),
+        Availability::MultipleTabs,
+        6,
+    ),
     // --- Edit -----------------------------------------------------------
     cmd(
         "cmd.edit.undo",
@@ -755,6 +774,8 @@ const CTRL_I: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('I'));
 const CTRL_SHIFT_X: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('X'));
 const CTRL_K: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('K'));
 const CTRL_SHIFT_T: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('T'));
+const CTRL_TAB: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Tab);
+const CTRL_SHIFT_TAB: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Tab);
 const CTRL_SHIFT_7: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Digit(7));
 const CTRL_SHIFT_8: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Digit(8));
 
@@ -991,6 +1012,8 @@ mod tests {
             (Modifiers::CTRL_SHIFT, Key::Letter('S'), "cmd.file.save_as"),
             (Modifiers::CTRL_ALT, Key::Letter('S'), "cmd.file.save_all"),
             (Modifiers::CTRL, Key::Letter('W'), "cmd.file.close_tab"),
+            (Modifiers::CTRL, Key::Tab, "cmd.tab.next"),
+            (Modifiers::CTRL_SHIFT, Key::Tab, "cmd.tab.previous"),
             (Modifiers::CTRL, Key::Letter('F'), "cmd.edit.find"),
             (Modifiers::NONE, Key::Function(3), "cmd.edit.find_next"),
             (Modifiers::SHIFT, Key::Function(3), "cmd.edit.find_prev"),

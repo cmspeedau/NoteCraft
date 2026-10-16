@@ -1,0 +1,221 @@
+//! Extra top-level windows (`File ▸ New window`, NC-F003).
+//!
+//! A window is an `egui` viewport with its own [`Shell`], so it holds its own
+//! tabs and active document independently of the main window. The main window
+//! is the one the application was started with; this model owns only the extra
+//! ones. Each is drawn every frame with [`egui::Context::show_viewport_immediate`],
+//! which is what keeps it alive — a viewport that is not shown in a frame is
+//! gone. On a backend without multiple viewports `egui` embeds the window in
+//! the current one instead, so the same code still runs.
+//!
+//! The reference capture fixes the *command* (`File ▸ New window`, Ctrl+Shift+N)
+//! but not what the new window contains; it is opened with one empty untitled
+//! document, the same state the application starts in (a recorded decision).
+
+use egui::{Context, Id, ViewportBuilder, ViewportId};
+
+use crate::ui::draw;
+use crate::ui::state::Shell;
+
+/// The set of extra windows the application has opened.
+pub struct Windows {
+    /// One per extra window, in creation order.
+    open: Vec<Window>,
+    /// The next viewport number to hand out; it keeps ids unique as windows
+    /// come and go within a run.
+    next_number: u64,
+}
+
+impl Windows {
+    /// No extra windows open.
+    pub fn new() -> Self {
+        Self {
+            open: Vec::new(),
+            next_number: 1,
+        }
+    }
+
+    /// The number of extra windows open.
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.open.len()
+    }
+
+    /// Whether there are no extra windows.
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.open.is_empty()
+    }
+
+    /// Creates a window for every pending `New window` request: the main
+    /// window's and each extra window's own. Called before [`show`](Self::show)
+    /// so a new window is drawn the frame it was asked for.
+    pub fn create_requested(&mut self, main: &mut Shell) {
+        let mut requested = std::mem::take(&mut main.new_window_request);
+        for window in &mut self.open {
+            requested |= std::mem::take(&mut window.shell.new_window_request);
+        }
+        if requested {
+            self.open.push(Window::new(self.next_number));
+            self.next_number += 1;
+        }
+    }
+
+    /// Draws every extra window for this frame, first dropping any the user has
+    /// closed.
+    ///
+    /// A window keeps existing only by being shown: once its close has been
+    /// requested — by its own title-bar `✕`, through the same window-close path
+    /// as the main window (`actions::close_window`) — it is removed here, and
+    /// with it its viewport.
+    pub fn show(&mut self, ctx: &Context) {
+        self.open
+            .retain(|window| !ctx.input_for(window.id, |input| input.viewport().close_requested()));
+
+        for window in &mut self.open {
+            let id = window.id;
+            let title = window.title.clone();
+            ctx.show_viewport_immediate(
+                id,
+                ViewportBuilder::default()
+                    .with_title(title)
+                    .with_decorations(false)
+                    .with_inner_size([900.0, 600.0]),
+                |ui, _class| {
+                    draw(&mut window.shell, ui);
+                },
+            );
+        }
+    }
+}
+
+impl Default for Windows {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// One extra top-level window: its viewport and its own document set.
+struct Window {
+    /// The `egui` viewport this window is drawn in.
+    id: ViewportId,
+    /// The title the OS shows, when the backend draws decorations of its own.
+    title: String,
+    /// The window's own shell: its tabs, active document, and view options.
+    shell: Shell,
+}
+
+impl Window {
+    /// A window `number` with one empty untitled document.
+    fn new(number: u64) -> Self {
+        Self {
+            id: ViewportId(Id::new(("notecraft_window", number))),
+            title: format!("NoteCraft — Window {number}"),
+            shell: Shell::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::state::DocKind;
+
+    #[test]
+    fn a_request_creates_one_window_with_its_own_shell() {
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+
+        assert_eq!(windows.len(), 1, "one window was created");
+        assert!(!main.new_window_request, "the request was consumed");
+        // The new window starts with its own single untitled document.
+        assert_eq!(windows.open[0].shell.tabs.len(), 1);
+    }
+
+    #[test]
+    fn a_window_keeps_its_own_documents() {
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+        main.open_tab(DocKind::Plain);
+
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+
+        assert_eq!(main.tabs.len(), 2, "the main window kept its tabs");
+        assert_eq!(
+            windows.open[0].shell.tabs.len(),
+            1,
+            "the new window has its own"
+        );
+        assert_ne!(
+            windows.open[0].id,
+            ViewportId::ROOT,
+            "the window has a viewport of its own"
+        );
+    }
+
+    #[test]
+    fn each_window_gets_a_distinct_viewport() {
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+
+        assert_eq!(windows.len(), 2);
+        assert_ne!(windows.open[0].id, windows.open[1].id);
+    }
+
+    #[test]
+    fn a_request_from_an_extra_window_opens_another() {
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+        // The first extra window now asks for one of its own.
+        windows.open[0].shell.new_window_request = true;
+        windows.create_requested(&mut main);
+
+        assert_eq!(windows.len(), 2);
+        assert!(!windows.open[0].shell.new_window_request);
+    }
+
+    #[test]
+    fn no_request_creates_nothing() {
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+        windows.create_requested(&mut main);
+        assert!(windows.is_empty());
+    }
+
+    #[test]
+    fn showing_a_window_paints_a_frame() {
+        // The native multi-viewport path cannot run headlessly, but eframe's
+        // fallback embeds the window, which exercises the same `show` code and
+        // paints the window's own shell.
+        let ctx = egui::Context::default();
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1180.0, 720.0),
+            )),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |_ui| windows.show(&ctx));
+        output.textures_delta.clear();
+
+        assert_eq!(windows.len(), 1, "the window is still open");
+        assert!(!output.shapes.is_empty(), "the window painted nothing");
+    }
+}

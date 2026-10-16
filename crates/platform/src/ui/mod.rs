@@ -11,6 +11,7 @@ mod status_bar;
 mod theme;
 mod title_bar;
 mod widgets;
+mod windows;
 
 use std::path::PathBuf;
 
@@ -36,7 +37,10 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
         native_options,
         Box::new(move |cc| {
             theme::install(&cc.egui_ctx);
-            Ok(Box::new(ShellApp { shell }))
+            Ok(Box::new(ShellApp {
+                shell,
+                windows: windows::Windows::new(),
+            }))
         }),
     )
     .map_err(|err| PlatformError::Window(err.to_string()))?;
@@ -45,13 +49,17 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
 }
 
 /// Replaces the initial untitled document with the files named on the command
-/// line, reading each one best-effort.
+/// line, reading each one best-effort. A file named twice is opened once
+/// (`NC-F012`), so the tab strip never shows two tabs for one document.
 fn seed_documents(shell: &mut Shell, paths: &[PathBuf]) {
     if paths.is_empty() {
         return;
     }
     shell.tabs.clear();
     for path in paths {
+        if shell.tabs.iter().any(|tab| tab.matches_path(path)) {
+            continue;
+        }
         // A file that cannot be read leaves an untitled tab in its place;
         // reporting why is a later milestone's job.
         let tab = Tab::open(path).unwrap_or_else(|_| Tab::plain());
@@ -64,11 +72,18 @@ fn seed_documents(shell: &mut Shell, paths: &[PathBuf]) {
 /// exercised headlessly.
 struct ShellApp {
     shell: Shell,
+    /// The extra windows `File ▸ New window` has opened, beyond the main one.
+    windows: windows::Windows,
 }
 
 impl eframe::App for ShellApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         draw(&mut self.shell, ui);
+        // A New window command takes effect at the end of the frame: the window
+        // is created and drawn right away, and stays alive by being shown each
+        // frame after that.
+        self.windows.create_requested(&mut self.shell);
+        self.windows.show(&ui.ctx().clone());
     }
 }
 
@@ -342,5 +357,63 @@ mod tests {
         // Nothing happened and the shell is untouched.
         assert_eq!(shell.tabs.len(), 1);
         let _ = ctx;
+    }
+
+    #[test]
+    fn ctrl_tab_switches_between_tabs() {
+        let mut shell = Shell::new();
+        shell.open_tab(state::DocKind::Plain);
+        assert_eq!(shell.active, 1);
+
+        run(&mut shell, vec![chord(Key::Tab, Modifiers::COMMAND)]);
+        assert_eq!(shell.active, 0, "Ctrl+Tab moves to the next tab");
+
+        run(
+            &mut shell,
+            vec![chord(
+                Key::Tab,
+                Modifiers {
+                    shift: true,
+                    ..Modifiers::COMMAND
+                },
+            )],
+        );
+        assert_eq!(shell.active, 1, "Ctrl+Shift+Tab moves to the previous");
+    }
+
+    #[test]
+    fn the_command_line_opens_a_named_file_once() {
+        let directory = std::env::temp_dir().join(format!("notecraft-seed-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        let path = directory.join("note.txt");
+        std::fs::write(&path, b"hello").expect("the file");
+
+        let mut shell = Shell::new();
+        seed_documents(&mut shell, &[path.clone(), path.clone()]);
+
+        assert_eq!(shell.tabs.len(), 1, "the file is opened once");
+        assert_eq!(shell.tabs[0].text(), "hello");
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn ctrl_shift_n_asks_for_a_window_without_opening_a_tab() {
+        let mut shell = Shell::new();
+
+        run(
+            &mut shell,
+            vec![chord(
+                Key::N,
+                Modifiers {
+                    shift: true,
+                    ..Modifiers::COMMAND
+                },
+            )],
+        );
+
+        assert!(shell.new_window_request, "a window was asked for");
+        assert_eq!(shell.tabs.len(), 1, "no tab was opened");
     }
 }

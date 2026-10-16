@@ -150,6 +150,10 @@ The window, drawn with `egui` and hosted by `eframe`, is the only UI backend:
   the menu and the keyboard converge on one implementation. It dispatches only
   commands this build implements and that are available, and leaves the focused
   widget's own editing keys alone.
+- `windows`: the extra top-level windows `File ▸ New window` opens. Each is an
+  `egui` viewport with a `Shell` of its own, drawn every frame with
+  `Context::show_viewport_immediate`, so a window's tabs and active document are
+  independent of the main window's (`NC-F003`).
 - `state`: the shell state (tabs, active document, view options) and the derived
   availability context.
 - `actions`: the one place a fired command turns into a change in the shell.
@@ -163,7 +167,9 @@ behind traits so they can be faked in tests.
 ## 9. `nc-session` — tabs & windows (planned)
 
 Tab model, window model, dirty tracking, restore persistence, recent-files list.
-Currently the tab model lives in `nc-platform`'s shell state.
+Currently the tab model lives in `nc-platform`'s shell state and the window model
+in `nc-platform`'s `ui::windows`. A window is an `egui` viewport rather than a
+separate process, so the shell stays one event loop.
 
 ## 10. `nc-ai` (M9)
 

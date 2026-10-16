@@ -586,6 +586,18 @@ impl Tab {
             DocKind::Markdown => "Markdown",
         }
     }
+
+    /// Whether this tab shows `path`, comparing canonical paths so two spellings
+    /// of one file count as the same document (`NC-F012`).
+    pub fn matches_path(&self, path: &Path) -> bool {
+        self.file.has_path() && canonical_path(self.file.path()) == canonical_path(path)
+    }
+}
+
+/// A path in canonical form, or the path itself when it cannot be resolved yet
+/// (it does not exist, say). Used to recognize two spellings of one file.
+fn canonical_path(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// Whether a path names a Markdown document.
@@ -648,6 +660,9 @@ pub struct Shell {
     pub closing_window: bool,
     /// Set when the window should close once the prompts are answered.
     pub exit_pending: bool,
+    /// Set by `File ▸ New window`; the eframe application creates the window at
+    /// the end of the frame and clears it (`NC-F003`).
+    pub new_window_request: bool,
 }
 
 impl Shell {
@@ -677,6 +692,7 @@ impl Shell {
             close_after_save: None,
             closing_window: false,
             exit_pending: false,
+            new_window_request: false,
         }
     }
 
@@ -779,5 +795,26 @@ mod tests {
         let mut shell = Shell::new();
         shell.open_tab(DocKind::Markdown);
         assert!(shell.availability().markdown_enabled);
+    }
+
+    #[test]
+    fn tabs_recognize_two_spellings_of_one_file() {
+        let directory =
+            std::env::temp_dir().join(format!("notecraft-state-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        let path = directory.join("note.txt");
+        std::fs::write(&path, b"hello").expect("the file");
+
+        let tab = Tab::open(&path).expect("the file opens");
+        assert!(tab.matches_path(&path), "the same path matches");
+        // A path through the containing folder is the same file.
+        assert!(tab.matches_path(&directory.join(".").join("note.txt")));
+        assert!(!tab.matches_path(&directory.join("other.txt")));
+
+        // A new, untitled tab matches no path.
+        assert!(!Tab::plain().matches_path(&path));
+
+        let _ = std::fs::remove_dir_all(&directory);
     }
 }

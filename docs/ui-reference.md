@@ -294,3 +294,19 @@ the encoding list focused.
 command: its label, menu placement, default shortcut, availability rule, and the
 milestone that first gives it an effect. The menus above are generated from it, so
 the drawn UI and the registry cannot drift apart.
+
+## 11. Windows and tab lifecycle
+
+*Decision — the reference capture does not include these behaviours.* They are
+recorded here because the screens do not show them:
+
+| Command | Behaviour |
+| --- | --- |
+| New window (Ctrl+Shift+N) | Opens an independent top-level window with one empty untitled document: its own tab strip, active document, and view options, separate from the window it was opened from. It closes by the same window-close path as the main window. |
+| Close window (Ctrl+Shift+W) / Exit (Alt+F4) | Closes the window, raising the unsaved-changes prompt (§9) for each dirty document in turn. Cancelling any prompt stops the close. There is no separate "close all tabs" item in the captured menus; closing the window is how every document is closed (NC-T005). |
+| New tab (Ctrl+N) | Adds an empty plain-text tab and makes it active, leaving the other tabs untouched. |
+
+A file whose **canonical path** is already open is not opened a second time:
+`File ▸ Open`, and a command-line argument, focus the tab that already shows that
+file instead (NC-F012).
+

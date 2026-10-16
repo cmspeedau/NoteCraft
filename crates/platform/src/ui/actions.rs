@@ -25,12 +25,16 @@ use nc_textproc::{Direction, Encoding, SearchResult, TimeDate, find_all, go_to_l
 pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
     match id.as_str() {
         "cmd.file.new_tab" => shell.open_tab(DocKind::Plain),
+        "cmd.file.new_window" => shell.new_window_request = true,
         "cmd.file.new_markdown" => shell.open_tab(DocKind::Markdown),
         "cmd.file.open" => open_file_dialog(shell),
         "cmd.file.save" => save(shell),
         "cmd.file.save_as" => save_as_dialog(shell),
+        "cmd.file.save_all" => save_all(shell),
         "cmd.file.close_tab" => close_tab(shell, shell.active),
         "cmd.file.close_window" | "cmd.file.exit" => close_window(shell),
+        "cmd.tab.next" => next_tab(shell),
+        "cmd.tab.previous" => previous_tab(shell),
         "cmd.edit.undo" => undo(shell),
         "cmd.edit.redo" => redo(shell),
         "cmd.edit.select_all" => select_all(shell),
@@ -90,13 +94,17 @@ pub fn handles(id: CommandId) -> bool {
     matches!(
         id.as_str(),
         "cmd.file.new_tab"
+            | "cmd.file.new_window"
             | "cmd.file.new_markdown"
             | "cmd.file.open"
             | "cmd.file.save"
             | "cmd.file.save_as"
+            | "cmd.file.save_all"
             | "cmd.file.close_tab"
             | "cmd.file.close_window"
             | "cmd.file.exit"
+            | "cmd.tab.next"
+            | "cmd.tab.previous"
             | "cmd.edit.undo"
             | "cmd.edit.redo"
             | "cmd.edit.select_all"
@@ -131,7 +139,7 @@ pub fn handles(id: CommandId) -> bool {
 /// The highest roadmap milestone whose commands this build implements. Bumped
 /// as a milestone lands; `every_landed_command_is_wired` holds the two in step.
 #[cfg(test)]
-pub const LANDED_MILESTONE: u8 = 5;
+pub const LANDED_MILESTONE: u8 = 6;
 
 /// Undoes the last edit in the active document (`Ctrl+Z`).
 pub fn undo(shell: &mut Shell) {
@@ -266,6 +274,29 @@ pub fn save_as_dialog(shell: &mut Shell) {
     open_save_as(shell, shell.active);
 }
 
+/// Saves every tab with unsaved changes (`File ▸ Save all`, `Ctrl+Alt+S`).
+///
+/// A tab that has no path yet opens Save As instead (there is nowhere to write),
+/// and a prompt or dialog raised by one tab stops the run: the remaining tabs
+/// keep their changes and are saved by a later Save all.
+pub fn save_all(shell: &mut Shell) {
+    let dirty: Vec<usize> = shell
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(_, tab)| tab.is_dirty())
+        .map(|(index, _)| index)
+        .collect();
+
+    for tab in dirty {
+        // Saving is interrupted while a prompt or a dialog is waiting.
+        if shell.prompt.is_some() || shell.file_dialog.is_some() {
+            break;
+        }
+        save_tab(shell, tab, false);
+    }
+}
+
 /// Opens Save As for `tab`, named after the file it already has, or blank.
 fn open_save_as(shell: &mut Shell, tab: usize) {
     let Some(document) = shell.tabs.get(tab) else {
@@ -374,6 +405,31 @@ fn advance_close(shell: &mut Shell) {
     }
 }
 
+/// Switches to the next tab, wrapping from the last to the first
+/// (`Ctrl+Tab`, NC-T002).
+pub fn next_tab(shell: &mut Shell) {
+    switch_tab(shell, 1);
+}
+
+/// Switches to the previous tab, wrapping from the first to the last
+/// (`Ctrl+Shift+Tab`, NC-T002).
+pub fn previous_tab(shell: &mut Shell) {
+    switch_tab(shell, -1);
+}
+
+/// Moves the active tab by `step`, cyclically. The caret is re-pointed at the
+/// tab that becomes active, so the editor's own widget state follows the
+/// document the way a tab-strip click's does not have to.
+fn switch_tab(shell: &mut Shell, step: isize) {
+    let count = shell.tabs.len();
+    if count < 2 {
+        return;
+    }
+    let offset = step.rem_euclid(count as isize) as usize;
+    shell.active = (shell.active + offset) % count;
+    sync_caret_to_document(shell);
+}
+
 /// Acts on a request that outlives the input event, once per frame: a window
 /// close asked for by the window manager, and one queued by [`close_window`].
 pub fn pump(shell: &mut Shell, ctx: &Context) {
@@ -425,7 +481,17 @@ pub fn confirm_file_dialog(shell: &mut Shell) {
 }
 
 /// Opens `path` into a new tab, or reports why it could not be opened.
+///
+/// A path already open — in any spelling, compared canonically — focuses the
+/// tab that shows it rather than opening the file a second time (`NC-F012`).
 fn open_path(shell: &mut Shell, path: &Path, encoding: Option<(Encoding, bool)>) {
+    if let Some(existing) = shell.tabs.iter().position(|tab| tab.matches_path(path)) {
+        shell.active = existing;
+        shell.file_dialog = None;
+        shell.notification = None;
+        return;
+    }
+
     let opened = match encoding {
         Some((encoding, bom)) => Tab::open_as(path, encoding, bom),
         None => Tab::open(path),
@@ -1114,6 +1180,12 @@ mod tests {
     #[test]
     fn every_landed_command_is_wired() {
         for spec in nc_commands::REGISTRY {
+            // A never-available entry is a placeholder for a surface a later
+            // milestone fills in (the empty Recent list), not a command with an
+            // effect to wire (`NC-F010`).
+            if spec.availability == nc_commands::Availability::Never {
+                continue;
+            }
             if spec.milestone.number() <= LANDED_MILESTONE {
                 assert!(
                     handles(spec.id),
@@ -1193,5 +1265,111 @@ mod tests {
         // The whole insertion comes back out with one undo.
         undo(&mut shell);
         assert_eq!(shell.tabs[0].text(), "");
+    }
+
+    #[test]
+    fn switching_tabs_cycles_and_wraps() {
+        let mut shell = Shell::new();
+        shell.open_tab(DocKind::Plain);
+        shell.open_tab(DocKind::Plain);
+        assert_eq!(shell.active, 2);
+
+        next_tab(&mut shell);
+        assert_eq!(shell.active, 0, "wraps from the last to the first");
+
+        previous_tab(&mut shell);
+        assert_eq!(shell.active, 2, "wraps from the first to the last");
+
+        previous_tab(&mut shell);
+        assert_eq!(shell.active, 1);
+    }
+
+    #[test]
+    fn switching_tabs_does_nothing_with_a_single_tab() {
+        let mut shell = Shell::new();
+
+        next_tab(&mut shell);
+        assert_eq!(shell.active, 0);
+        previous_tab(&mut shell);
+        assert_eq!(shell.active, 0);
+    }
+
+    #[test]
+    fn save_all_writes_every_dirty_document() {
+        let scratch = Scratch::new("save-all");
+        let first = scratch.0.join("one.txt");
+        let second = scratch.0.join("two.txt");
+        std::fs::write(&first, b"one").expect("the first file");
+        std::fs::write(&second, b"two").expect("the second file");
+
+        let mut shell = Shell::new();
+        shell.tabs[0] = Tab::open(&first).expect("the first opens");
+        shell.open_tab(DocKind::Plain);
+        shell.tabs[1] = Tab::open(&second).expect("the second opens");
+        shell.tabs[0].file.insert_str("!");
+        shell.tabs[1].file.insert_str("!");
+
+        save_all(&mut shell);
+
+        assert_eq!(std::fs::read(&first).expect("the first file"), b"!one");
+        assert_eq!(std::fs::read(&second).expect("the second file"), b"!two");
+        assert!(!shell.tabs[0].is_dirty());
+        assert!(!shell.tabs[1].is_dirty());
+    }
+
+    #[test]
+    fn save_all_stops_at_a_document_that_has_no_path() {
+        let scratch = Scratch::new("save-all-stop");
+        let path = scratch.0.join("one.txt");
+        std::fs::write(&path, b"one").expect("the file");
+
+        let mut shell = Shell::new();
+        shell.tabs[0] = Tab::open(&path).expect("the file opens");
+        shell.tabs[0].file.insert_str("!");
+        shell.open_tab(DocKind::Plain);
+        shell.tabs[1].file.insert_str("untitled");
+
+        save_all(&mut shell);
+
+        // The path-backed tab is written before the untitled one stops the run
+        // by opening Save As, which is where the answer resumes.
+        assert_eq!(std::fs::read(&path).expect("the file"), b"!one");
+        let dialog = shell.file_dialog.as_ref().expect("Save As opens");
+        assert_eq!(dialog.tab, 1);
+    }
+
+    #[test]
+    fn opening_a_file_that_is_already_open_focuses_its_tab() {
+        let scratch = Scratch::new("duplicate-open");
+        let path = scratch.0.join("note.txt");
+        std::fs::write(&path, b"hello").expect("the file");
+
+        let mut shell = Shell::new();
+        shell.open_tab(DocKind::Plain);
+        shell.tabs[1] = Tab::open(&path).expect("the file opens");
+        shell.active = 0;
+
+        open_file_dialog(&mut shell);
+        if let Some(dialog) = shell.file_dialog.as_mut() {
+            dialog.file_name = path.display().to_string();
+        }
+        confirm_file_dialog(&mut shell);
+
+        assert_eq!(shell.tabs.len(), 2, "the file is not opened a second time");
+        assert_eq!(shell.active, 1, "the existing tab is focused");
+        assert!(shell.file_dialog.is_none());
+    }
+
+    #[test]
+    fn new_window_sets_the_request() {
+        let mut shell = Shell::new();
+        let ctx = egui::Context::default();
+
+        run(&mut shell, &ctx, CommandId("cmd.file.new_window"));
+
+        assert!(
+            shell.new_window_request,
+            "the application will open a window"
+        );
     }
 }

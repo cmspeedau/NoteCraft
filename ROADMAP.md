@@ -216,6 +216,17 @@ insertion writes UTC (a recorded limitation, NC-S007).
 Exit criteria: Tab operations and restarts preserve the expected documents and
 state without losing unsaved work.
 
+Status: IN_PROGRESS — the tab model lives in `nc-platform`'s shell state. Tab
+switching now works from the keyboard (`Ctrl+Tab`/`Ctrl+Shift+Tab` cycle through
+the open tabs, wrapping), `File ▸ Save all` writes every dirty path-backed
+document, and a file whose canonical path is already open — through `File ▸ Open`
+or a command-line argument — focuses its existing tab rather than opening a
+second (`NC-F012`). `File ▸ New window` opens an independent window with its own
+tabs and active document (`crates/platform/src/ui/windows.rs`). Closing the
+window, and `Exit`, walk the dirty documents with the unsaved-changes prompt
+(`NC-T005`). Outstanding: recent files (NC-F010), session restore (NC-F011), and
+the tab context menu (NC-T003).
+
 ### M7 — Markdown functionality
 
 - Markdown file association and `.md` / `.markdown` handling.

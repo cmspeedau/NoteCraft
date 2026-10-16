@@ -9,7 +9,7 @@ surface lives in `crates/commands`.
 
 `IMPLEMENTED` means the code exists; `VERIFIED` means its acceptance tests pass.
 
-**Current phase: M2 shell + M3–M5 engines, with the accelerators wired.** The
+**Current phase: M2 shell + M3–M6 engines, with the accelerators wired.** The
 egui/eframe shell draws the window, menus, toolbar, editor, status bar, and
 settings page; the `nc-core` and `nc-textproc` engines back editing, file I/O,
 and search. Every command this build implements now has a live keyboard
@@ -20,11 +20,16 @@ Cut, copy and paste reuse `egui`'s clipboard events — the windowing layer turn
 `Ctrl+X`/`Ctrl+C`/`Ctrl+V` into those events before a key press exists — and the
 menu entries request the same events, so the menu and the keyboard agree.
 `has_selection` is now reported from the document, so Cut/Copy/Delete enable with
-a selection. The Find/Replace, Go-to, and Open/Save-as dialogs are built and
-their commands wired, with the unsaved-changes, overwrite, and unrepresentable
-prompts. The page-setup surface, the outside-change prompt, and the Markdown and
-session work are still ahead. Nothing is `VERIFIED` until its acceptance tests
-pass end to end.
+a selection. M6 core has begun: `Ctrl+Tab`/`Ctrl+Shift+Tab` switch tabs
+cyclically, `File ▸ Save all` writes every dirty path-backed document, a file
+whose canonical path is already open focuses its tab instead of opening twice
+(NC-F012, including command-line arguments), and `File ▸ New window` opens an
+independent window with its own document set (`crates/platform/src/ui/windows.rs`).
+The Find/Replace, Go-to, and Open/Save-as dialogs are built and their commands
+wired, with the unsaved-changes, overwrite, and unrepresentable prompts. The
+page-setup surface, the outside-change prompt, recent files (NC-F010), session
+restore (NC-F011), and the Markdown and session work are still ahead. Nothing is
+`VERIFIED` until its acceptance tests pass end to end.
 
 Known limitation: the F5 time/date insertion writes **UTC**, because the standard
 library exposes no local time zone and the project carries no time-zone database
@@ -38,7 +43,7 @@ library exposes no local time zone and the project carries no time-zone database
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | UTF-8 (no BOM), CRLF, empty, in a new tab | `tests/editing/new_document.rs` |
 | NC-F002 | New tab (Ctrl+N) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Adds a tab without disturbing others | `crates/platform/src/ui/state.rs` |
-| NC-F003 | New window (Ctrl+Shift+N) | MANDATORY | M6 | SPECIFIED | NOT_STARTED | Independent top-level window | `tests/session/windows.rs` |
+| NC-F003 | New window (Ctrl+Shift+N) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Independent top-level window | `crates/platform/src/ui/windows.rs` |
 | NC-F004 | Open file (Ctrl+O) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Open dialog (§7); new tab; encoding/EOL detected | `crates/platform/src/ui/actions.rs` |
 | NC-F005 | Save (Ctrl+S) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Byte-correct in-place save; no data loss | `crates/platform/src/ui/actions.rs` |
 | NC-F006 | Save As + encoding (Ctrl+Shift+S) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Save-as dialog (§7); overwrite prompt (§9); chosen encoding applied | `crates/platform/src/ui/actions.rs` |
@@ -47,7 +52,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Closes the window | `crates/platform/src/ui/actions.rs` |
 | NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | NOT_STARTED | File ▸ Recent lists prior documents | `tests/session/recent.rs` |
 | NC-F011 | Session restore | MANDATORY | M6 | SPECIFIED | NOT_STARTED | Restores tabs incl. unsaved state | `tests/session/restore.rs` |
-| NC-F012 | Duplicate-open / document identity | MANDATORY | M6 | SPECIFIED | NOT_STARTED | New tab vs focus existing | `tests/session/identity.rs` |
+| NC-F012 | Duplicate-open / document identity | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | New tab vs focus existing | `crates/platform/src/ui/actions.rs` |
 
 ## B. Editing, selection, undo
 
@@ -94,10 +99,10 @@ library exposes no local time zone and the project carries no time-zone database
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-T001 | Tab strip + add-tab button | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Geometry matches the reference | `crates/platform/src/ui/title_bar.rs` |
-| NC-T002 | Tab switching Ctrl+Tab / Ctrl+Shift+Tab | MANDATORY | M6 | SPECIFIED | NOT_STARTED | Cyclic; works with N tabs | `tests/keyboard/tab_switch.rs` |
+| NC-T002 | Tab switching Ctrl+Tab / Ctrl+Shift+Tab | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Cyclic; works with N tabs | `crates/platform/src/ui/actions.rs` |
 | NC-T003 | Tab context menu | OPTIONAL | M6 | SPECIFIED | NOT_STARTED | Reference item set | `tests/session/tab_menu.rs` |
 | NC-T004 | Dirty indicator on tab/title | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Marker shown when dirty | `crates/platform/src/ui/title_bar.rs` |
-| NC-T005 | Close all | MANDATORY | M6 | SPECIFIED | NOT_STARTED | Prompt per dirty doc | `tests/session/close_all.rs` |
+| NC-T005 | Close all | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Prompt per dirty doc | `crates/platform/src/ui/actions.rs` |
 
 ## F. Markdown / formatting (M7)
 
@@ -147,13 +152,15 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 36 |
+| IMPLEMENTED | 40 |
 | IN_PROGRESS | 2 |
-| NOT_STARTED | 30 |
+| NOT_STARTED | 26 |
 | VERIFIED | 0 |
 
 > The engines (`nc-core`, `nc-textproc`) and the shell's core surfaces are
 > `IMPLEMENTED`, and the Find/Replace, Go-to, and Open/Save-as dialogs are built
-> on them, with the unsaved-changes, overwrite, and unrepresentable prompts. The
-> page-setup surface, the outside-change prompt, Markdown, and session work
-> remain. Nothing is `VERIFIED` until its acceptance tests pass end to end.
+> on them, with the unsaved-changes, overwrite, and unrepresentable prompts. M6
+> core — tab switching, Save all, duplicate-open identity (NC-F012), and New
+> window — is in place. The page-setup surface, the outside-change prompt, recent
+> files, session restore, Markdown, and the remaining session work are still
+> ahead. Nothing is `VERIFIED` until its acceptance tests pass end to end.
