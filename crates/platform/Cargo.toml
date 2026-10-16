@@ -11,6 +11,7 @@ authors.workspace = true
 [dependencies]
 nc-commands.workspace = true
 nc-core.workspace = true
+nc-markdown.workspace = true
 nc-textproc.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

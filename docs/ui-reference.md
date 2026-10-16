@@ -310,3 +310,27 @@ A file whose **canonical path** is already open is not opened a second time:
 `File ▸ Open`, and a command-line argument, focus the tab that already shows that
 file instead (NC-F012).
 
+
+## 12. Markdown formatting
+
+*Decision — the reference capture shows the controls (§1, §3) and the greyed
+`Markdown ▸` item (§2), but never what their items write.* The behaviours the
+screens cannot show are recorded here:
+
+| Control | Behaviour |
+| --- | --- |
+| Paragraph style (`H1 ▾`) | The seven styles are one per ATX level, in the order §3 lists them: Title `#`, Subtitle `##`, Heading `###`, Subheading `####`, Section `#####`, Subsection `######`, and `Body` as ordinary text. Choosing the style a line already carries takes the marker off, which is what makes the highlight in §3 worth showing. A line that carries a list or quote marker gives it up rather than ending up `- # Title`. |
+| Lists (`≡ ▾`) | Bulleted list writes `- `, numbered list numbers from `1.` across the selected lines. Choosing the kind the lines already are takes the markers off. Indentation is left alone, so the nesting of an item survives a change of kind. |
+| Increase / Decrease indent | One level is two spaces, added to or taken from the front of each selected line. |
+| `B` / `I` / `S` | Wrap the selection in `**`, `*`, `~~`. The selection then covers the markers, so pressing the same command again unwraps them; selecting the marked *words* (markers outside the selection) unmarks them. With only a caret, both markers are written and the caret stays between them. |
+| Link glyph (`Ctrl+K`) | **The capture includes no hyperlink dialog**, and §5–§9 specify none, so there is no item set to build one from: the command writes `[selected text]()` and leaves the caret between the parentheses to type the target. A bare caret gets `[]()` with the caret inside the brackets. |
+| Table glyph | **The capture includes no table dialog either**, so the command inserts a fixed GitHub pipe table — three columns, two body rows, header and delimiter rows — and leaves the caret in the first header cell. |
+| `Aa` clear formatting | Removes heading, list and blockquote markers, and the indentation in front of them; then `**`, `~~`, and paired `*`. Underscores stay, so `snake_case_words` survives, and so does a marker with nothing to pair with — `2 * 3 = 6` is arithmetic, not emphasis. |
+| Block commands and the selection | Headings, lists and indentation apply to every line a selection touches, which is what selecting partway through a paragraph means; an inline marker has to be inside the selection to be wrapped or removed. A selection that ends exactly at the start of a line does not drag that line in. |
+| Plain-text document | Every Markdown command is greyed (§2's `Markdown ▸` rule), and the handlers refuse to run on a plain document rather than write `**` into a `.txt` file. |
+| `.md` / `.markdown` | A file is Markdown by extension, matched case-insensitively; anything else, including `.mdown` and `.md.txt`, opens as plain text (NC-M001). |
+
+Markdown syntax the editor does not implement — footnotes, raw HTML, fenced code,
+definition lists, `==highlight==`, admonitions — is not parsed and not rewritten:
+it is text, it is saved back byte for byte, and formatting a neighbouring line
+does not touch it (NC-M011).

@@ -32,15 +32,19 @@ configuration directory on exit and reopens them on the next start when no files
 are named on the command line (`crates/platform/src/ui/session.rs`). `File ▸
 Recent` lists the documents opened so far, newest first, and choosing one opens
 it through the same path as `File ▸ Open`, so a document already open is focused
-rather than opened twice (`NC-F010`, `NC-F012`). M7 has begun: `nc-markdown` holds
-the formatting model, tested against its acceptance criteria but not yet reachable
-from the window (see the verification summary). The page-setup surface and the
-outside-change prompt are still ahead. Seven M6 behaviour criteria are `VERIFIED` by
-an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the dirty marker by
-its painted shapes (`crates/platform/src/ui/appearance.rs`); the remaining visual
-criteria and the tab context menu are not — see the verification summary for exactly
-which rows rest on what. Nothing is `VERIFIED` until its acceptance tests pass end to
-end.
+rather than opened twice (`NC-F010`, `NC-F012`). M7 is largely landed:
+`nc-markdown` holds the formatting model and the shell dispatches every
+`cmd.md.*` and `cmd.format.*` command against it, so bold, italic, strikethrough,
+headings, lists, nesting, links, tables and clear formatting all change the
+document through the toolbar, the menus and the shortcuts alike. What remains of
+M7 is the formatted view — the toggle exists but renders nothing different — and
+growing an existing table (see the verification summary). The page-setup surface
+and the outside-change prompt are still ahead. Seven M6 behaviour criteria are
+`VERIFIED` by an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the
+dirty marker by its painted shapes (`crates/platform/src/ui/appearance.rs`); the
+remaining visual criteria and the tab context menu are not — see the verification
+summary for exactly which rows rest on what. Nothing is `VERIFIED` until its
+acceptance tests pass end to end.
 
 Known limitation: `File ▸ Recent` is scoped to what the shell has open — a
 document opened and then closed drops off the list, and a restart rebuilds it
@@ -124,17 +128,17 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-M001 | `.md`/`.markdown` association & handling | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Correct path per extension | `tests/markdown/assoc.rs` |
-| NC-M002 | Syntax view vs formatted view toggle | MANDATORY | M7 | SPECIFIED | NOT_STARTED | No content/selection loss | `tests/markdown/view_switch.rs` |
-| NC-M003 | Bold / Italic (Ctrl+B / Ctrl+I) | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Serialization exact | `crates/markdown/tests/markdown/inline.rs` |
-| NC-M004 | Strikethrough | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | `~~` serialization | `crates/markdown/tests/markdown/inline.rs` |
-| NC-M005 | Headings | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | ATX output | `crates/markdown/tests/markdown/headings.rs` |
-| NC-M006 | Ordered/unordered lists + nesting | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Nested indent correct | `crates/markdown/tests/markdown/lists.rs` |
-| NC-M007 | Hyperlinks | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Link syntax exact | `crates/markdown/tests/markdown/links.rs` |
-| NC-M008 | Tables | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | Insert/expand semantics | `crates/markdown/tests/markdown/tables.rs` |
-| NC-M009 | Clear formatting | OPTIONAL | M7 | SPECIFIED | IN_PROGRESS | Result | `crates/markdown/tests/markdown/clear.rs` |
-| NC-M010 | Formatting participates in undo/redo | MANDATORY | M7 | SPECIFIED | NOT_STARTED | Single-step undo | `tests/markdown/undo.rs` |
-| NC-M011 | Malformed / unsupported syntax preserved | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | No silent normalization | `crates/markdown/tests/markdown/malformed.rs` |
+| NC-M001 | `.md`/`.markdown` association & handling | MANDATORY | M7 | SPECIFIED | VERIFIED | Correct path per extension | `crates/platform/src/ui/markdown.rs` |
+| NC-M002 | Syntax view vs formatted view toggle | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | No content/selection loss | `tests/markdown/view_switch.rs` |
+| NC-M003 | Bold / Italic (Ctrl+B / Ctrl+I) | MANDATORY | M7 | SPECIFIED | VERIFIED | Serialization exact | `crates/markdown/tests/markdown/inline.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M004 | Strikethrough | MANDATORY | M7 | SPECIFIED | VERIFIED | `~~` serialization | `crates/markdown/tests/markdown/inline.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M005 | Headings | MANDATORY | M7 | SPECIFIED | VERIFIED | ATX output | `crates/markdown/tests/markdown/headings.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M006 | Ordered/unordered lists + nesting | MANDATORY | M7 | SPECIFIED | VERIFIED | Nested indent correct | `crates/markdown/tests/markdown/lists.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M007 | Hyperlinks | MANDATORY | M7 | SPECIFIED | VERIFIED | Link syntax exact | `crates/markdown/tests/markdown/links.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M008 | Tables | MANDATORY | M7 | SPECIFIED | IMPLEMENTED | Insert/expand semantics | `crates/markdown/tests/markdown/tables.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M009 | Clear formatting | OPTIONAL | M7 | SPECIFIED | VERIFIED | Result | `crates/markdown/tests/markdown/clear.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M010 | Formatting participates in undo/redo | MANDATORY | M7 | SPECIFIED | VERIFIED | Single-step undo | `crates/platform/src/ui/markdown.rs` |
+| NC-M011 | Malformed / unsupported syntax preserved | MANDATORY | M7 | SPECIFIED | VERIFIED | No silent normalization | `crates/markdown/tests/markdown/malformed.rs`, `crates/platform/src/ui/markdown.rs` |
 
 ## G. Settings & desktop integration (M8)
 
@@ -168,14 +172,15 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 34 |
-| IN_PROGRESS | 10 |
-| NOT_STARTED | 15 |
-| VERIFIED | 8 |
+| IMPLEMENTED | 35 |
+| IN_PROGRESS | 3 |
+| NOT_STARTED | 12 |
+| VERIFIED | 17 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Eight rows are verified, by two suites that drive
-the real shell rather than a model of it.
+**What `VERIFIED` means here.** Seventeen rows are verified, by three suites: two
+that drive the real shell rather than a model of it, and the Markdown engine's own
+suite — whose criteria the shell suite then re-checks end to end.
 
 `crates/platform/src/ui/lifecycle.rs` settles M6's **behaviour** criteria: what a
 tab operation does to the documents, what each prompt asks and how each answer
@@ -204,18 +209,38 @@ needs a person looking at a running window. `NC-F003` needs a second real
 top-level window, and `NC-F010`'s Recent submenu needs its drawing observed — its
 list, ordering and capping are tested, the rendering is not.
 
-**What M7's `IN_PROGRESS` rows mean.** `nc-markdown` has landed, and eight of its
-rows are `IN_PROGRESS` rather than `IMPLEMENTED` — deliberately. The engine is
-tested against exactly the criteria the rows name (exact serialization, ATX output,
-nested indent, link syntax, the clear result, no silent normalization), but through
-`nc_markdown::…` rather than through the running application. `Ctrl+B` is registered
-in the registry and not yet dispatched, so nobody can trigger any of it from the
-window. Wiring the commands into the shell is what makes them `IMPLEMENTED`. Three
-M7 rows stay `NOT_STARTED` because the formatter cannot answer them at all:
-`NC-M001` (per-extension paths), `NC-M002` (the view toggle), and `NC-M010`
-(single-step undo) are properties of the shell and the document buffer, not of
-Markdown parsing. `NC-M008` has a second reason to wait: insertion is implemented
-and tested, expanding an existing table is not.
+**How M7's rows are verified.** `nc-markdown`'s own suite
+(`crates/markdown/tests/markdown/…`) asserts the byte-level criteria: exact
+serialization, ATX output, nested indent, link syntax, the clear result, and that
+any document reads back unchanged. `crates/platform/src/ui/markdown.rs` then fires
+each command through `actions::run` — the same function a menu click and a key
+chord reach — and asserts what lands in the document. That is what makes these rows
+`VERIFIED` rather than merely implemented: a user can cause the bytes, and the
+shortcut is registered, dispatchable, and greyed exactly where it should be. The
+same suite settles `NC-M010` (one command costs exactly one undo step, measured on
+`undo_depth`) and `NC-M001` (`.md` / `.markdown`, case-insensitive, and nothing
+else), and it settles `NC-M011` at file level: a `.md` holding a footnote, raw
+HTML, a fence and `==highlight==` opens and saves back byte for byte, CRLF
+included.
+
+Two M7 rows are not there, and each reason is a different one. `NC-M008` is
+`IMPLEMENTED`: inserting a table works and is tested at both levels, but the
+criterion also asks for expand semantics — growing a table that is already there —
+and that is not implemented. `NC-M002` is `IN_PROGRESS`, and the reason is in the
+code: `cmd.view.md_source` and `cmd.view.md_formatted` set `Shell::formatted_view`,
+and nothing in the editor reads it, so the toggle moves a check mark and renders
+the same text either way. There is no content or selection to lose because there is
+no second view, so the criterion has nothing to test yet. That is also why
+`LANDED_MILESTONE` in `crates/platform/src/ui/actions.rs` stays at 6 even though
+every milestone-7 command now has a dispatch arm: the wiring guard counts an arm as
+wired, and raising the constant would have it certify an inert command. It moves to
+7 when the formatted view is actually drawn.
+
+The toolbar needed correcting on the way. Its `H1 ▾` dropdown wrote the tab's
+paragraph style directly and its `≡ ▾` dropdown fired nothing at all, which meant
+the same feature behaved differently depending on where it was clicked; both now
+route through `CommandId`, and the table glyph — previously inert — fires
+`cmd.md.table`.
 
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no

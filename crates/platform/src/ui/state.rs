@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use nc_commands::AvailabilityContext;
+use nc_commands::{AvailabilityContext, CommandId};
 use nc_core::{Document, LineEnding};
 use nc_textproc::{Direction, Encoding, SearchOptions, TextFile};
 
@@ -57,6 +57,23 @@ impl ParagraphStyle {
             ParagraphStyle::Section => "Section",
             ParagraphStyle::Subsection => "Subsection",
             ParagraphStyle::Body => "Body",
+        }
+    }
+
+    /// The command this style fires.
+    ///
+    /// The dropdown and the menu have to do the same thing, and only the command
+    /// layer knows what a style writes, so the control names a command rather than
+    /// editing the tab itself.
+    pub const fn command(self) -> CommandId {
+        match self {
+            ParagraphStyle::Title => CommandId("cmd.format.title"),
+            ParagraphStyle::Subtitle => CommandId("cmd.format.subtitle"),
+            ParagraphStyle::Heading => CommandId("cmd.format.heading"),
+            ParagraphStyle::Subheading => CommandId("cmd.format.subheading"),
+            ParagraphStyle::Section => CommandId("cmd.format.section"),
+            ParagraphStyle::Subsection => CommandId("cmd.format.subsection"),
+            ParagraphStyle::Body => CommandId("cmd.format.body"),
         }
     }
 }

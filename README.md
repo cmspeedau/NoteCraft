@@ -32,10 +32,13 @@ unrepresentable prompts and the dirty indicator on the tab. M6 — tabs and
 lifecycle — is in progress: tab switching, Save all, duplicate-open identity,
 New window, recent files, and session restore (which reopens the previous
 documents, including unsaved work) are in place, and seven of its behaviour
-criteria are verified by an acceptance suite. M7 has started: `nc-markdown`
-implements the Markdown formatting model, with its own acceptance suite, but
-nothing in the window calls it yet. Settings and desktop integration, optional
-features, performance, validation, and release engineering are still ahead.
+criteria are verified by an acceptance suite. M7 is largely landed: `nc-markdown`
+implements the formatting model, and the shell dispatches every Markdown command
+against it, so bold, headings, lists, nesting, links, tables and clear formatting
+are reachable from the toolbar, the menus and the shortcuts. The formatted view and
+growing an existing table are what is left of it. Settings and desktop integration,
+optional features, performance, validation, and release engineering are still
+ahead.
 
 See [`docs/feature-matrix.md`](docs/feature-matrix.md) for per-feature
 implementation and verification status — it is the source of truth.

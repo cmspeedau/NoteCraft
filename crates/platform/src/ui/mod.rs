@@ -12,6 +12,10 @@ mod input;
 /// private to this crate.
 #[cfg(test)]
 mod lifecycle;
+/// The M7 acceptance suite. Test-only: it drives the shell's own state, which is
+/// private to this crate.
+#[cfg(test)]
+mod markdown;
 mod menu_bar;
 mod session;
 mod settings;

@@ -8,6 +8,10 @@
 //! The Find / Replace and Go to operations come from `nc-textproc::search`;
 //! this module only moves the caret, applies the replacement, and spells the
 //! notices (`docs/ui-reference.md` §5–§6).
+//!
+//! Markdown formatting is decided in `nc-markdown`; this module supplies the text
+//! and the selection, then applies whatever comes back as one document edit — so
+//! a format costs exactly one undo step (`NC-M010`).
 
 use std::ops::Range;
 use std::path::Path;
@@ -18,6 +22,7 @@ use crate::clock;
 use crate::ui::state::{DocKind, FileDialog, FileDialogMode, ParagraphStyle, Prompt, Shell, Tab};
 use nc_commands::CommandId;
 use nc_core::Clipboard;
+use nc_markdown::{Heading, Inline, ListKind, Outcome};
 use nc_textproc::search::find;
 use nc_textproc::{Direction, Encoding, SearchResult, TimeDate, find_all, go_to_line};
 
@@ -66,6 +71,26 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
         "cmd.edit.find_next" => search_step(shell, Direction::Forward),
         "cmd.edit.find_prev" => search_step(shell, Direction::Backward),
         "cmd.edit.go_to" => open_go_to(shell),
+        // --- Markdown formatting (M7) -----------------------------------
+        // The engine decides the bytes; `apply_format` writes them.
+        "cmd.md.bold" => format_inline(shell, Inline::Bold),
+        "cmd.md.italic" => format_inline(shell, Inline::Italic),
+        "cmd.md.strike" => format_inline(shell, Inline::Strike),
+        "cmd.md.link" => apply_format(shell, |text, selection| {
+            // The URL prompt is not built yet, so the command writes the syntax
+            // and leaves the caret between the parentheses to type into.
+            nc_markdown::insert_link(text, selection, "")
+        }),
+        "cmd.md.table" => apply_format(shell, |text, selection| {
+            // Ask-the-user-for-a-size is a dialog this build does not have; the
+            // reference's Table item has no captured dialog either.
+            nc_markdown::insert_table(text, selection, 3, 2)
+        }),
+        "cmd.md.clear" => apply_format(shell, nc_markdown::clear_formatting),
+        "cmd.md.bullets" => format_list(shell, ListKind::Bullet),
+        "cmd.md.numbering" => format_list(shell, ListKind::Numbered),
+        "cmd.md.indent_increase" => apply_format(shell, nc_markdown::indent_lines),
+        "cmd.md.indent_decrease" => apply_format(shell, nc_markdown::outdent_lines),
         "cmd.format.title" => set_paragraph(shell, ParagraphStyle::Title),
         "cmd.format.subtitle" => set_paragraph(shell, ParagraphStyle::Subtitle),
         "cmd.format.heading" => set_paragraph(shell, ParagraphStyle::Heading),
@@ -133,11 +158,29 @@ pub fn handles(id: CommandId) -> bool {
             | "cmd.format.section"
             | "cmd.format.subsection"
             | "cmd.format.body"
+            | "cmd.md.bold"
+            | "cmd.md.italic"
+            | "cmd.md.strike"
+            | "cmd.md.link"
+            | "cmd.md.table"
+            | "cmd.md.clear"
+            | "cmd.md.bullets"
+            | "cmd.md.numbering"
+            | "cmd.md.indent_increase"
+            | "cmd.md.indent_decrease"
     )
 }
 
 /// The highest roadmap milestone whose commands this build implements. Bumped
 /// as a milestone lands; `every_landed_command_is_wired` holds the two in step.
+///
+/// M7 is the reason this constant measures more than dispatch. Every milestone-7
+/// command now has an arm in [`run`], which on its own would justify raising this
+/// to 7 — but `cmd.view.md_source` and `cmd.view.md_formatted` only set
+/// `Shell::formatted_view`, which nothing in the editor reads, so the guard would
+/// certify a command that does nothing. A wiring test that counts arms cannot tell
+/// a wired command from a decorative one; this constant is where that judgement is
+/// recorded instead. Raise it when the formatted view is actually drawn.
 #[cfg(test)]
 pub const LANDED_MILESTONE: u8 = 6;
 
@@ -806,10 +849,118 @@ fn char_index(text: &str, byte: usize) -> usize {
     text[..byte].chars().count()
 }
 
+/// The toolbar's paragraph-style dropdown, which is how the reference exposes
+/// heading levels (`docs/ui-reference.md` §3).
+///
+/// *Decision — the reference lists the styles but never says what bytes they
+/// write.* They are one-to-one with the six ATX levels, in the order §3 lists them:
+/// Title `#` through Subsection `######`, with `Body` ordinary text. Asking for the
+/// level the lines already carry takes the marker off, which is what "the current
+/// style is highlighted" has to mean to be worth showing.
 fn set_paragraph(shell: &mut Shell, style: ParagraphStyle) {
-    if let Some(tab) = shell.active_tab_mut() {
+    let heading = heading_for(style);
+    apply_format(shell, move |text, selection| {
+        nc_markdown::set_heading(text, selection, heading)
+    });
+    // The dropdown label keeps showing the style the last command chose. Deriving
+    // it from the caret's line instead is its own piece of work; what matters here
+    // is that a plain document, which cannot be given a style at all, is not made
+    // to claim one.
+    if let Some(tab) = shell
+        .active_tab_mut()
+        .filter(|tab| tab.kind == DocKind::Markdown)
+    {
         tab.paragraph = style;
     }
+}
+
+/// The ATX level a paragraph style writes.
+fn heading_for(style: ParagraphStyle) -> Heading {
+    match style {
+        ParagraphStyle::Title => Heading::Level(1),
+        ParagraphStyle::Subtitle => Heading::Level(2),
+        ParagraphStyle::Heading => Heading::Level(3),
+        ParagraphStyle::Subheading => Heading::Level(4),
+        ParagraphStyle::Section => Heading::Level(5),
+        ParagraphStyle::Subsection => Heading::Level(6),
+        ParagraphStyle::Body => Heading::Body,
+    }
+}
+
+/// Runs a Markdown command against the active document and applies what comes back
+/// as one document edit.
+///
+/// Two gates, both deliberate. `Availability::Markdown` greys these commands for a
+/// plain document and the keyboard refuses to dispatch a greyed one, but a handler
+/// that wrote `**` into a `.txt` file would corrupt text nobody asked to have
+/// marked up — so the kind is checked here too. And a command that changes nothing
+/// must not leave a dirty flag or an undo step behind: a no-op is not an edit.
+fn apply_format(
+    shell: &mut Shell,
+    command: impl FnOnce(&str, nc_markdown::Range) -> Option<Outcome>,
+) {
+    let Some(tab) = shell.active_tab_mut() else {
+        return;
+    };
+    if tab.kind != DocKind::Markdown {
+        return;
+    }
+    let text = tab.text().to_string();
+    let selection = tab.document_mut().selection();
+    let Some(range) = nc_markdown::Range::new(selection.start(), selection.end()) else {
+        return;
+    };
+    let Some(outcome) = command(&text, range) else {
+        return;
+    };
+    if outcome.text == text {
+        return;
+    }
+    // Rewrite only the bytes that differ, so formatting one line of a long document
+    // costs the buffer no more than typing on that line would.
+    let (start, before_end, after_end) = changed_span(&text, &outcome.text);
+    let document = tab.document_mut();
+    if document.replace_range(start..before_end, &outcome.text[start..after_end]) {
+        document.select(outcome.selection.start, outcome.selection.end);
+    }
+}
+
+/// Toggles `kind` around the active document's selection.
+fn format_inline(shell: &mut Shell, kind: Inline) {
+    apply_format(shell, move |text, selection| {
+        nc_markdown::toggle_inline(text, selection, kind)
+    });
+}
+
+/// Applies `kind` to every line the selection touches.
+fn format_list(shell: &mut Shell, kind: ListKind) {
+    apply_format(shell, move |text, selection| {
+        nc_markdown::set_list(text, selection, kind)
+    });
+}
+
+/// The narrowest range of `before` that, replaced, yields `after`, as
+/// `(start, before_end, after_end)`: `before[start..before_end]` becomes
+/// `after[start..after_end]`.
+///
+/// Both strings are valid UTF-8 and share exactly this byte prefix and suffix, so
+/// either edge of either range is a safe character boundary: a common byte prefix
+/// of two valid strings cannot stop in the middle of a character.
+fn changed_span(before: &str, after: &str) -> (usize, usize, usize) {
+    let prefix = before
+        .bytes()
+        .zip(after.bytes())
+        .take_while(|(left, right)| left == right)
+        .count();
+    let mut suffix = 0usize;
+    while suffix < before.len() - prefix
+        && suffix < after.len() - prefix
+        && before.as_bytes()[before.len() - 1 - suffix]
+            == after.as_bytes()[after.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+    (prefix, before.len() - suffix, after.len() - suffix)
 }
 
 #[cfg(test)]
@@ -1380,5 +1531,56 @@ mod tests {
             shell.new_window_request,
             "the application will open a window"
         );
+    }
+
+    #[test]
+    fn a_changed_span_describes_the_edit_it_names() {
+        // Every pair is one a formatting command produces. The contract is that
+        // replacing `before[start..before_end]` with `after[start..after_end]`
+        // yields `after` — which is what `apply_format` relies on. Getting the
+        // after-side edge wrong (writing the whole tail instead) duplicated text
+        // wherever a marker landed with shared bytes on both sides of it.
+        for (before, after) in [
+            ("press the button", "press the but****ton"),
+            ("press the button", "press the **button**"),
+            ("## Chapter", "Chapter"),
+            ("**important** news", "important news"),
+            ("- one\n- two\n", "- one\n  - two\n"),
+            ("one\ntwo\n", "- one\n- two\n"),
+            ("", "|   |\n| --- |"),
+            ("see docs", "see []()docs"),
+            ("a", "a"),
+        ] {
+            let (start, before_end, after_end) = changed_span(before, after);
+            let rebuilt = format!(
+                "{}{}{}",
+                &before[..start],
+                &after[start..after_end],
+                &before[before_end..]
+            );
+            assert_eq!(
+                rebuilt, after,
+                "span ({start}, {before_end}, {after_end}) misdescribes {before:?} -> {after:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_changed_span_lands_on_character_boundaries() {
+        // Both edges are used as slice indices into the buffer, so a span that cut
+        // a multi-byte character would panic in `replace_range`.
+        for (before, after) in [
+            ("naïve résumé", "naïve ré****sumé"),
+            ("cafés and naïve", "cafés and **naïve**"),
+            ("日本語のテキスト", "日本語の****テキスト"),
+        ] {
+            let (start, before_end, after_end) = changed_span(before, after);
+            assert!(
+                before.is_char_boundary(start)
+                    && before.is_char_boundary(before_end)
+                    && after.is_char_boundary(after_end),
+                "{before:?} -> {after:?} split a character"
+            );
+        }
     }
 }

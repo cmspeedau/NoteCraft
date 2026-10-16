@@ -116,11 +116,13 @@ written without a window.
   tree that loses bytes; renders a formatted view derived from the source.
 - Serialization is deterministic.
 
-Landed in `crates/markdown` as M7's first step: `blocks` and `spans` for the
-tolerant read (every block carries the exact bytes it came from, so a document
-reads back byte for byte), and the formatting commands as source edits that return
-new text plus the remapped selection — which is what lets the shell treat a
-format as one ordinary undoable edit.
+Landed in `crates/markdown`: `blocks` and `spans` for the tolerant read (every
+block carries the exact bytes it came from, so a document reads back byte for
+byte), and the formatting commands as source edits that return new text plus the
+remapped selection. That shape is what lets `nc-platform` apply a format as one
+ordinary document edit — one replacement, so one undo step (`NC-M010`) — with the
+selection landing where the user expects it, which is in turn what makes one more
+press of the same shortcut the way back.
 
 ## 7. `nc-commands` — command layer
 

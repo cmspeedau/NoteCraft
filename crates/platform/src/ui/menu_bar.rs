@@ -119,8 +119,8 @@ fn command_label(label: &str, checked: Option<bool>) -> RichText {
 
 /// The formatting controls in the middle of the bar.
 fn format_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
-    paragraph_menu(shell, ui);
-    list_menu(ui, ctx);
+    paragraph_menu(shell, ui, ctx);
+    list_menu(shell, ui, ctx);
 
     let bold = widgets::rich_button(ui, RichText::new("B").strong()).on_hover_text("Bold");
     if bold.clicked() {
@@ -139,7 +139,10 @@ fn format_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
     if link.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.link"));
     }
-    let _ = widgets::icon_button(ui, "▦").on_hover_text("Insert a table");
+    let table = widgets::icon_button(ui, "▦").on_hover_text("Insert a table");
+    if table.clicked() {
+        actions::run(shell, ctx, CommandId("cmd.md.table"));
+    }
     let clear = widgets::rich_button(ui, RichText::new("Aa")).on_hover_text("Clear all formatting");
     if clear.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.clear"));
@@ -147,7 +150,12 @@ fn format_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
 }
 
 /// The `H1` paragraph-style dropdown.
-fn paragraph_menu(shell: &mut Shell, ui: &mut egui::Ui) {
+///
+/// The item list is the registry's, in §3's order, and choosing one fires its
+/// command rather than setting the style here: the dropdown, the menu, and the
+/// shortcut have to write the same bytes, and only `nc-markdown` decides what a
+/// style is.
+fn paragraph_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
     let current = shell
         .active_tab()
         .map(|tab| tab.paragraph)
@@ -158,36 +166,43 @@ fn paragraph_menu(shell: &mut Shell, ui: &mut egui::Ui) {
                 .selectable_label(style == current, style.label())
                 .clicked()
             {
-                if let Some(tab) = shell.active_tab_mut() {
-                    tab.paragraph = style;
-                }
+                actions::run(shell, ctx, style.command());
                 ui.close();
             }
         }
     });
 }
 
-/// The bulleted / numbered list dropdown.
-fn list_menu(ui: &mut egui::Ui, ctx: &Context) {
+/// The bulleted / numbered list dropdown (`docs/ui-reference.md` §3: *Bulleted
+/// list · Numbered list · Increase indent · Decrease indent, indent items greyed
+/// when they cannot apply*).
+///
+/// All four are the registry's commands, drawn with the registry's labels, so the
+/// dropdown cannot offer something the menu does not. What the registry can answer
+/// for "cannot apply" today is the document kind — these are Markdown-only
+/// commands — and that is what gates them. Whether a particular line has an indent
+/// to take away is not a rule `Availability` models, and this does not pretend to
+/// know it.
+fn list_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
+    let context = shell.availability();
     ui.menu_button("≡ ▾", |ui| {
-        let _ = ctx;
-        if ui.button("Bulleted list").clicked() {
-            ui.close();
-        }
-        if ui.button("Numbered list").clicked() {
-            ui.close();
-        }
-        if ui
-            .add_enabled(false, egui::Button::new("Increase indent"))
-            .clicked()
-        {
-            ui.close();
-        }
-        if ui
-            .add_enabled(false, egui::Button::new("Decrease indent"))
-            .clicked()
-        {
-            ui.close();
+        for id in [
+            "cmd.md.bullets",
+            "cmd.md.numbering",
+            "cmd.md.indent_increase",
+            "cmd.md.indent_decrease",
+        ] {
+            let Some(spec) = by_id(id) else {
+                continue;
+            };
+            let enabled = spec.is_available(context);
+            if ui
+                .add_enabled(enabled, egui::Button::new(spec.label))
+                .clicked()
+            {
+                actions::run(shell, ctx, spec.id);
+                ui.close();
+            }
         }
     });
 }

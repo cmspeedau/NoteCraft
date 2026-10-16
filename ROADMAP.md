@@ -284,11 +284,24 @@ that unsupported syntax (`[^1]:`, raw HTML, fences, `==highlight==`) survives
 untouched. Commands return the new text *and* the remapped selection, so the shell
 can apply a format as one undoable edit.
 
-What is not yet done is the half the exit criteria also ask for: nothing in the
-window calls the crate yet, so `Ctrl+B` is registered but not dispatched, and the
-view transition has no implementation. `NC-M001`, `NC-M002`, and `NC-M010` remain
-`NOT_STARTED` for that reason, and the eight formatting rows are `IN_PROGRESS` until
-the shell reaches them.
+What the exit criteria also ask for — view transitions — is the one part still
+open. `cmd.view.md_source` and `cmd.view.md_formatted` set `Shell::formatted_view`
+and nothing in the editor reads it, so the toggle moves a check mark and draws the
+same text either way; `NC-M002` stays open until a formatted view is actually
+rendered, and `LANDED_MILESTONE` stays at 6 so the wiring guard cannot certify that
+inert command. `NC-M008` asks for expand semantics as well as insertion, so
+growing an existing table is the other open piece.
+
+Everything a user can click is wired and tested through the shell
+(`crates/platform/src/ui/markdown.rs`, which fires each command through the same
+`actions::run` a menu item and a key chord reach): bold, italic, strikethrough, the
+seven paragraph styles as ATX levels, bulleted and numbered lists with two-space
+nesting, links, table insertion, clear formatting, one-undo-step formats, and the
+`.md` / `.markdown` decision. Two toolbar dropdowns that had been writing shell
+state directly — or nothing at all — now fire registry commands, and the table
+glyph is no longer inert. The reference shows no hyperlink or table-size dialog, so
+neither was invented: the commands write their syntax and leave the caret where the
+user types (§12).
 
 ### M8 — Settings and desktop integration
 

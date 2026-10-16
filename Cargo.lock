@@ -1884,6 +1884,7 @@ dependencies = [
  "egui",
  "nc-commands",
  "nc-core",
+ "nc-markdown",
  "nc-textproc",
  "thiserror 2.0.21",
  "tracing",
