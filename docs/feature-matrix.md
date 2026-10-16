@@ -33,8 +33,11 @@ are named on the command line (`crates/platform/src/ui/session.rs`). `File ▸
 Recent` lists the documents opened so far, newest first, and choosing one opens
 it through the same path as `File ▸ Open`, so a document already open is focused
 rather than opened twice (`NC-F010`, `NC-F012`). The page-setup surface, the
-outside-change prompt, the tab context menu (NC-T003), and the Markdown work are
-still ahead. Nothing is `VERIFIED` until its acceptance tests pass end to end.
+outside-change prompt, and the Markdown work are still ahead. Seven M6 behaviour
+criteria are now `VERIFIED` by an acceptance suite
+(`crates/platform/src/ui/lifecycle.rs`); the visual criteria and the tab context
+menu are not — see the verification summary for exactly which rows rest on what.
+Nothing is `VERIFIED` until its acceptance tests pass end to end.
 
 Known limitation: `File ▸ Recent` is scoped to what the shell has open — a
 document opened and then closed drops off the list, and a restart rebuilds it
@@ -52,17 +55,17 @@ library exposes no local time zone and the project carries no time-zone database
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | UTF-8 (no BOM), CRLF, empty, in a new tab | `tests/editing/new_document.rs` |
-| NC-F002 | New tab (Ctrl+N) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Adds a tab without disturbing others | `crates/platform/src/ui/state.rs` |
+| NC-F002 | New tab (Ctrl+N) | MANDATORY | M6 | SPECIFIED | VERIFIED | Adds a tab without disturbing others | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F003 | New window (Ctrl+Shift+N) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Independent top-level window | `crates/platform/src/ui/windows.rs` |
 | NC-F004 | Open file (Ctrl+O) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Open dialog (§7); new tab; encoding/EOL detected | `crates/platform/src/ui/actions.rs` |
 | NC-F005 | Save (Ctrl+S) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Byte-correct in-place save; no data loss | `crates/platform/src/ui/actions.rs` |
 | NC-F006 | Save As + encoding (Ctrl+Shift+S) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Save-as dialog (§7); overwrite prompt (§9); chosen encoding applied | `crates/platform/src/ui/actions.rs` |
 | NC-F007 | Print / Page setup (Ctrl+P) | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Page-setup dialog (§8); print pipeline | `tests/file_io/print.rs` |
-| NC-F008 | Close tab (Ctrl+W) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Closes the active tab; last tab resets to untitled | `crates/platform/src/ui/state.rs` |
-| NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Closes the window | `crates/platform/src/ui/actions.rs` |
+| NC-F008 | Close tab (Ctrl+W) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the active tab; last tab resets to untitled | `crates/platform/src/ui/lifecycle.rs` |
+| NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the window | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | IMPLEMENTED | File ▸ Recent lists prior documents | `crates/platform/src/ui/state.rs` |
-| NC-F011 | Session restore | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Restores tabs incl. unsaved state | `crates/platform/src/ui/session.rs` |
-| NC-F012 | Duplicate-open / document identity | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | New tab vs focus existing | `crates/platform/src/ui/actions.rs` |
+| NC-F011 | Session restore | MANDATORY | M6 | SPECIFIED | VERIFIED | Restores tabs incl. unsaved state | `crates/platform/src/ui/lifecycle.rs`, `…/ui/session.rs` |
+| NC-F012 | Duplicate-open / document identity | MANDATORY | M6 | SPECIFIED | VERIFIED | New tab vs focus existing | `crates/platform/src/ui/lifecycle.rs` |
 
 ## B. Editing, selection, undo
 
@@ -109,10 +112,10 @@ library exposes no local time zone and the project carries no time-zone database
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-T001 | Tab strip + add-tab button | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Geometry matches the reference | `crates/platform/src/ui/title_bar.rs` |
-| NC-T002 | Tab switching Ctrl+Tab / Ctrl+Shift+Tab | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Cyclic; works with N tabs | `crates/platform/src/ui/actions.rs` |
-| NC-T003 | Tab context menu | OPTIONAL | M6 | SPECIFIED | NOT_STARTED | Reference item set | `tests/session/tab_menu.rs` |
+| NC-T002 | Tab switching Ctrl+Tab / Ctrl+Shift+Tab | MANDATORY | M6 | SPECIFIED | VERIFIED | Cyclic; works with N tabs | `crates/platform/src/ui/lifecycle.rs` |
+| NC-T003 | Tab context menu | OPTIONAL | M6 | SPECIFIED | BLOCKED | Reference item set | blocked — see note below |
 | NC-T004 | Dirty indicator on tab/title | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Marker shown when dirty | `crates/platform/src/ui/title_bar.rs` |
-| NC-T005 | Close all | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Prompt per dirty doc | `crates/platform/src/ui/actions.rs` |
+| NC-T005 | Close all | MANDATORY | M6 | SPECIFIED | VERIFIED | Prompt per dirty doc | `crates/platform/src/ui/lifecycle.rs` |
 
 ## F. Markdown / formatting (M7)
 
@@ -162,16 +165,43 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 42 |
+| IMPLEMENTED | 35 |
 | IN_PROGRESS | 2 |
-| NOT_STARTED | 24 |
-| VERIFIED | 0 |
+| NOT_STARTED | 23 |
+| VERIFIED | 7 |
+| BLOCKED | 1 |
+
+**What `VERIFIED` means here.** The seven verified rows are M6's behaviour
+criteria, settled by the acceptance suite at
+`crates/platform/src/ui/lifecycle.rs`, which drives the shell's own state and the
+real session file: what a tab operation does to the documents, what each prompt
+asks and how each answer behaves, and what a restart brings back — including byte
+tests that a clean file is left untouched and an unsaved one comes back and saves
+in its own encoding and line endings.
+
+Four M6 rows stay `IMPLEMENTED` because their acceptance criteria are *visual* or
+need a real window, and this crate has neither in a test: `NC-T001` (tab strip
+geometry), `NC-T004` (the unsaved dot is painted), `NC-F003` (a second top-level
+window appears), and `NC-F010` (the Recent submenu draws its list — its list,
+ordering, and capping are tested, the drawing is not). `NC-F009` is verified
+against the observable the shell actually controls: the `Close` viewport command
+it emits.
+
+**NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
+item set", but `docs/ui-reference.md` documents no context menu anywhere — no
+match for "context menu" or "right-click" in the file — and §11 states outright
+that the reference capture does not include these behaviours. There is no item set
+to implement against, and AGENT.md §2 forbids inventing UI the reference does not
+show. It also appears under M2's outstanding surface in `ROADMAP.md`, so it is
+double-booked. Unblocking needs a decision from whoever owns the reference capture:
+capture the menu, or record a decided item set in the registry the way §3 allows.
 
 > The engines (`nc-core`, `nc-textproc`) and the shell's core surfaces are
 > `IMPLEMENTED`, and the Find/Replace, Go-to, and Open/Save-as dialogs are built
 > on them, with the unsaved-changes, overwrite, and unrepresentable prompts. M6
 > core — tab switching, Save all, duplicate-open identity (NC-F012), New
-> window, session restore (NC-F011), and recent files (NC-F010) — is in place.
-> The page-setup surface, the outside-change prompt, the tab context menu,
-> Markdown, and the remaining session work are still ahead. Nothing is
-> `VERIFIED` until its acceptance tests pass end to end.
+> window, session restore (NC-F011), and recent files (NC-F010) — is in place,
+> and M6's behaviour criteria are now `VERIFIED` against a dedicated acceptance
+> suite. The page-setup surface, the outside-change prompt, Markdown, and the
+> remaining session work are still ahead; the visual M6 criteria await a display,
+> and the tab context menu awaits a reference decision.

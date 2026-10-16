@@ -230,7 +230,22 @@ unsaved changes — under the user's configuration directory, and on the next st
 reads them back when no files are named on the command line
 (`crates/platform/src/ui/session.rs`). `File ▸ Recent` lists the documents opened
 this session, most recent first, and opening one from it follows the same identity
-rule as `File ▸ Open` (`NC-F010`). Outstanding: the tab context menu (NC-T003).
+rule as `File ▸ Open` (`NC-F010`). The milestone's behaviour criteria are now
+verified by an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) that drives
+the shell's own state and the real session file: a restart reopens every document
+with its unsaved text, encoding, and line endings intact and leaves a clean file
+byte for byte alone; closing prompts per dirty document and a cancel loses nothing;
+tab switching cycles for N tabs; a path already open is focused, a symlink to it
+recognised as the same document; and `Exit` emits the window-close command only
+once nothing is dirty.
+
+What remains is not code: the four visual criteria — tab strip geometry
+(`NC-T001`), the painted unsaved dot (`NC-T004`), a real second window
+(`NC-F003`), and the Recent submenu's drawing (`NC-F010`) — need a display this
+crate has no test access to, and the tab context menu (`NC-T003`) is blocked on
+the reference: `docs/ui-reference.md` documents no context menu at all, so its
+"Reference item set" does not exist to build against. It needs a capture, or a
+recorded decision, before it can be built.
 
 ### M7 — Markdown functionality
 

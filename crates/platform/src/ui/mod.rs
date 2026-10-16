@@ -4,6 +4,10 @@ mod actions;
 mod dialogs;
 mod editor;
 mod input;
+/// The M6 acceptance suite. Test-only: it drives the shell's own state, which is
+/// private to this crate.
+#[cfg(test)]
+mod lifecycle;
 mod menu_bar;
 mod session;
 mod settings;

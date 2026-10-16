@@ -38,8 +38,11 @@ const VERSION: &str = "notecraft-session 1";
 const FILE: &str = "session";
 
 /// One open document, as the session file records it.
+///
+/// `pub(crate)` rather than private so the lifecycle acceptance tests can drive a
+/// save and a restart through these exact parts, not a reimplementation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct TabState {
+pub(crate) struct TabState {
     /// Whether the document is plain text or Markdown.
     kind: DocKind,
     /// Where the document lives, or `None` for one that has never been saved.
@@ -61,7 +64,7 @@ struct TabState {
 
 /// Every open document and which one is active.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct Session {
+pub(crate) struct Session {
     /// The tabs, in strip order.
     tabs: Vec<TabState>,
     /// The index of the active tab.
@@ -92,7 +95,7 @@ pub fn save(shell: &Shell) -> io::Result<()> {
 
 impl Session {
     /// The session a shell's current documents describe.
-    fn of(shell: &Shell) -> Self {
+    pub(crate) fn of(shell: &Shell) -> Self {
         Self {
             tabs: shell.tabs.iter().map(TabState::of).collect(),
             active: shell.active,
@@ -101,7 +104,7 @@ impl Session {
 
     /// A shell holding these documents, or `Shell::new()` if none could be
     /// restored.
-    fn into_shell(self) -> Shell {
+    pub(crate) fn into_shell(self) -> Shell {
         let tabs: Vec<Tab> = self
             .tabs
             .into_iter()
@@ -295,7 +298,7 @@ enum SessionError {
 
 /// Writes `session` to `path`, through a sibling temporary file so an
 /// interrupted write cannot leave a half-written session behind.
-fn save_to(path: &Path, session: &Session) -> io::Result<()> {
+pub(crate) fn save_to(path: &Path, session: &Session) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -306,7 +309,7 @@ fn save_to(path: &Path, session: &Session) -> io::Result<()> {
 
 /// Reads the session at `path`, or `None` if it is missing, unreadable, or in a
 /// form this build does not understand.
-fn load_from(path: &Path) -> Option<Session> {
+pub(crate) fn load_from(path: &Path) -> Option<Session> {
     let text = fs::read_to_string(path).ok()?;
     Session::decode(&text).ok()
 }
