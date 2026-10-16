@@ -165,6 +165,7 @@ pub fn checked(toggle: Toggle, context: AvailabilityContext) -> bool {
         Toggle::StatusBar => context.status_bar_visible,
         Toggle::WordWrap => context.word_wrap,
         Toggle::FormattedView => context.formatted_view,
+        Toggle::SourceView => !context.formatted_view,
     }
 }
 

@@ -19,6 +19,7 @@ use std::path::Path;
 use egui::Context;
 
 use crate::clock;
+use crate::ui::editor;
 use crate::ui::state::{DocKind, FileDialog, FileDialogMode, ParagraphStyle, Prompt, Shell, Tab};
 use nc_commands::CommandId;
 use nc_core::Clipboard;
@@ -53,17 +54,17 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
         "cmd.view.zoom_in" => shell.zoom = (shell.zoom + 10).min(500),
         "cmd.view.zoom_out" => shell.zoom = shell.zoom.saturating_sub(10).max(10),
         "cmd.view.zoom_reset" => shell.zoom = 100,
-        "cmd.view.md_source" => {
-            if let Some(tab) = shell.active_tab_mut() {
-                tab.formatted = false;
-            }
-            shell.formatted_view = false;
-        }
+        "cmd.view.md_source" => back_to_source(shell),
         "cmd.view.md_formatted" => {
-            if let Some(tab) = shell.active_tab_mut() {
+            // Guarded by kind rather than by availability alone: the flag means
+            // "this document is being rendered", and a plain document has no
+            // Markdown to render.
+            if let Some(tab) = shell
+                .active_tab_mut()
+                .filter(|tab| tab.kind == DocKind::Markdown)
+            {
                 tab.formatted = true;
             }
-            shell.formatted_view = true;
         }
         "cmd.app.settings" => shell.show_settings = !shell.show_settings,
         "cmd.edit.find" => open_find(shell, false),
@@ -174,15 +175,15 @@ pub fn handles(id: CommandId) -> bool {
 /// The highest roadmap milestone whose commands this build implements. Bumped
 /// as a milestone lands; `every_landed_command_is_wired` holds the two in step.
 ///
-/// M7 is the reason this constant measures more than dispatch. Every milestone-7
-/// command now has an arm in [`run`], which on its own would justify raising this
-/// to 7 — but `cmd.view.md_source` and `cmd.view.md_formatted` only set
-/// `Shell::formatted_view`, which nothing in the editor reads, so the guard would
-/// certify a command that does nothing. A wiring test that counts arms cannot tell
-/// a wired command from a decorative one; this constant is where that judgement is
-/// recorded instead. Raise it when the formatted view is actually drawn.
+/// M7 is the reason this constant measures more than dispatch. When every
+/// milestone-7 command had an arm in [`run`] but `cmd.view.md_formatted` only set a
+/// flag the editor never read, raising it would have had the guard certify a
+/// decorative command — a test that counts arms cannot tell a wired command from an
+/// inert one. It waits for the effect to exist. Now that [`crate::ui::markdown_view`]
+/// renders the document from its own Markdown, the toggle changes what is on screen
+/// and 7 is honest.
 #[cfg(test)]
-pub const LANDED_MILESTONE: u8 = 6;
+pub const LANDED_MILESTONE: u8 = 7;
 
 /// Undoes the last edit in the active document (`Ctrl+Z`).
 pub fn undo(shell: &mut Shell) {
@@ -872,6 +873,31 @@ fn set_paragraph(shell: &mut Shell, style: ParagraphStyle) {
     {
         tab.paragraph = style;
     }
+}
+
+/// Shows the active document as source again, and puts the caret back.
+///
+/// The formatted view has no caret of its own — it renders, it does not edit — so
+/// the document keeps its selection the whole time it is shown. Coming back is the
+/// direction that could lose something: the editor widget is a fresh one, and a new
+/// `egui` text area starts at offset zero. Queuing the document's own selection
+/// means the first frame it reappears puts the caret where the user left it rather
+/// than at the start of the file, which is what `NC-M002`'s "no content/selection
+/// loss" turns into in this design.
+fn back_to_source(shell: &mut Shell) {
+    let Some(tab) = shell.active_tab_mut() else {
+        return;
+    };
+    tab.formatted = false;
+    let selection = tab.document_mut().selection();
+    let (anchor, head) = {
+        let text = tab.text();
+        (
+            editor::char_index(text, selection.anchor()),
+            editor::char_index(text, selection.head()),
+        )
+    };
+    shell.pending_selection = Some((head, anchor));
 }
 
 /// The ATX level a paragraph style writes.

@@ -583,3 +583,133 @@ fn formatting_a_line_leaves_unsupported_syntax_on_other_lines_alone() {
 
     assert_eq!(text(&shell), "[^1]: a footnote\n\nsee **the docs**\n");
 }
+
+// ---- NC-M002 — view toggle: "No content/selection loss" ----------------------
+
+#[test]
+fn the_formatted_view_changes_nothing_in_the_document() {
+    let mut shell = selected("# Title\n\n- one\n- two\n", "one");
+    let before = text(&shell).to_owned();
+    let selection = range(&mut shell);
+    let steps = depth(&mut shell);
+    let dirty = shell.active_tab().expect("a tab").is_dirty();
+
+    fire(&mut shell, "cmd.view.md_formatted");
+
+    assert!(shell.formatted_view(), "the tab is being rendered");
+    assert_eq!(text(&shell), before, "the source is untouched");
+    assert_eq!(range(&mut shell), selection, "and so is the selection");
+    assert_eq!(depth(&mut shell), steps, "a view is not an edit");
+    assert_eq!(
+        shell.active_tab().expect("a tab").is_dirty(),
+        dirty,
+        "nor does switching mark the document unsaved"
+    );
+}
+
+#[test]
+fn coming_back_to_the_source_view_puts_the_caret_back_where_it_was() {
+    let mut shell = selected("# Title\n\nsee the docs\n", "the docs");
+    let wanted = range(&mut shell);
+
+    fire(&mut shell, "cmd.view.md_formatted");
+    fire(&mut shell, "cmd.view.md_source");
+
+    assert!(!shell.formatted_view(), "the source view is showing again");
+    assert_eq!(
+        range(&mut shell),
+        wanted,
+        "the document never lost its selection"
+    );
+    // The queued pair is `(primary, secondary)` in character indices, and this
+    // document is ASCII, so the offsets agree with the byte range above.
+    let queued = shell
+        .pending_selection
+        .expect("the editor is told where the caret was");
+    assert_eq!(
+        queued,
+        (wanted.1, wanted.0),
+        "a fresh editor widget starts at zero, so the caret has to be handed back"
+    );
+}
+
+#[test]
+fn a_markdown_document_opens_in_the_source_view_so_it_opens_editable() {
+    let scratch = Scratch::new("default-view");
+    let path = scratch.file("notes.md", b"# Title\n");
+
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(&path).expect("the file opens");
+    shell.active = 0;
+    assert!(
+        !shell.formatted_view(),
+        "a rendered view does not take typing, so it cannot be where a file opens"
+    );
+
+    shell.open_tab(DocKind::Markdown);
+    assert!(
+        !shell.formatted_view(),
+        "and neither does a new Markdown tab"
+    );
+}
+
+#[test]
+fn the_view_choice_belongs_to_the_tab_being_shown() {
+    let mut shell = markdown("# first\n");
+    shell.open_tab(DocKind::Markdown);
+    let second = shell.tabs.len() - 1;
+
+    fire(&mut shell, "cmd.view.md_formatted");
+    assert!(shell.formatted_view(), "the second tab is rendered");
+
+    shell.active = 0;
+    assert!(!shell.formatted_view(), "the first was never switched");
+    shell.active = second;
+    assert!(shell.formatted_view(), "and the second still is");
+}
+
+#[test]
+fn a_plain_document_has_nothing_to_render() {
+    let scratch = Scratch::new("plain-view");
+    let path = scratch.file("notes.txt", b"# looks like a heading");
+
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(&path).expect("the file opens");
+    shell.active = 0;
+
+    fire(&mut shell, "cmd.view.md_formatted");
+
+    assert!(
+        !shell.tabs[0].formatted,
+        "the flag is not even set for a plain document"
+    );
+    assert!(!shell.formatted_view(), "and there is no view to show");
+    assert_eq!(
+        text(&shell),
+        "# looks like a heading",
+        "and nothing was rewritten"
+    );
+}
+
+#[test]
+fn a_format_survives_a_round_trip_through_the_view() {
+    // The view is derived, so the buffer and its undo history run straight through
+    // it: one undo after the trip takes back the format made after the trip, not
+    // the trip itself.
+    let mut shell = selected("press the button", "button");
+    fire(&mut shell, "cmd.md.bold");
+
+    fire(&mut shell, "cmd.view.md_formatted");
+    fire(&mut shell, "cmd.view.md_source");
+    assert_eq!(text(&shell), "press the **button**");
+
+    fire(&mut shell, "cmd.md.strike");
+    assert_eq!(text(&shell), "press the ~~**button**~~");
+
+    let tab = shell.active_tab_mut().expect("a tab");
+    assert!(
+        tab.document_mut().undo(),
+        "the history did not break at the view"
+    );
+    assert_eq!(tab.text(), "press the **button**");
+}

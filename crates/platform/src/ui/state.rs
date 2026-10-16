@@ -496,7 +496,11 @@ pub struct Tab {
     pub kind: DocKind,
     /// The paragraph style selected in the toolbar.
     pub paragraph: ParagraphStyle,
-    /// Whether the paragraph style is being edited in formatted view.
+    /// Whether this document is shown in the formatted view.
+    ///
+    /// Per tab rather than per window, so two Markdown documents can be seen two
+    /// ways at once. Only a Markdown tab can be in it: the rendered view is derived
+    /// from Markdown syntax, and a plain document has none to derive it from.
     pub formatted: bool,
 }
 
@@ -512,12 +516,16 @@ impl Tab {
     }
 
     /// A new, empty Markdown document.
+    ///
+    /// It starts in the source view, like every other way a Markdown document
+    /// arrives: the formatted view renders and does not edit, so a document that
+    /// opened there would open unreadable to typing (`docs/ui-reference.md` §12).
     pub fn markdown() -> Self {
         Self {
             file: TextFile::untitled(),
             kind: DocKind::Markdown,
             paragraph: ParagraphStyle::Body,
-            formatted: true,
+            formatted: false,
         }
     }
 
@@ -533,7 +541,7 @@ impl Tab {
                 DocKind::Plain
             },
             paragraph: ParagraphStyle::Body,
-            formatted: markdown,
+            formatted: false,
         })
     }
 
@@ -554,7 +562,7 @@ impl Tab {
                 DocKind::Plain
             },
             paragraph: ParagraphStyle::Body,
-            formatted: markdown,
+            formatted: false,
         })
     }
 
@@ -566,7 +574,7 @@ impl Tab {
             file,
             kind,
             paragraph: ParagraphStyle::Body,
-            formatted: kind == DocKind::Markdown,
+            formatted: false,
         }
     }
 
@@ -582,6 +590,11 @@ impl Tab {
     /// The document text.
     pub fn text(&self) -> &str {
         self.file.text()
+    }
+
+    /// The document, to read.
+    pub fn document(&self) -> &Document {
+        self.file.document()
     }
 
     /// The document, to edit in place.
@@ -657,8 +670,6 @@ pub struct Shell {
     pub status_bar_visible: bool,
     /// Whether word wrap is on (`View ▸ Word wrap`).
     pub word_wrap: bool,
-    /// Whether a Markdown document is shown formatted.
-    pub formatted_view: bool,
     /// The zoom percentage.
     pub zoom: u32,
     /// The chosen app theme.
@@ -711,7 +722,6 @@ impl Shell {
             show_settings: false,
             status_bar_visible: true,
             word_wrap: true,
-            formatted_view: true,
             zoom: 100,
             theme: AppTheme::Dark,
             font_family: FONT_FAMILIES[0],
@@ -743,6 +753,16 @@ impl Shell {
         self.tabs.get_mut(self.active)
     }
 
+    /// Which view the active document is shown in.
+    ///
+    /// The choice belongs to the tab, not the shell: two Markdown tabs can be in
+    /// different views, and a plain one has nothing to render, so a tab that is not
+    /// Markdown reports source view whatever its flag says.
+    pub fn formatted_view(&self) -> bool {
+        self.active_tab()
+            .is_some_and(|tab| tab.kind == DocKind::Markdown && tab.formatted)
+    }
+
     /// The availability context derived from the current state.
     pub fn availability(&self) -> AvailabilityContext {
         let tab = self.active_tab();
@@ -759,7 +779,7 @@ impl Shell {
             tab_count: self.tabs.len(),
             status_bar_visible: self.status_bar_visible,
             word_wrap: self.word_wrap,
-            formatted_view: self.formatted_view,
+            formatted_view: self.formatted_view(),
         }
     }
 

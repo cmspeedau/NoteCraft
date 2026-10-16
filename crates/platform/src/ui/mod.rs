@@ -16,6 +16,7 @@ mod lifecycle;
 /// private to this crate.
 #[cfg(test)]
 mod markdown;
+mod markdown_view;
 mod menu_bar;
 mod session;
 mod settings;

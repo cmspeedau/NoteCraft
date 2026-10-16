@@ -32,14 +32,15 @@ configuration directory on exit and reopens them on the next start when no files
 are named on the command line (`crates/platform/src/ui/session.rs`). `File ▸
 Recent` lists the documents opened so far, newest first, and choosing one opens
 it through the same path as `File ▸ Open`, so a document already open is focused
-rather than opened twice (`NC-F010`, `NC-F012`). M7 is largely landed:
-`nc-markdown` holds the formatting model and the shell dispatches every
-`cmd.md.*` and `cmd.format.*` command against it, so bold, italic, strikethrough,
-headings, lists, nesting, links, tables and clear formatting all change the
-document through the toolbar, the menus and the shortcuts alike. What remains of
-M7 is the formatted view — the toggle exists but renders nothing different — and
-growing an existing table (see the verification summary). The page-setup surface
-and the outside-change prompt are still ahead. Seven M6 behaviour criteria are
+rather than opened twice (`NC-F010`, `NC-F012`). M7 is landed except for one
+row: `nc-markdown` holds the formatting model, the shell dispatches every `cmd.md.*`
+and `cmd.format.*` command against it, and `View ▸ Markdown` really does switch a
+document between its source and a rendering of it — so bold, italic, strikethrough,
+headings, lists, nesting, links, tables, clear formatting and the view toggle all
+change what the user sees, from the toolbar, the menus and the shortcuts alike. What
+remains of M7 is growing an existing table, `NC-M008`'s expand semantics (see the
+verification summary). The page-setup surface and the outside-change prompt are still
+ahead. Seven M6 behaviour criteria are
 `VERIFIED` by an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the
 dirty marker by its painted shapes (`crates/platform/src/ui/appearance.rs`); the
 remaining visual criteria and the tab context menu are not — see the verification
@@ -129,7 +130,7 @@ library exposes no local time zone and the project carries no time-zone database
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-M001 | `.md`/`.markdown` association & handling | MANDATORY | M7 | SPECIFIED | VERIFIED | Correct path per extension | `crates/platform/src/ui/markdown.rs` |
-| NC-M002 | Syntax view vs formatted view toggle | MANDATORY | M7 | SPECIFIED | IN_PROGRESS | No content/selection loss | `tests/markdown/view_switch.rs` |
+| NC-M002 | Syntax view vs formatted view toggle | MANDATORY | M7 | SPECIFIED | VERIFIED | No content/selection loss | `crates/platform/src/ui/markdown.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-M003 | Bold / Italic (Ctrl+B / Ctrl+I) | MANDATORY | M7 | SPECIFIED | VERIFIED | Serialization exact | `crates/markdown/tests/markdown/inline.rs`, `crates/platform/src/ui/markdown.rs` |
 | NC-M004 | Strikethrough | MANDATORY | M7 | SPECIFIED | VERIFIED | `~~` serialization | `crates/markdown/tests/markdown/inline.rs`, `crates/platform/src/ui/markdown.rs` |
 | NC-M005 | Headings | MANDATORY | M7 | SPECIFIED | VERIFIED | ATX output | `crates/markdown/tests/markdown/headings.rs`, `crates/platform/src/ui/markdown.rs` |
@@ -173,14 +174,14 @@ library exposes no local time zone and the project carries no time-zone database
 | --- | --- |
 | Total tracked features | 68 |
 | IMPLEMENTED | 35 |
-| IN_PROGRESS | 3 |
+| IN_PROGRESS | 2 |
 | NOT_STARTED | 12 |
-| VERIFIED | 17 |
+| VERIFIED | 18 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Seventeen rows are verified, by three suites: two
-that drive the real shell rather than a model of it, and the Markdown engine's own
-suite — whose criteria the shell suite then re-checks end to end.
+**What `VERIFIED` means here.** Eighteen rows are verified, by suites that drive the
+real shell rather than a model of it, and by the Markdown engine's own suite — whose
+criteria the shell suite then re-checks end to end.
 
 `crates/platform/src/ui/lifecycle.rs` settles M6's **behaviour** criteria: what a
 tab operation does to the documents, what each prompt asks and how each answer
@@ -223,19 +224,31 @@ else), and it settles `NC-M011` at file level: a `.md` holding a footnote, raw
 HTML, a fence and `==highlight==` opens and saves back byte for byte, CRLF
 included.
 
-Two M7 rows are not there, and each reason is a different one. `NC-M008` is
-`IMPLEMENTED`: inserting a table works and is tested at both levels, but the
-criterion also asks for expand semantics — growing a table that is already there —
-and that is not implemented. `NC-M002` is `IN_PROGRESS`, and the reason is in the
-code: `cmd.view.md_source` and `cmd.view.md_formatted` set `Shell::formatted_view`,
-and nothing in the editor reads it, so the toggle moves a check mark and renders
-the same text either way. There is no content or selection to lose because there is
-no second view, so the criterion has nothing to test yet. That is also why
-`LANDED_MILESTONE` in `crates/platform/src/ui/actions.rs` stays at 6 even though
-every milestone-7 command now has a dispatch arm: the wiring guard counts an arm as
-wired, and raising the constant would have it certify an inert command. It moves to
-7 when the formatted view is actually drawn.
+One M7 row is not there, and its reason is a missing feature rather than a missing
+test. `NC-M008` is `IMPLEMENTED`: inserting a table works and is tested at both
+levels, but the criterion also asks for expand semantics — growing a table that is
+already there — and that is not implemented.
 
+`NC-M002` is verified now, and why it could not be before is worth keeping.
+`cmd.view.md_source` and `cmd.view.md_formatted` used to set a flag that nothing read:
+the registry declared `Toggle::FormattedView` and no command carried it, so the pair
+did not even show a check mark. A toggle with no visible effect has no content or
+selection that could be lost, so the criterion had nothing to hold.
+`crates/platform/src/ui/markdown_view.rs` now renders a document from its own
+Markdown, and `crates/platform/src/ui/markdown.rs` settles what the criterion asks:
+switching views leaves the text, the selection, the dirty flag and the undo depth
+untouched; one undo after a round trip takes back the format made *after* the trip,
+not the trip; and coming back queues the caret into the editor widget, which is a
+fresh one and would otherwise have started at offset zero and moved the user to the
+top of the file. `markdown_view.rs`'s own tests pin the rendering decisions apart from
+the painting, and `appearance.rs` reads them back off the painted frame: a heading is
+painted larger and with no `#` in front of it, `**` becomes weight rather than glyphs,
+a nested item is drawn to the right of its parent, and syntax the parser does not know
+(`[^1]:`, raw HTML, `==highlight==`, an unpaired `**`) is painted exactly as written —
+because a view that hid what it could not parse would show the user a document that is
+not the one in the file. With that in place `LANDED_MILESTONE` in
+`crates/platform/src/ui/actions.rs` reads 7: every milestone-7 command now changes
+something a user can see, which is the bar that constant exists to hold.
 The toolbar needed correcting on the way. Its `H1 ▾` dropdown wrote the tab's
 paragraph style directly and its `≡ ▾` dropdown fired nothing at all, which meant
 the same feature behaved differently depending on where it was clicked; both now

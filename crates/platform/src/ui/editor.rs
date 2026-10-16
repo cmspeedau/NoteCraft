@@ -11,12 +11,17 @@ use egui::text::{CCursor, CCursorRange, CharIndex};
 use egui::{FontId, Margin};
 use nc_core::Document;
 
+use crate::ui::markdown_view;
 use crate::ui::state::{Shell, Tab};
 use crate::ui::theme;
 
 /// The editor widget's id. Fixed so a queued selection can be stored under it
 /// and tests can read the caret back.
 pub const EDITOR_ID: &str = "notecraft_editor";
+
+/// The editor's font size in points at 100% zoom. The formatted view scales from
+/// the same number, so a normal line measures the same in either view.
+const EDIT_FONT_SIZE: f32 = 15.0;
 
 /// Draws the editor for the active tab, updates the caret position, and applies
 /// any selection the shell has queued (Find / Go to).
@@ -44,12 +49,27 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
                 f32::INFINITY
             };
 
+            // The formatted view is derived from the source and read-only, so it
+            // claims no caret: the document keeps the selection it already holds for
+            // the whole time it is shown, which is why the switch cannot lose one.
+            // All the view has to keep honest is the status bar's line and column.
+            if shell.formatted_view() {
+                let tab = &shell.tabs[index];
+                markdown_view::show(tab, ui, EDIT_FONT_SIZE * zoom);
+                let caret = char_index(tab.text(), tab.document().caret());
+                let (line, column) = line_column(tab.text(), caret);
+                shell.caret = caret;
+                shell.line = line;
+                shell.column = column;
+                return;
+            }
+
             let tab = &mut shell.tabs[index];
             let output = {
                 let mut buffer = DocBuffer(tab.document_mut());
                 egui::TextEdit::multiline(&mut buffer)
                     .id(egui::Id::new(EDITOR_ID))
-                    .font(FontId::monospace(15.0 * zoom))
+                    .font(FontId::monospace(EDIT_FONT_SIZE * zoom))
                     .desired_width(width)
                     .frame(egui::Frame::NONE)
                     .show(ui)
@@ -156,6 +176,16 @@ impl egui::TextBuffer for DocBuffer<'_> {
     fn type_id(&self) -> core::any::TypeId {
         core::any::TypeId::of::<DocBuffer<'_>>()
     }
+}
+
+/// The character index of a byte offset, clamped to the text.
+///
+/// `egui` addresses text by character index and the document by byte offset, so a
+/// selection has to travel back across the same boundary it came from — the rule
+/// `AGENT.md` §4 sets for the editor.
+pub(crate) fn char_index(text: &str, byte: usize) -> usize {
+    let byte = byte.min(text.len());
+    text[..byte].chars().count()
 }
 
 /// The byte offset of a character index, clamped to the text.

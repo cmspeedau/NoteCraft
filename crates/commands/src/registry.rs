@@ -38,6 +38,9 @@ pub enum Toggle {
     WordWrap,
     /// The `View ▸ Markdown ▸ Formatted view` check state.
     FormattedView,
+    /// The `View ▸ Markdown ▸ Source view` check state: the same field seen from
+    /// the other item, so the pair shows which of the two views is showing.
+    SourceView,
 }
 
 /// The roadmap milestone that first gives a command a real effect.
@@ -436,28 +439,30 @@ pub const REGISTRY: &[CommandSpec] = &[
         Toggle::WordWrap,
         3,
     ),
-    cmd_placed(
+    cmd_toggle(
         "cmd.view.md_source",
         306,
         "Source view",
-        MenuPlacement {
+        Some(MenuPlacement {
             menu: TopMenu::View,
             submenu: Some("Markdown"),
-        },
+        }),
         None,
         Availability::Markdown,
+        Toggle::SourceView,
         7,
     ),
-    cmd_placed(
+    cmd_toggle(
         "cmd.view.md_formatted",
         307,
         "Formatted view",
-        MenuPlacement {
+        Some(MenuPlacement {
             menu: TopMenu::View,
             submenu: Some("Markdown"),
-        },
+        }),
         None,
         Availability::Markdown,
+        Toggle::FormattedView,
         7,
     ),
     // --- Format (toolbar) ----------------------------------------------

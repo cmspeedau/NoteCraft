@@ -266,3 +266,171 @@ fn answering_the_unsaved_prompt_clears_the_dot() {
         "the closed document no longer marks anything"
     );
 }
+
+// ---- M7: the formatted view, seen as painted text ---------------------------
+
+/// A Markdown tab holding `text`, optionally asking for the formatted view.
+///
+/// The flag is set here rather than fired through `cmd.view.md_formatted` because
+/// the command's behaviour is [`crate::ui::markdown`]'s business; this suite asks
+/// only what the shell paints once a tab asks to be rendered.
+fn rendered(text: &str, formatted: bool) -> Shell {
+    let mut shell = Shell::new();
+    shell.open_tab(DocKind::Markdown);
+    let index = shell.active;
+    let tab = &mut shell.tabs[index];
+    tab.document_mut().insert_str(text);
+    tab.formatted = formatted;
+    shell
+}
+
+/// The text painted this frame, with the largest font size in each run.
+///
+/// The formatted view is nothing but text, so this is how it is observed: a galley
+/// holding the words *without* their markers, at a larger size, is the evidence that
+/// the view rendered the document instead of redrawing its source.
+fn painted_text(output: &egui::FullOutput) -> Vec<(String, f32)> {
+    output
+        .shapes
+        .iter()
+        .filter_map(|clipped| match &clipped.shape {
+            Shape::Text(shape) => {
+                // One label is one galley with one format, so this is the size the
+                // run was laid out at rather than some average over the frame.
+                let size = shape
+                    .galley
+                    .job
+                    .sections
+                    .iter()
+                    .map(|section| section.format.font_id.size)
+                    .fold(0.0f32, f32::max);
+                Some((shape.galley.text().to_owned(), size))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The largest size at which `needle` appears anywhere in the frame.
+fn painted_at(output: &egui::FullOutput, needle: &str) -> Option<f32> {
+    let mut largest: Option<f32> = None;
+    for (_, size) in painted_text(output)
+        .into_iter()
+        .filter(|(text, _)| text.contains(needle))
+    {
+        largest = Some(largest.map_or(size, |seen| seen.max(size)));
+    }
+    largest
+}
+
+#[test]
+fn the_rendered_view_paints_a_heading_larger_than_the_source_view_does() {
+    let source = paint(&mut rendered("# Heading text", false));
+    let formatted = paint(&mut rendered("# Heading text", true));
+
+    assert!(
+        painted_text(&source)
+            .iter()
+            .any(|(text, _)| text.contains("# Heading text")),
+        "the source view paints the line the file holds, markers included"
+    );
+    assert!(
+        !painted_text(&formatted)
+            .iter()
+            .any(|(text, _)| text.contains("# Heading")),
+        "the rendered view paints no ATX marker"
+    );
+
+    let rendered = painted_at(&formatted, "Heading text").expect("the heading is painted");
+    let typed = painted_at(&source, "Heading text").expect("and in the source view too");
+    assert!(
+        rendered > typed,
+        "a heading is drawn larger than the prose under it: {rendered} against {typed}"
+    );
+}
+
+#[test]
+fn the_rendered_view_paints_emphasis_as_style_rather_than_as_asterisks() {
+    let formatted = paint(&mut rendered("a **marked** word", true));
+    let painted: Vec<String> = painted_text(&formatted)
+        .into_iter()
+        .map(|(text, _)| text)
+        .collect();
+    assert!(
+        painted.iter().any(|text| text.contains("marked")),
+        "the emphasised words are painted, got {painted:?}"
+    );
+    assert!(
+        !painted.iter().any(|text| text.contains("**")),
+        "and the markers are what made it bold, not characters on screen: {painted:?}"
+    );
+
+    let source = paint(&mut rendered("a **marked** word", false));
+    assert!(
+        painted_text(&source)
+            .iter()
+            .any(|(text, _)| text.contains("**marked**")),
+        "the source view still shows the bytes a user edits"
+    );
+}
+
+#[test]
+fn the_rendered_view_paints_syntax_it_cannot_render_exactly_as_written() {
+    // NC-M011's rule seen from the other side. A view that hid what it could not
+    // parse would show the user a document that is not the one in the file, which
+    // is the failure the whole loss-keeping design exists to avoid.
+    for unrendered in [
+        "[^1]: a footnote",
+        "<div class=\"note\">",
+        "==highlighted==",
+        "2 * 3 = 6",
+        "```",
+    ] {
+        let output = paint(&mut rendered(unrendered, true));
+        assert!(
+            painted_text(&output)
+                .iter()
+                .any(|(text, _)| text.contains(unrendered)),
+            "{unrendered:?} vanished from the rendered view"
+        );
+    }
+}
+
+#[test]
+fn the_rendered_view_indents_a_nested_item_it_cannot_show_otherwise() {
+    // A bullet's nesting is the only thing indentation carries, so a rendered view
+    // that flattened it would lose the document's structure on screen.
+    let output = paint(&mut rendered("- one\n  - two\n", true));
+    let painted = painted_text(&output);
+    assert!(
+        painted.iter().any(|(text, _)| text.contains("one"))
+            && painted.iter().any(|(text, _)| text.contains("two")),
+        "both items are painted, as their own words: {painted:?}"
+    );
+
+    // Where an item's ink actually starts, not where its galley is placed: the
+    // nesting is painted as the leading spaces the source itself holds, so a block's
+    // origin is the same for every item and only the first real glyph gives it away.
+    let ink_x = |needle: &str| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Text(shape) if shape.galley.text().contains(needle) => shape
+                    .galley
+                    .rows
+                    .iter()
+                    .flat_map(|placed| placed.row.glyphs.iter())
+                    .find(|glyph| !glyph.chr.is_whitespace())
+                    .map(|glyph| shape.pos.x + glyph.pos.x),
+                _ => None,
+            })
+            .fold(f32::MAX, f32::min)
+    };
+    assert!(
+        ink_x("two") > ink_x("one"),
+        "the nested item is drawn to the right of its parent ({} against {})",
+        ink_x("two"),
+        ink_x("one")
+    );
+}
