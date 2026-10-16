@@ -1,25 +1,28 @@
 # Test Strategy — NoteCraft
 
-Parity is proven by **differential testing against the reference**, not by the author's
-opinion. This document defines how "done" is measured.
+"Done" is proven by tests. This document defines how it is measured.
 
 ## 1. Levels
 
 | Level | Scope | Runs on | Tooling |
 | --- | --- | --- | --- |
-| Unit | `nc-core`, `nc-textproc`, `nc-markdown`, `nc-commands` logic | any host | `cargo test` + `proptest` |
-| Golden / fixture | byte-exact I/O, markdown serialization, search semantics | any host | `insta`/`expect-test` + `tests/fixtures/` |
-| Integration (headless) | command dispatch, session/undo flows via fake platform | any host | `cargo test` |
-| UI / visual | window chrome, toolbar, dialogs, DPI, theme | Windows | `windows-rs` driver + screenshot diff |
-| Differential | same input → reference vs ours, compare observable output | Windows + reference | `xtask differential` harness |
-| Accessibility | UIA names, focus order, screen-reader narration | Windows | Inspect.exe / UIA client test |
+| Unit | `nc-core`, `nc-textproc`, `nc-commands` logic | any host | `cargo test` + `proptest` |
+| Golden / fixture | byte-exact I/O, search semantics | any host | `tests/fixtures/` |
+| Integration | command dispatch, file/session flows | any host | `cargo test` |
+| UI | the shell: chrome, toolbar, menus, settings | any host | egui headless render (`Context::run_ui`) |
+| Visual | layout compared with `docs/ui-reference.md` | any host | screenshot diff |
 
-## 2. Reference-derived acceptance
+The UI is drawn with egui, so a frame can be rendered headlessly and asserted
+(the shell's own tests already do this). No platform-specific runner is required.
 
-- Every feature in `docs/feature-matrix.md` has acceptance criteria and a named test file.
-- A feature is `VERIFIED` only when a test exercises the behavior **captured from the
-  reference** (`CAP`), with the fixture committed.
-- `TO_CAPTURE` features cannot be `VERIFIED` and cannot be implemented from a guess.
+## 2. Acceptance
+
+- Every feature in `docs/feature-matrix.md` has acceptance criteria and a named
+  test file.
+- A feature is `VERIFIED` only when its tests exercise the acceptance criteria
+  and pass.
+- Behaviour the reference does not show is a recorded design decision, tested
+  like any other.
 
 ## 3. Fixtures
 
@@ -31,57 +34,49 @@ tests/fixtures/
 ├── eol/          # crlf.txt, lf.txt, cr.txt, mixed.txt + .expected save bytes
 ├── markdown/     # <name>.md (source) and <name>.expected.md (after command)
 ├── find/         # input + query + expected match spans/counts
-├── visual/       # reference screenshots + our screenshots + diff tolerance
-└── errors/       # expected-dialog-text transcripts
+└── visual/       # reference screens + our screenshots + diff tolerance
 ```
 
-Every fixture records: reference app version, Windows build, date captured, capturer.
+Each fixture records what it covers and, where relevant, the reference screen it
+came from.
 
-## 4. Differential harness (`xtask differential`)
+## 4. UI checks
 
-1. Provide an input file + a scripted command sequence (keyboard/menu actions).
-2. Apply the sequence to the reference (recorded once, human-in-the-loop) and to our binary.
-3. Compare: saved bytes, markdown output, status-bar values, and any dialog text.
-4. Emit a diff report → `docs/parity-report.md` table row.
-
-Reference runs are recorded manually on the reference machine the first time, then frozen
-as golden data; the harness replays against our binary thereafter.
+1. Render the shell headlessly through the egui context for each major state
+   (empty editor, menus open, settings page, Markdown document).
+2. Snapshot the frame and compare it against the matching screen in
+   `docs/ui-reference.md`.
+3. Compare layout, spacing, typography, menus, and status indicators.
+4. Separate functional defects from rendering-only differences.
 
 ## 5. Property tests (call these out explicitly)
 
-- Encoding round-trip: `decode(encode(x)) == x` for the encodings that can represent `x`;
-  otherwise the documented lossy rule holds.
+- Encoding round-trip: `decode(encode(x)) == x` for the encodings that can
+  represent `x`; otherwise the documented lossy rule holds.
 - EOL preservation: saving an unmodified file yields identical bytes.
-- Undo/redo: applying N edits then undoing N returns to the byte-identical starting buffer.
-- Markdown formatting idempotence where the reference is idempotent (capture first).
+- Undo/redo: applying N edits then undoing N returns to the byte-identical
+  starting buffer.
 - Search: every reported match contains the query under the active options.
 
-Encoding round-trip, EOL preservation, text-through-save-and-reopen, undo-to-start, and
-"a save leaves no partial file" run today in `crates/textproc/tests/properties.rs` (M4) over
-arbitrary byte strings and generated text; the search property joined them in M5, comparing
-`find_all` against `str::match_indices` over generated text; the rest arrive with their
+Encoding round-trip, EOL preservation, text-through-save-and-reopen, undo-to-
+start, and "a save leaves no partial file" run in
+`crates/textproc/tests/properties.rs`; the search property compares `find_all`
+against `str::match_indices` over generated text; the rest arrive with their
 engines.
 
 ## 6. CI
 
-- On every push: `cargo fmt --check`, `cargo clippy -D warnings`, unit + golden tests.
-- Dependency-boundary check: `nc-core`/`nc-textproc`/`nc-markdown`/`nc-commands` must not
-  depend on `nc-app`/`nc-platform` (`cargo xtask check-boundaries`, run in CI).
-- Windows runner job: build + integration + visual smoke.
-- Visual/AI/differential suites are gated (manual or nightly) because they need the
-  reference machine or the service.
+- On every push: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test
+  --workspace`.
+- Dependency-boundary check: `nc-core` / `nc-textproc` / `nc-commands` must not
+  depend on `nc-app` / `nc-platform` (`cargo xtask check-boundaries`).
+- Visual checks run locally/nightly because they need a rendered frame and a
+  comparison image.
 
-## 7. Manual test procedures (for `TO_CAPTURE` items)
+## 7. Definition of done (per feature)
 
-Each still-uncaptured item in `reference-matrix.md` gets a numbered manual procedure in
-`tests/manual/` describing exactly what to do and what to record, so capture is
-reproducible and does not drift between operators.
-
-## 8. Definition of done (per feature)
-
-1. Spec entry exists in `docs/reference-matrix.md` (not `TO_CAPTURE`).
+1. Spec entry exists in `docs/ui-reference.md` or the command registry.
 2. Acceptance test exists and passes.
-3. Differential evidence recorded (reference vs ours) where the level applies.
-4. `docs/feature-matrix.md` status is `VERIFIED`, or `IMPLEMENTED` with a tracked reason.
-5. `docs/parity-report.md` row updated.
-6. CI green.
+3. `docs/feature-matrix.md` status is `VERIFIED`, or `IMPLEMENTED` with a tracked
+   reason.
+4. CI green.

@@ -1,269 +1,281 @@
-AGENTS.md — Rust Notepad Engineering Rules
-1. Mission
+# AGENT.md — NoteCraft Engineering Rules
 
-You are the implementation agent for a Rust application that reproduces the observable behavior of a specific Windows Notepad reference build.
+## 1. Mission
 
-Your primary objective is verified 1:1 feature parity.
+You are the implementation agent for NoteCraft, a fast, modern text and Markdown
+editor written in Rust and drawn with `egui`/`eframe`.
 
-Do not optimize for the number of features implemented, the number of files created, or how quickly the application looks convincing. Optimize for correctness, reproducibility, data integrity, native Windows behavior, and test coverage.
+Your primary objective is a correct, maintainable editor whose UI matches the
+captured reference in `docs/ui-reference.md` and whose behaviour is backed by
+tests. Do not optimise for the number of features implemented, the number of
+files created, or how quickly the application looks convincing. Optimise for
+correctness, reproducibility, data integrity, and test coverage.
 
-ROADMAP.md defines the project milestones. docs/reference-matrix.md defines the target behavior. docs/feature-matrix.md is the source of truth for implementation and verification status.
-2. Non-Negotiable Rules
+`ROADMAP.md` defines the milestones. `docs/ui-reference.md` defines the UI to
+build. `docs/feature-matrix.md` is the source of truth for implementation and
+verification status. `crates/commands` is the single authoritative definition of
+the command surface.
 
-    Rust is the only implementation language. Do not introduce other languages, runtimes, or script interpreters anywhere in the repository — application code, tests, build tooling, and CI included. Do not add shell scripts, batch/PowerShell files, Python, or other-language tooling. All repository automation is written in Rust under `crates/xtask` and invoked as `cargo xtask <task>`.
-    Target Windows first; do not introduce cross-platform abstractions without a concrete need.
-    Do not invent reference behavior. Inspect the pinned reference application or consult reliable documentation.
-    Do not mark a feature VERIFIED without a passing reference-derived test.
-    Do not claim full parity while mandatory features remain unverified.
-    Never silently discard document content, change encoding, or normalize line endings unexpectedly.
-    Do not replace native dialogs or Windows behaviors with approximations unless the reference specification allows it.
-    Do not add features that are absent from the reference scope simply because they are easy to implement.
-    Do not leave stub implementations, fake success responses, or inert menu items in completed features.
-    Preserve existing working behavior unless a documented parity requirement demands a change.
+## 2. Non-negotiable rules
 
-3. Required Workflow
+- Rust is the only implementation language. Do not introduce other languages,
+  runtimes, or script interpreters anywhere in the repository — application code,
+  tests, build tooling, and CI included. All repository automation is written in
+  Rust under `crates/xtask` and invoked as `cargo xtask <task>`.
+- Do not invent UI that the reference does not show. Draw from
+  `docs/ui-reference.md` and the command registry.
+- Do not mark a feature `VERIFIED` without passing acceptance tests.
+- Never silently discard document content, change encoding, or normalise line
+  endings unexpectedly.
+- Do not leave stub implementations, fake success responses, or inert menu items
+  in completed features. A control that is present but not yet wired must be
+  visibly disabled (its availability rule says so), not a silent no-op.
+- Preserve existing working behaviour unless a documented requirement demands a
+  change.
+- Keep the headless crates (`nc-core`, `nc-textproc`, `nc-commands`) free of any
+  window dependency.
 
-For every task:
-Step 1 — Inspect
+## 3. Required workflow
 
-    Read the relevant parts of ROADMAP.md, docs/reference-matrix.md, and docs/feature-matrix.md.
-    Inspect the current implementation and tests before editing.
-    Identify the reference feature ID and expected behavior.
-    Check whether the behavior depends on a specific Windows or Notepad version.
+### Step 1 — Inspect
 
-Step 2 — Specify
+- Read the relevant parts of `ROADMAP.md`, `docs/ui-reference.md`, and
+  `docs/feature-matrix.md`.
+- Inspect the current implementation and tests before editing.
+- Identify the feature ID and the expected behaviour.
 
-    Describe the intended observable behavior.
-    Record relevant keyboard shortcuts, menu commands, dialogs, state transitions, and edge cases.
-    Identify data-loss risks and compatibility concerns.
-    Define tests before or alongside the implementation.
+### Step 2 — Specify
 
-If the reference behavior is unknown, investigate it. Do not fill gaps with guesses and then call the result parity.
-Step 3 — Implement
+- Describe the intended observable behaviour.
+- Record the relevant keyboard shortcuts, menu commands, dialogs, and state
+  transitions.
+- Identify data-loss risks.
+- Define tests alongside the implementation.
 
-    Make the smallest coherent change that achieves the specification.
-    Follow existing module boundaries and coding conventions.
-    Reuse established abstractions instead of duplicating state or command logic.
-    Keep UI event handling separate from document and filesystem logic.
-    Add explicit error paths for expected failures.
-    Avoid unrelated refactoring.
+If the reference behaviour is not shown in `docs/ui-reference.md`, decide it and
+record the decision in the registry — do not guess silently.
 
-Step 4 — Verify
+### Step 3 — Implement
 
-Run the relevant checks, including where applicable:
+- Make the smallest coherent change that achieves the specification.
+- Follow existing module boundaries and coding conventions.
+- Reuse established abstractions instead of duplicating state or command logic.
+- Keep UI event handling separate from document and filesystem logic.
+- Add explicit error paths for expected failures.
+- Avoid unrelated refactoring.
 
+### Step 4 — Verify
+
+Run the relevant checks:
+
+```
 cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo xtask check-boundaries
+```
 
-Run Windows-specific integration tests on the actual supported target. Do not report a check as passing unless it was executed and passed.
+Do not report a check as passing unless it was executed and passed. When a check
+cannot run, state the limitation.
 
-When a check cannot run, state the limitation and leave the relevant verification status unchanged.
-Step 5 — Record
+### Step 5 — Record
 
-    Add or update regression tests.
-    Update docs/feature-matrix.md.
-    Document known mismatches and platform limitations.
-    Update ROADMAP.md only when scope or milestone status actually changes.
-    Summarize files changed, tests run, results, and remaining risks.
+- Add or update regression tests.
+- Update `docs/feature-matrix.md`.
+- Document known limitations.
+- Update `ROADMAP.md` only when scope or milestone status actually changes.
+- Summarise files changed, tests run, results, and remaining risks.
 
-4. Architecture Rules
-Application and UI
+## 4. Architecture rules
 
-    Keep command handling explicit and testable.
-    Separate menu presentation from command execution.
-    Use a single authoritative source for each piece of application state.
-    Ensure keyboard shortcuts and menu commands invoke the same command implementation.
-    Keep window lifecycle, tab lifecycle, and document lifecycle distinct.
-    Respect Windows focus, activation, DPI, theme, and accessibility conventions.
+### Application and UI
 
-Editor
+- Keep command handling explicit and testable.
+- Separate menu presentation from command execution.
+- Use a single authoritative source for each piece of application state.
+- Ensure keyboard shortcuts and menu commands invoke the same command
+  implementation.
+- Keep window, tab, and document lifecycles distinct.
 
-    Treat text editing as a correctness-critical subsystem.
-    Specify caret and selection behavior precisely.
-    Test keyboard navigation, mouse interaction, word boundaries, and line boundaries.
-    Preserve Unicode semantics, including surrogate pairs, combining characters, emoji, and IME composition.
-    Do not confuse UTF-8 byte offsets, UTF-16 code-unit offsets, Unicode scalar values, and grapheme-cluster indices.
-    Use appropriate indexing abstractions and convert offsets explicitly at API boundaries.
-    Keep undo/redo history consistent with visible edits and document state.
-    Avoid whole-document copies for routine operations where practical.
+### Editor
 
-Document and file I/O
+- Treat text editing as a correctness-critical subsystem.
+- Specify caret and selection behaviour precisely.
+- Test keyboard navigation, mouse interaction, word boundaries, and line
+  boundaries.
+- Preserve Unicode semantics, including surrogate pairs, combining characters,
+  emoji, and IME composition.
+- Do not confuse UTF-8 byte offsets, UTF-16 code-unit offsets, Unicode scalar
+  values, and grapheme-cluster indices. Convert offsets explicitly at API
+  boundaries.
+- Keep undo/redo history consistent with visible edits.
+- Avoid whole-document copies for routine operations where practical.
 
-    Keep document contents, file identity, encoding, line endings, and dirty state explicit.
-    Separate decoding, editing representation, and serialization.
-    Preserve source bytes where the reference behavior requires it.
-    Test BOM handling, invalid sequences, empty files, and mixed or unusual line endings.
-    Never overwrite an existing file before the replacement data is safely prepared.
-    Handle permissions, missing directories, read-only files, and failed writes explicitly.
-    Implement atomic replacement where appropriate and compatible with the reference.
-    Do not promise perfect byte preservation for malformed input unless the implementation actually supports it.
+### Document and file I/O
 
-Markdown
+- Keep document contents, file identity, encoding, line endings, and dirty state
+  explicit.
+- Separate decoding, editing representation, and serialization.
+- Preserve source bytes where the behaviour requires it.
+- Test BOM handling, invalid sequences, empty files, and mixed or unusual line
+  endings.
+- Never overwrite an existing file before the replacement data is safely
+  prepared. Write atomically.
+- Handle permissions, missing directories, read-only files, and failed writes
+  explicitly.
+- Do not promise perfect byte preservation for malformed input unless the
+  implementation actually supports it.
 
-    Treat Markdown syntax and formatted presentation as separate but synchronized representations.
-    Never make irreversible transformations during a view switch.
-    Preserve unsupported syntax and unknown content.
-    Test tables, links, lists, indentation, malformed input, and mixed formatting if they are in scope.
-    Keep Markdown parsing and serialization deterministic.
-    Ensure formatting operations participate in undo/redo.
-    Do not assume a general-purpose Markdown renderer matches Notepad's formatting behavior.
+### Markdown
 
-Windows integration
+- Treat Markdown syntax and formatted presentation as separate but synchronised
+  representations.
+- Never make irreversible transformations during a view switch.
+- Preserve unsupported syntax and unknown content.
+- Keep Markdown parsing and serialization deterministic.
+- Ensure formatting operations participate in undo/redo.
 
-    Use documented Windows APIs and supported Rust bindings.
-    Keep unsafe blocks narrow and documented.
-    Validate pointer lifetimes, buffer lengths, ownership, and error codes at FFI boundaries.
-    Respect UI-thread affinity where required.
-    Do not block the UI thread on expensive file operations.
-    Test native dialogs, clipboard behavior, drag and drop, and accessibility on Windows.
-    Do not claim Linux CI proves Windows integration correctness.
-
-5. Dependency Policy
+## 5. Dependency policy
 
 Before adding a crate:
 
-    Check whether the functionality already exists in the project.
-    Confirm that the crate supports the required Windows versions and architectures.
-    Check maintenance status, licensing, security concerns, and transitive dependencies.
-    Verify that it can satisfy the parity requirements.
-    Prefer a small, well-maintained dependency over a large framework when both are suitable.
-    Pin toolchain and dependency versions through the repository's normal Rust workflow.
+- Check whether the functionality already exists in the project.
+- Confirm the crate is maintained, appropriately licensed, and small enough for
+  the job.
+- Prefer a small, well-maintained dependency over a large framework.
+- Pin toolchain and dependency versions through the normal Rust workflow.
 
-Do not change the UI framework, text engine, or core document representation without a documented technical reason and an impact assessment.
-6. Testing Requirements
-Unit tests
+Do not change the UI framework, text engine, or core document representation
+without a documented technical reason and an impact assessment.
 
-Test document state, encoding, line-ending logic, text operations, selection transformations, search, and serialization independently of the UI wherever possible.
-Integration tests
+## 6. Testing requirements
 
-Test opening, editing, saving, switching tabs, closing documents, settings persistence, and application lifecycle.
-Differential tests
+### Unit tests
 
-For each supported reference behavior:
+Test document state, encoding, line-ending logic, text operations, selection
+transformations, search, and serialization independently of the UI.
 
-    Prepare an identical initial state in both applications.
-    Execute the same action sequence.
-    Capture resulting text, selection, document state, prompts, and saved bytes.
-    Compare results against documented expectations.
-    Save every discovered mismatch as a regression test.
+### Integration tests
 
-Visual tests
+Test opening, editing, saving, switching tabs, closing documents, settings, and
+application lifecycle.
 
-    Use matching display resolution and scaling.
-    Capture equivalent window states.
-    Compare layout, spacing, typography, menus, dialogs, and status indicators.
-    Separate functional mismatches from rendering-only differences.
-    Define explicit tolerances rather than relying only on subjective judgment.
+### UI tests
 
-Stress and edge-case tests
+- Render the shell headlessly through the egui context and assert it paints.
+- Compare the drawn layout against `docs/ui-reference.md` screen by screen.
+- Separate functional defects from rendering-only differences.
 
-Include:
+### Stress and edge-case tests
 
-    Empty documents
-    Very large files
-    Extremely long lines
-    Unicode and mixed scripts
-    CRLF, LF, and CR
-    Files with and without BOMs
-    Invalid or truncated input
-    Repeated undo and redo
-    Search at document boundaries
-    Failed saves and read-only files
-    Repeated tab opening and closing
-    Rapid keyboard input and window resizing
+Include empty documents, very large files, extremely long lines, Unicode and
+mixed scripts, CRLF/LF/CR, files with and without BOMs, invalid or truncated
+input, repeated undo and redo, search at document boundaries, failed saves and
+read-only files, and repeated tab opening and closing.
 
-Use property-based or randomized tests where useful. Keep failing seeds or minimized reproductions as permanent regressions.
-7. Keyboard and Command Parity
+Use property-based or randomized tests where useful. Keep failing seeds or
+minimized reproductions as permanent regressions.
+
+## 7. Keyboard and command consistency
 
 Maintain a single command registry or equivalent authoritative specification.
 
 For each command, record:
 
-    Command ID
-    Menu location
-    Keyboard shortcut
-    Availability conditions
-    Expected state changes
-    Dialog behavior
-    Undo/redo behavior
-    Reference test
-    Implementation status
+- Command ID
+- Menu location
+- Keyboard shortcut
+- Availability conditions
+- Expected state changes
+- Undo/redo behaviour
+- Acceptance test
 
-Do not implement keyboard shortcuts as unrelated UI-specific handlers. Account for keyboard layouts, modifier combinations, text-input contexts, and shortcut conflicts.
-8. Error Handling and Data Safety
+Do not implement keyboard shortcuts as unrelated UI-specific handlers. Account
+for keyboard layouts, modifier combinations, text-input contexts, and shortcut
+conflicts.
 
-    Never silently ignore a failed save.
-    Never silently truncate or replace document text.
-    Never discard unsaved changes without the specified confirmation behavior.
-    Never report a file as saved before the write operation succeeds.
-    Preserve the original file when a replacement write fails, where feasible.
-    Show useful, actionable errors consistent with the reference UI.
-    Avoid logging document contents or sensitive file data.
-    Treat external file modifications as a potential conflict, not permission to overwrite automatically.
+## 8. Error handling and data safety
 
-9. Performance Requirements
+- Never silently ignore a failed save.
+- Never silently truncate or replace document text.
+- Never discard unsaved changes without confirmation.
+- Never report a file as saved before the write operation succeeds.
+- Preserve the original file when a replacement write fails.
+- Show useful, actionable errors.
+- Avoid logging document contents or sensitive file data.
+- Treat external file modifications as a potential conflict, not permission to
+  overwrite automatically.
+
+## 9. Performance requirements
 
 Measure before optimizing.
 
-Track startup time, idle memory, typing latency, scrolling performance, search latency, save latency, and large-file behavior.
+Track startup time, idle memory, typing latency, scrolling performance, search
+latency, save latency, and large-file behaviour. Use representative fixtures and
+repeatable benchmarks. Avoid premature optimization that changes editing
+semantics or complicates correctness.
 
-Use representative fixtures and repeatable benchmarks. Avoid premature optimization that changes editing semantics or complicates correctness.
+Long-running work must not freeze the UI. Any background operation must handle
+cancellation, completion, errors, and stale document state safely.
 
-Long-running work must not freeze the UI. Any background operation must handle cancellation, completion, errors, and stale document state safely.
-10. Security and Privacy
+## 10. Security and privacy
 
-    Do not add network access unless it is explicitly required by the reference scope.
-    Keep optional online features isolated from core editing.
-    Never upload document contents without explicit, informed user consent.
-    Do not introduce telemetry without a documented requirement and privacy review.
-    Validate external input and command-line paths.
-    Avoid executing file contents or treating document text as instructions.
-    Do not store secrets in source control, logs, or test fixtures.
+- Do not add network access unless it is explicitly required by scope.
+- Keep optional online features isolated from core editing.
+- Never upload document contents without explicit, informed user consent.
+- Do not introduce telemetry without a documented requirement.
+- Validate external input and command-line paths.
+- Avoid executing file contents or treating document text as instructions.
+- Do not store secrets in source control, logs, or test fixtures.
 
-11. Feature Status Rules
+## 11. Feature status rules
 
-Use the following states consistently:
+Use these states consistently:
 
-    NOT_STARTED — no implementation exists.
-    SPECIFIED — reference behavior and acceptance criteria are documented.
-    IN_PROGRESS — active implementation work.
-    IMPLEMENTED — code exists but parity is not fully verified.
-    VERIFIED — acceptance tests pass against the reference.
-    BLOCKED — a specific dependency or limitation prevents completion.
-    OUT_OF_SCOPE — explicitly excluded from the agreed target.
+- `NOT_STARTED` — no implementation exists.
+- `SPECIFIED` — behaviour and acceptance criteria are documented.
+- `IN_PROGRESS` — active implementation work.
+- `IMPLEMENTED` — code exists but is not fully verified.
+- `VERIFIED` — acceptance tests pass.
+- `BLOCKED` — a specific dependency or limitation prevents completion.
+- `OUT_OF_SCOPE` — explicitly excluded.
 
-Never mark a feature VERIFIED merely because the application compiles or a unit test passes.
-12. Definition of Done
+Never mark a feature `VERIFIED` merely because the application compiles or a
+single unit test passes.
+
+## 12. Definition of Done
 
 A task is done only when:
 
-    Its behavior matches the documented reference specification.
-    The implementation is integrated into the real application.
-    Relevant tests pass.
-    Regression coverage is added.
-    File integrity and undo/redo behavior are preserved.
-    Relevant keyboard and menu paths work.
-    Formatting, compilation, and applicable lint checks pass.
-    Documentation and feature status are updated.
-    Remaining mismatches and limitations are disclosed.
+- Its behaviour matches the documented specification.
+- The implementation is integrated into the real application.
+- Relevant tests pass.
+- Regression coverage is added.
+- File integrity and undo/redo behaviour are preserved.
+- Relevant keyboard and menu paths work.
+- Formatting, compilation, and lint checks pass.
+- Documentation and feature status are updated.
+- Remaining limitations are disclosed.
 
-13. Agent Reporting Format
+## 13. Agent reporting format
 
 At the end of each implementation task, report:
 
-    Implemented: the behavior added or corrected.
-    Files changed: the relevant source and test files.
-    Verification: exact checks executed and their results.
-    Parity status: verified, implemented but unverified, or blocked.
-    Known differences: remaining deviations from the reference.
-    Next step: the highest-priority unresolved dependency or feature.
+- Implemented: the behaviour added or corrected.
+- Files changed: the relevant source and test files.
+- Verification: exact checks executed and their results.
+- Status: verified, implemented but unverified, or blocked.
+- Known differences: remaining deviations from the reference.
+- Next step: the highest-priority unresolved dependency or feature.
 
-Do not claim tests, benchmarks, screenshots, or manual comparisons that were not actually performed.
-14. Final Principle
+Do not claim tests, benchmarks, screenshots, or manual comparisons that were not
+actually performed.
 
-When speed, convenience, elegance, and compatibility conflict, follow the reference specification and protect document integrity first.
+## 14. Final principle
 
-The project succeeds when its observable behavior is demonstrably equivalent to the pinned Windows Notepad version—not when the UI merely looks familiar.
+When speed, convenience, elegance, and correctness conflict, follow the
+specification and protect document integrity first.
+
+The project succeeds when the UI matches the captured reference and every
+behaviour is backed by tests — not when the UI merely looks familiar.

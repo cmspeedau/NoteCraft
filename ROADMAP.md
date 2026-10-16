@@ -1,447 +1,344 @@
-Rust Notepad — Feature-Parity Roadmap
-1. Project Goal
+# NoteCraft — Roadmap
 
-Build a Windows-native text editor in Rust that achieves 1:1 feature parity with a defined reference version of Microsoft Windows Notepad.
+## 1. Project goal
 
-The application must reproduce the reference application's observable behavior, including:
+Build a fast, modern text and Markdown editor in Rust, drawn with `egui` and
+hosted by `eframe`, matching the UI captured in `docs/ui-reference.md`: the tab
+strip and title bar, the File/Edit/View menu bar, the formatting toolbar, the
+editor surface, the status bar, and the Settings page.
 
-    UI layout, menus, dialogs, and window behavior
-    Text editing, selection, clipboard, and undo/redo
-    File opening, saving, encoding, and line endings
-    Tabs, session restoration, and unsaved-document handling
-    Search, replace, navigation, and status information
-    Markdown editing and formatting, where supported by the reference build
-    Accessibility, keyboard navigation, and Windows integration
-    Performance, reliability, and edge-case behavior
+The UI is the specification. Every menu item, toolbar control, label, shortcut,
+and availability rule lives in the command registry (`crates/commands`,
+`nc-commands`), which is the single authoritative definition; the shell draws
+from it and routes clicks back through it.
 
-Parity means behavioral equivalence, not merely visual similarity.
-2. Reference Baseline
+A feature is done when it is integrated into the real application, its entry
+points (menu, toolbar, keyboard, dialog) work, its edge cases are tested, and
+the workspace checks pass.
 
-Before implementation, record the exact reference environment.
+## 2. UI reference
 
-    Operating system: Windows 11
-    Reference application: Microsoft Notepad
-    Reference app version: [record exact version]
-    Windows build: [record exact build]
-    Display scaling: 100%, 150%, and 200%
-    Architectures: x64 initially; ARM64 where required
-    Languages and keyboard layouts: English initially, then additional layouts
-    Feature availability: record stable, preview, and optional features separately
+`docs/ui-reference.md` records the screens the UI is built from and the exact
+items each one shows. Behaviour the screens do not show is a design decision
+recorded in the registry, not a guess.
 
-Maintain docs/reference-matrix.md containing screenshots, observed behavior, shortcuts, menu structures, test cases, and version-specific differences.
+## 3. Technology strategy
 
-Do not claim complete parity until every in-scope feature has passed its acceptance tests.
-3. Technology Strategy
-Language and platform
+### Language and platform
 
-    Rust stable, pinned through rust-toolchain.toml
-    Windows APIs through the windows crate
-    Native Windows integration for dialogs, clipboard, accessibility, DPI, and window management
-    Cargo workspaces for modularity
-    Automated tests and CI for Windows x64
-    ARM64 validation when supported by the chosen dependencies
+- Rust stable, pinned through `rust-toolchain.toml`.
+- One portable UI stack: `egui` for drawing, `eframe` for the window and event
+  loop. The same build runs everywhere eframe supports.
+- Cargo workspace for modularity; `cargo xtask` for repository tasks.
+- Automated tests and CI on the host: `cargo fmt`, `cargo clippy -D warnings`,
+  `cargo test --workspace`, and `cargo xtask check-boundaries`.
 
-UI and text engine
+### Architecture
 
-Evaluate two implementations before committing:
+Modules, in dependency order:
 
-    Native Win32 UI with a custom text engine: maximum control over behavior and performance, but substantial engineering effort.
-    Native Windows controls with a compatibility layer: faster initial development, but only acceptable if the controls can reproduce the reference behavior.
+- `nc-core` — document model: text buffer, selection, caret, undo/redo,
+  clipboard, word wrap, tabs, line endings.
+- `nc-textproc` — encoding detection and transcoding, search/replace, time/date,
+  atomic file I/O.
+- `nc-commands` — the command registry, menu model, shortcuts, and availability.
+- `nc-platform` — the egui/eframe shell: window, tab strip, menus, toolbar,
+  editor surface, status bar, and settings page.
+- `nc-app` — startup, logging, command line, and the process lifecycle.
+- `xtask` — repository tasks (`cargo xtask check-boundaries`).
 
-Do not assume a standard Rust text widget or RichEdit control automatically provides Notepad parity. Verify selection semantics, line endings, Unicode handling, undo history, large-file performance, and accessibility experimentally.
-Architecture
+Keep the headless crates free of any window dependency so they build and test
+anywhere; `cargo xtask check-boundaries` enforces the direction.
 
-Separate the application into these modules:
+## 4. Milestones
 
-    app — startup, process lifecycle, and command-line arguments
-    ui — windows, menus, toolbar, tabs, dialogs, and status bar
-    editor — document model, text engine, selection, caret, and editing commands
-    document — file state, dirty tracking, and document identity
-    encoding — encoding detection, decoding, and serialization
-    filesystem — file operations, metadata, and error handling
-    search — find, replace, navigation, and search state
-    markdown — Markdown parsing, editing, formatting, and view switching
-    session — tabs, recent files, and session restoration
-    settings — preferences, theme, font, and persistence
-    platform — Windows APIs, clipboard, shell integration, and accessibility
-    tests — behavioral fixtures, regression tests, and parity tests
+### M0 — Specification and UI capture
 
-Keep platform-specific behavior behind narrow interfaces. Avoid duplicating document state across the UI and text engine.
-4. Milestones
-M0 — Specification and reference capture
+- Capture the UI: main window, menus, toolbar, status bar, and settings page.
+- Record every visible command, label, and keyboard shortcut.
+- Record text-editing and file-format decisions.
+- Create a feature inventory with IDs, priorities, and acceptance criteria.
+- Separate interactive features from service-dependent ones.
 
-    Pin the target Notepad version and Windows build.
-    Capture screenshots of every major window, menu, dialog, and settings page.
-    Record all visible commands and keyboard shortcuts.
-    Test each command against the reference application.
-    Record text editing and file-format edge cases.
-    Create a feature inventory with IDs, priorities, and acceptance criteria.
-    Separate mandatory features from optional or service-dependent features.
+Exit criteria: Every in-scope feature has a place in `docs/ui-reference.md` or
+the command registry, with acceptance criteria.
 
-Exit criteria: Every in-scope feature has a specification and a reproducible test or documented verification procedure.
+Status: IN_PROGRESS — `docs/ui-reference.md`, `docs/feature-matrix.md`,
+`docs/architecture.md`, and `docs/test-strategy.md` are drafted; the command
+registry is defined. Screens for the remaining dialogs (Find/Replace, Go to,
+Open/Save As, Page setup) are still to be captured.
 
-Status: IN_PROGRESS — specification, feature inventory, architecture, and test strategy drafted
-(`docs/reference-matrix.md`, `docs/feature-matrix.md`, `docs/architecture.md`, `docs/test-strategy.md`,
-`docs/parity-report.md`). Reference capture on a Windows reference machine is outstanding
-(see `docs/reference-matrix.md` §7 and §1 "PINNING ACTION"); items tagged TO_CAPTURE are not yet
-reproducible, so M0 cannot close until they are observed and committed as fixtures.
+### M1 — Rust foundation
 
-M1 — Rust foundation
+- Create the Cargo workspace and executable.
+- Configure logging, error reporting, and release builds.
+- Implement process startup and shutdown.
+- Support opening files through command-line arguments.
+- Add unit-test, integration-test, and CI infrastructure.
 
-    Create the Cargo workspace and Windows executable.
-    Configure logging, error reporting, and release builds.
-    Establish UI-thread and background-work boundaries.
-    Implement process startup and shutdown.
-    Support opening files through command-line arguments and Windows shell integration where required.
-    Add unit-test, integration-test, and CI infrastructure.
+Exit criteria: The application launches, opens a window, and passes the
+workspace checks.
 
-Exit criteria: The application launches reliably, opens an initial window, and passes clean Windows builds.
+Status: IN_PROGRESS — the workspace (`nc-app` with the `notepad` binary,
+`nc-platform`, `nc-core`, `nc-textproc`, `nc-commands`, `xtask`), command-line
+handling, logging, startup/shutdown lifecycle, unit + integration tests, and CI
+(fmt, clippy, host tests, crate boundary check) are in place and green.
 
-Status: IN_PROGRESS — Cargo workspace (`crates/app` = `nc-app` with the `notepad` binary,
-`crates/platform` = `nc-platform`), command-line handling, logging, startup/shutdown lifecycle,
-unit + integration tests, and CI (fmt, clippy, host tests, Windows build/test, Windows
-cross-compile check, crate dependency-direction check) are in place and green on Linux
-(`cargo build/test/clippy/check --target x86_64-pc-windows-msvc`). A headless platform backend
-keeps the workspace buildable off Windows; creating a real window is exercised by the Windows CI
-job.
+### M2 — Window and visual shell
 
-M2 — Native window and visual shell
+- Main window and title bar.
+- Tab strip and window controls.
+- Menu bar and command routing.
+- Formatting toolbar.
+- Editor viewport.
+- Status bar.
+- Settings page.
+- Resizing, maximizing, and minimizing.
 
-    Main window and title bar behavior
-    Client area, menus, and command routing
-    Editor viewport and scrollbars
-    Status bar
-    Context menus
-    Standard open/save dialogs
-    Resizing, maximizing, minimizing, and restoring
-    High-DPI scaling and theme handling
-    Window focus, activation, and keyboard navigation
+Exit criteria: The layout, command structure, and visual states match
+`docs/ui-reference.md`.
 
-Exit criteria: The application's geometry, command structure, and major visual states match the reference screenshots within defined tolerances.
+Status: IN_PROGRESS — the shell is built in `nc-platform` from the command
+registry: the custom title bar with tabs and window controls, the
+File/Edit/View menus, the formatting toolbar with the paragraph-style and list
+dropdowns, the editor surface, the status bar, and the settings page, all in the
+dark theme. Outstanding: dialog surfaces (Open/Save As, Find/Replace, Go to,
+Page setup), context menus, and high-DPI polish.
 
-Status: IN_PROGRESS — the command layer and the window shell are started. New `crates/commands`
-(`nc-commands`) is the single authoritative specification of commands, menus, shortcuts, and
-availability: Win32 virtual-key mapping, availability rules evaluated against a supplied
-context, the reference-matrix §3 registry with a per-row evidence grade and spec status, and a
-resolved menu-bar model. The Windows shell (`crates/platform`) now builds its menu bar from that
-registry and routes `WM_COMMAND` back through it; the headless backend resolves the same model,
-so the command surface has exactly one definition and is testable off Windows. Verification is
-green on Linux: fmt, clippy `-D warnings`, 46 tests, the crate-boundary guard, and
-`cargo check --target x86_64-pc-windows-msvc`. Outstanding for M2: the client area (editor
-viewport, scrollbars), status bar, context menus, standard open/save dialogs,
-resize/maximize/minimize/restore, high-DPI scaling and theming, and focus/activation/keyboard
-navigation — each needs the pinned reference machine to verify against screenshots
-(`docs/reference-matrix.md` §2 and §5).
-M3 — Text engine
+### M3 — Text engine
 
-    Unicode text model
-    Caret movement and selection
-    Mouse selection, double-click, and line selection
-    Insert, delete, backspace, and overwrite behavior if applicable
-    Multilevel undo and redo
-    Clipboard copy, cut, paste, and select all
-    Drag and drop
-    Word wrap and horizontal scrolling
-    Tabs and indentation behavior
-    Long lines and empty lines
-    CRLF, LF, and CR line-ending behavior
-    Unicode, surrogate pairs, combining marks, emoji, and IME input
-    Control characters and whitespace rendering where supported
+- Unicode text model.
+- Caret movement and selection.
+- Mouse selection, double-click, and line selection.
+- Insert, delete, backspace, and overwrite.
+- Multilevel undo and redo.
+- Clipboard copy, cut, paste, and select all.
+- Drag and drop.
+- Word wrap and horizontal scrolling.
+- Tabs and indentation.
+- CRLF, LF, and CR line endings.
+- Unicode, surrogate pairs, combining marks, emoji, and IME input.
 
-Exit criteria: All editing commands pass differential tests against the reference application.
+Exit criteria: All editing commands pass their acceptance tests against the
+editor contract.
 
-Status: IN_PROGRESS — the text engine is started as a new dependency-light crate, `crates/core`
-(`nc-core`), which owns the document model and the editing primitives the command registry
-names. It provides `TextBuffer` (UTF-8-only, `\n` terminators, byte-offset positions clamped to
-character boundaries), `Selection`, `UndoStack` (edits store the removed text so undo restores
-text and caret without recomputing), `CaretMovement` (character, word, line, and page steps with
-a remembered desired column for vertical moves), `LineEnding` detection and reporting, `TabStop`
-arithmetic, grapheme-aware soft wrap, a `Clipboard` trait with an in-memory implementation so the
-engine never touches the platform clipboard, and the `Document` aggregate that ties them
-together. Scope so far is the pure text model: caret movement, insertion and deletion, multilevel
-undo/redo, copy/cut/paste/select-all, line-ending detection and round-tripping, word wrap, tabs,
-Unicode/grapheme handling, mouse selection (single-, double-, and triple-click rules resolved in
-the engine so the viewport only hit-tests), drag and drop of a selection within the document, and
-overwrite mode. The suites are named after the feature matrix (`NC-E001`–`NC-E003`, `NC-E005`–
-`NC-E009`) plus property tests over arbitrary input. Verification is green on Linux: fmt, clippy
-`-D warnings`, 179 tests, the crate-boundary guard, and `cargo check --target
-x86_64-pc-windows-msvc`. Outstanding for M3: horizontal scrolling for unwrapped long lines, IME
-input, and rendering of control characters and whitespace — the input/interaction and rendering
-items belong with the viewport in M2/M5, and differential testing against the reference is
-blocked until the pinned Windows reference machine is available. Where the reference's exact
-behaviour is not yet captured (`docs/reference-matrix.md` §4 and §5), the engine names its
-behaviour an approximation rather than parity: default tab width 8, CRLF as the default style for
-untitled documents, a 10-line page step, a greedy wrap rule that breaks at the last whitespace
-that fits, a double-click taking one UAX #29 word segment and a triple-click the whole line
-including its terminator (`NC-E005`), a drag moving in place with the copy modifier left to the
-viewport (`NC-E009`), and an overwrite replacing one grapheme per grapheme typed without ever
-eating a line terminator or splitting a character.
+Status: IN_PROGRESS — `crates/core` (`nc-core`) is the text engine:
+`TextBuffer`, `Selection`, `UndoStack`, `CaretMovement`, `LineEnding`,
+`TabStop`, grapheme-aware soft wrap, a `Clipboard` trait with an in-memory
+implementation, mouse selection rules, drag and drop, and overwrite mode, tied
+together by `Document`. Outstanding: horizontal scrolling for unwrapped long
+lines, IME input, and rendering of control characters and whitespace (which
+belong with the viewport).
 
-M4 — File I/O and data integrity
+### M4 — File I/O and data integrity
 
-    Open and save files
-    Save As and overwrite confirmation
-    New document and reopen behavior
-    Encoding detection and explicit encoding behavior
-    UTF-8, UTF-16, BOM, and legacy encodings where applicable
-    Preserve or correctly select line endings
-    Detect external file changes if the reference does
-    Handle permissions, locked files, and missing paths
-    Handle empty, malformed, and very large files
-    Dirty-state tracking
-    Unsaved-changes prompts
-    Recover gracefully from failed writes
+- Open and save files.
+- Save As and overwrite confirmation.
+- New document and reopen behaviour.
+- Encoding detection and explicit encoding behaviour.
+- UTF-8, UTF-16, BOM, and legacy encodings.
+- Preserve or correctly select line endings.
+- Detect external file changes.
+- Handle permissions, locked files, and missing paths.
+- Handle empty, malformed, and very large files.
+- Dirty-state tracking.
+- Unsaved-changes prompts.
+- Recover gracefully from failed writes.
 
-Exit criteria: Opening and saving supported fixtures produces the same expected bytes and prompts as the reference. No silent data loss is permitted.
+Exit criteria: Opening and saving supported fixtures produces the expected bytes
+and prompts. No silent data loss.
 
-Status: IN_PROGRESS — file I/O is started as `crates/textproc` (`nc-textproc`), a
-dependency-light crate that owns how a note's bytes become text and text becomes bytes; it
-depends on `nc-core` and the standard library only, so the whole stage is testable headlessly.
-It provides `Encoding` detection and transcoding (UTF-8 with and without a byte order mark,
-UTF-16 and UTF-32 in either byte order, and ANSI — Windows-1252, the Western code page the
-reference falls back to), `nc-core`'s `LineEnding` detected on read and round-tripped on write
-(CRLF, LF and CR, with a mixed file reported and left alone rather than normalised), and
-`TextFile`: the path, the bytes as they are on
-disk, and the `Document` the text was read into. `open` reads and detects, `save` rewrites in
-the encoding the document carries, `save_as` transcodes to a chosen encoding with or without a
-mark, `save_lossy` is the explicit "write what you can, `?` the rest" path, and `reload`
-re-reads the file. A save serialises the whole file to a sibling temporary file and renames it
-into place only once it is complete, so a failed write leaves the original exactly as it was
-and the document keeps its changes and its path (`NC-D006`). Unrepresentable text fails the
-save and names the characters rather than substituting silently, and `external_change()` reports
-the file being rewritten or removed under the document instead of assuming the in-memory copy is
-current. `prompt` names the states in which the reference asks before destroying something —
-unsaved changes, an existing file in Save As, characters the target encoding cannot hold, and a
-file changed outside the editor — as values the shell can turn into a box; the wording and the
-dialog itself stay with the viewport. The suites are named after the feature matrix
-(`NC-F001`, `NC-F004`–`NC-F006`, `NC-D001`–`NC-D008`) plus property tests over arbitrary bytes
-and lines. Verification is green on Linux: fmt, clippy `-D warnings`, 275 tests, the
-crate-boundary guard, and `cargo check --target x86_64-pc-windows-msvc`. Outstanding for M4:
-the Open/Save/Save As dialogs and the encoding list they show, the wording of the
-unsaved-changes and overwrite prompts, dirty-state display, and differential byte comparison
-against the reference (exit criterion), which is blocked until the pinned Windows reference
-machine is available. Where the reference's exact behaviour is not yet captured
-(`docs/reference-matrix.md` §4 and §5), the crate names its behaviour an approximation rather
-than parity: ANSI is Windows-1252 (another locale's code page reads with the Western table,
-which is wrong for those languages but never lossy), a file with no byte order mark and no
-evidence to the contrary is UTF-8, and CRLF is the style a new document is written in.
-M5 — Editing commands and search
+Status: IN_PROGRESS — `crates/textproc` (`nc-textproc`) owns bytes-to-text and
+text-to-bytes: `Encoding` detection and transcoding (UTF-8 with/without a mark,
+UTF-16/UTF-32 in either order, and ANSI as Windows-1252), `LineEnding`
+round-tripping, and `TextFile` (`open`, `save`, `save_as`, `save_lossy`,
+`reload`). Saves are atomic: the file is written to a sibling temporary file and
+renamed into place, so a failed write leaves the original intact. Outstanding:
+the Open/Save/Save As surfaces, the encoding list they show, prompt wording, and
+dirty-state display.
 
-    Find and find next/previous
-    Replace and Replace All
-    Search direction and wrap-around behavior
-    Match-case and other supported search options
-    Go To line, if supported
-    Date/time insertion, if supported
-    Select All and other Edit commands
-    Keyboard shortcuts and menu accelerators
-    Status-bar line and column calculations
-    Search feedback, empty results, and boundary behavior
+### M5 — Editing commands and search
 
-Exit criteria: Search and editing commands match reference behavior, including boundary cases and keyboard layouts.
+- Find and find next/previous.
+- Replace and Replace All.
+- Search direction and wrap-around behaviour.
+- Match-case and other search options.
+- Go to line.
+- Date/time insertion.
+- Select All and the other Edit commands.
+- Keyboard shortcuts and menu accelerators.
+- Status-bar line and column calculations.
 
-Status: IN_PROGRESS — the engines are in place and the shell is what is left. `nc-textproc`
-grew `search` and `time_date`; `nc-core` grew the document side of the commands. Search is
-`SearchOptions` (*Match case*, *Match whole word only*, both off when the dialog opens) plus a
-`Direction`, and `find_next`/`find_previous` answer with a `SearchResult` that keeps the
-reference's cases apart rather than collapsing them into an `Option`: `Found`, `Wrapped` for a
-match reached by going round one end, `Boundary` for running out of document while a match
-exists elsewhere — the reference stops and says so instead of silently wrapping — and `NoMatch`
-for a query that is nowhere. `find_all` reports every non-overlapping occurrence for Replace
-All, `go_to_line` and `parse_line_number` are Go to line (clamped, with a non-numeric entry
-reading as "no line"), and `TimeDate` formats the F5 insertion as `3:47 PM 10/12/2026`
-(month, day, year; a 12-hour clock where both midnight and noon read as `12`). `nc-core` holds
-`Document::select_all`, `replace_range` and `replace_ranges` — Replace All is a single undo
-step, and the ranges are all clamped against the text as it stood before any of them is
-applied, so a later occurrence cannot fall past an earlier edit and be dropped — and
-`status::StatusPosition`, the 1-based line and column the status bar reads, counted in
-characters rather than bytes and read from the selection *head*, so a backwards selection still
-reads where the caret is. The suites live beside the features they name: `tests/editing/`
-(`find.rs`, `replace.rs`, `find_options.rs`, `find_boundary.rs`, `go_to.rs`, `time_date.rs`)
-in `nc-textproc`, `tests/keyboard/status_bar.rs` in `nc-core`, and a search property in
-`crates/textproc/tests/properties.rs` that compares `find_all` against `str::match_indices` over
-generated text. Verification is green on Linux: fmt, clippy `-D warnings`, 368 tests, the
-crate-boundary guard, and `cargo check --target x86_64-pc-windows-msvc`. Outstanding for M5:
-the Find/Replace dialog and its options, the F3/Shift+F3 and Ctrl+F/Ctrl+H wiring, the search
-notification line ("Beginning/end of document reached") and its wording, the Go to line dialog,
-menu accelerators, and differential comparison against the reference (exit criterion), which is
-blocked until the pinned Windows reference machine is available. Where the reference's exact
-behaviour is not yet captured (`docs/reference-matrix.md` §5; the wrap rule itself is
-documented in §6), the crate names its behaviour an approximation rather than parity: the date
-and time format is the one documented above (no locale is selected anywhere yet), and the
-boundary and wrap results are values the shell is expected to render, with the reference's
-exact wording still to be captured.
-M6 — Tabs and application lifecycle
+Exit criteria: Search and editing commands pass their acceptance tests,
+including boundary cases.
 
-    Multiple documents and tab switching
-    New-tab and new-window commands
-    Tab closing and close-all behavior
-    Dirty-state indicators
-    Save prompts during tab and application closure
-    Session restoration
-    Recent files and recent-document commands
-    Duplicate opens and document identity
-    Window and tab lifecycle edge cases
-    Command-line file opening and activation of existing instances, if applicable
+Status: IN_PROGRESS — the engines are in place and the dialog surfaces are what
+is left. `nc-textproc` provides `search` (`SearchOptions`, `Direction`,
+`find_next`/`find_previous` returning `Found`/`Wrapped`/`Boundary`/`NoMatch`,
+`find_all`, `go_to_line`) and `time_date`; `nc-core` provides
+`Document::select_all`, `replace_range`/`replace_ranges` (one undo step per
+Replace All), and `status::StatusPosition`. Outstanding: the Find/Replace dialog
+and its options, the F3/Shift+F3 and Ctrl+F/Ctrl+H wiring, the Go to line
+dialog, and the status-notification line.
 
-Exit criteria: Tab operations and application restarts preserve the expected documents and state without losing unsaved work.
-M7 — Markdown functionality
+### M6 — Tabs and application lifecycle
 
-Implement this milestone only to the extent supported by the selected reference build.
+- Multiple documents and tab switching.
+- New-tab and new-window commands.
+- Tab closing and close-all behaviour.
+- Dirty-state indicators.
+- Save prompts during tab and application closure.
+- Session restoration.
+- Recent files.
+- Duplicate opens and document identity.
 
-    Markdown file association and .md / .markdown handling
-    Syntax view and formatted view
-    Heading formatting
-    Bold and italic
-    Strikethrough
-    Hyperlinks
-    Ordered and unordered lists
-    Nested lists and indentation
-    Tables, where supported
-    Formatting toolbar and context-menu commands
-    Markdown source serialization
-    Switching views without losing content or selection unexpectedly
-    Undo/redo across formatting operations
-    Malformed Markdown and unsupported syntax behavior
+Exit criteria: Tab operations and restarts preserve the expected documents and
+state without losing unsaved work.
 
-Exit criteria: Formatting operations, Markdown serialization, and view transitions pass a reference-derived fixture suite.
+### M7 — Markdown functionality
 
-Markdown must not be silently normalized or rewritten in ways that differ from the reference application's behavior.
-M8 — Settings and Windows integration
+- Markdown file association and `.md` / `.markdown` handling.
+- Syntax view and formatted view.
+- Headings, bold, italic, strikethrough, and hyperlinks.
+- Ordered and unordered lists, nesting, and indentation.
+- Tables.
+- Formatting toolbar and context-menu commands.
+- Markdown source serialization.
+- Switching views without losing content or selection.
+- Undo/redo across formatting operations.
+- Malformed Markdown and unsupported syntax.
 
-    Font family and size
-    Word wrap and supported view preferences
-    Theme and system-theme behavior
-    Settings persistence
-    Spell checking and autocorrect, if supported
-    Accessibility and screen-reader support
-    Keyboard access and focus order
-    File associations and shell integration, if in scope
-    Printing and page setup, if supported by the target
-    Localization and keyboard-layout correctness
+Exit criteria: Formatting operations, Markdown serialization, and view
+transitions pass their acceptance tests.
 
-Exit criteria: Each supported setting persists correctly and produces the expected behavior across application restarts.
-M9 — Optional and service-dependent functionality
+### M8 — Settings and desktop integration
 
-Create separate compatibility specifications for features that require external services, accounts, entitlements, or device-specific capabilities.
+- Font family and size.
+- Word wrap and view preferences.
+- Theme and system-theme behaviour.
+- Settings persistence.
+- Accessibility and screen-reader support.
+- Keyboard access and focus order.
+- File associations and shell integration, if in scope.
+- Printing and page setup, if supported.
+- Localization and keyboard-layout correctness.
 
-    AI writing, rewriting, and summarization, if part of the target
-    Optional onboarding or welcome experiences
-    Preview-only features
-    Service errors, authentication failures, and disabled-feature states
+Exit criteria: Each supported setting persists correctly and produces the
+expected behaviour across restarts.
 
-Do not substitute a different service and claim 1:1 parity. Reproduce the observable experience only where legally and technically feasible. Keep service-dependent functionality isolated from the core editor.
-M10 — Performance and reliability
+### M9 — Optional and service-dependent functionality
 
-    Measure startup time
-    Measure memory usage and idle CPU usage
-    Benchmark large files and extremely long lines
-    Benchmark search and Replace All
-    Benchmark scrolling, typing, and selection
-    Prevent unnecessary full-document copies
-    Profile allocations and rendering
-    Add stress tests for repeated tab and file operations
-    Test invalid encodings, inaccessible paths, and interrupted saves
-    Add crash diagnostics and regression tests
+Isolate features that require external services, accounts, or entitlements.
 
-Exit criteria: Performance is within predefined tolerances of the reference on identical hardware and datasets, without correctness regressions.
-M11 — Differential parity validation
+- AI writing, rewriting, and summarization.
+- Optional onboarding or welcome experiences.
+- Service errors, authentication failures, and disabled-feature states.
 
-    Run the same test fixtures through both applications.
-    Compare saved output byte-for-byte.
-    Compare keyboard-command outcomes and selection state.
-    Compare screenshots at identical resolutions and scaling.
-    Compare dialogs, prompts, and state transitions.
-    Test Unicode and input methods.
-    Test all supported file encodings and line endings.
-    Run randomized editing sequences.
-    Verify fixes against the complete regression suite.
-    Publish a feature-by-feature parity report.
+Keep service-dependent functionality isolated from the core editor. AI commands
+are present in the surface but greyed until the service is configured.
 
-Exit criteria: Every mandatory feature passes. Remaining differences are documented, reproducible, and explicitly excluded from the parity claim.
-M12 — Release engineering
+### M10 — Performance and reliability
 
-    Produce reproducible release builds.
-    Test installation, upgrade, and uninstall.
-    Sign binaries and installers where appropriate.
-    Validate Windows Defender and application reputation behavior.
-    Document supported Windows versions and architectures.
-    Prepare crash reporting and privacy documentation.
-    Create release notes and known-limitations documentation.
+- Measure startup time, memory, and idle CPU.
+- Benchmark large files and extremely long lines.
+- Benchmark search and Replace All.
+- Benchmark scrolling, typing, and selection.
+- Avoid unnecessary full-document copies.
+- Add stress tests for repeated tab and file operations.
+- Test invalid encodings, inaccessible paths, and interrupted saves.
 
-Exit criteria: A clean Windows machine can install, launch, use, upgrade, and remove the application reliably.
-5. Repository Layout
+Exit criteria: Performance is within the project's tolerances, without
+correctness regressions.
 
-rust-notepad/
-├── AGENTS.md
+### M11 — Validation
+
+- Exercise every feature's acceptance tests.
+- Compare the running UI against `docs/ui-reference.md` screen by screen.
+- Test Unicode and input methods.
+- Test all supported file encodings and line endings.
+- Run randomized editing sequences.
+- Update `docs/feature-matrix.md` with results.
+
+Exit criteria: Every mandatory feature passes its acceptance tests, and any
+remaining differences are documented and reproducible.
+
+### M12 — Release engineering
+
+- Produce reproducible release builds.
+- Test installation, upgrade, and uninstall.
+- Sign binaries and installers where appropriate.
+- Prepare crash reporting and privacy documentation.
+- Create release notes and known-limitations documentation.
+
+Exit criteria: A clean machine can install, launch, use, upgrade, and remove the
+application reliably.
+
+## 5. Repository layout
+
+```
+NoteCraft/
+├── AGENT.md
 ├── ROADMAP.md
 ├── Cargo.toml
 ├── Cargo.lock
 ├── rust-toolchain.toml
 ├── crates/
-│   ├── app/
-│   ├── ui/
-│   ├── editor/
-│   ├── document/
-│   ├── encoding/
-│   ├── filesystem/
-│   ├── search/
-│   ├── markdown/
-│   ├── session/
-│   └── platform/
-├── tests/
-│   ├── fixtures/
-│   ├── editing/
-│   ├── file_io/
-│   ├── keyboard/
-│   ├── markdown/
-│   └── visual/
-└── docs/
-    ├── reference-matrix.md
-    ├── feature-matrix.md
-    ├── architecture.md
-    ├── test-strategy.md
-    └── parity-report.md
+│   ├── app/          # nc-app — startup, logging, lifecycle (binary `notepad`)
+│   ├── platform/     # nc-platform — the egui/eframe shell
+│   ├── commands/     # nc-commands — command registry, menus, shortcuts
+│   ├── core/         # nc-core — document model and editing
+│   ├── textproc/     # nc-textproc — encoding, search, file I/O
+│   └── xtask/        # repository tasks
+├── docs/
+│   ├── ui-reference.md
+│   ├── feature-matrix.md
+│   ├── architecture.md
+│   └── test-strategy.md
+└── tests/            # integration + fixtures
+```
 
-Adjust crate boundaries when evidence supports a simpler design. Avoid creating empty crates solely to match this template.
-6. Definition of Done
+Adjust crate boundaries when a simpler design is supported by evidence. Avoid
+creating empty crates solely to match a template.
+
+## 6. Definition of Done
 
 A feature is complete only when:
 
-    Its reference behavior is documented.
-    Its implementation is integrated into the actual application.
-    Its keyboard, mouse, menu, and dialog entry points work as applicable.
-    Its edge cases are tested.
-    Its file output and state transitions match expectations.
-    It passes formatting, linting, and automated tests.
-    Its regression tests are committed.
-    Its parity status is updated in docs/feature-matrix.md.
+- Its behaviour is documented (in `docs/ui-reference.md` or the registry).
+- Its implementation is integrated into the real application.
+- Its keyboard, mouse, menu, and dialog entry points work as applicable.
+- Its edge cases are tested.
+- Its behaviour is correct and no data is lost.
+- It passes formatting, linting, and the automated tests.
+- Its regression tests are committed.
+- Its status is updated in `docs/feature-matrix.md`.
 
-7. Parity Tracking
+## 7. Feature tracking
 
-Every feature must have one of these statuses:
+Every feature carries one of these statuses:
 
-    NOT_STARTED
-    SPECIFIED
-    IN_PROGRESS
-    IMPLEMENTED
-    VERIFIED
-    BLOCKED
-    OUT_OF_SCOPE
+- `NOT_STARTED`
+- `SPECIFIED`
+- `IN_PROGRESS`
+- `IMPLEMENTED`
+- `VERIFIED`
+- `BLOCKED`
+- `OUT_OF_SCOPE`
 
-IMPLEMENTED does not mean parity is achieved. Only VERIFIED means the behavior has been tested against the reference.
+`IMPLEMENTED` means the code exists; `VERIFIED` means its acceptance tests pass.
+Track each feature with a stable ID, acceptance criteria, test location, status,
+and any known limitations.
 
-Track each feature with a stable ID, reference version, acceptance criteria, test location, implementation status, and known differences.
-8. Core Engineering Principles
+## 8. Core engineering principles
 
-    Correctness before cosmetic polish.
-    Observable behavior before assumptions about internals.
-    Byte preservation before convenience transformations.
-    Native Windows integration where it materially improves fidelity.
-    Explicit error handling rather than silent recovery.
-    Automated regression tests for every fixed mismatch.
-    No unverified feature-parity claims.
-    No unnecessary dependencies or architecture complexity.
-    No feature removal merely because the reference behavior is inconvenient.
+- Correctness before cosmetic polish.
+- Observable behaviour before assumptions about internals.
+- Byte preservation before convenience transformations.
+- Explicit error handling rather than silent recovery.
+- Automated regression tests for every fixed defect.
+- No unsubstantiated feature claims.
+- No unnecessary dependencies or architecture complexity.
+- No feature removal merely because it is inconvenient.
 
-The final objective is a maintainable Rust application whose behavior is demonstrably equivalent to the pinned Windows Notepad reference, within the explicitly documented scope.
+The objective is a maintainable Rust editor whose UI matches the captured
+reference and whose behaviour is backed by tests.
