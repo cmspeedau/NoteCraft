@@ -72,6 +72,9 @@ implementation and verification status — it is the source of truth.
   overwrite, and unrepresentable prompts.
 - A dirty indicator on the tab, and a status bar with one-based line and column
   reporting.
+- Keyboard accelerators dispatched from the command registry, so every
+  implemented command runs the same whether it is invoked from the menu or the
+  keyboard; `F5` inserts the current time and date.
 
 ## Architecture
 

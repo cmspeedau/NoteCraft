@@ -696,7 +696,9 @@ impl Shell {
         AvailabilityContext {
             document_present: tab.is_some(),
             dirty: tab.map(Tab::is_dirty).unwrap_or(false),
-            has_selection: false,
+            has_selection: tab
+                .map(|tab| tab.file.document().has_selection())
+                .unwrap_or(false),
             markdown_enabled: tab
                 .map(|tab| tab.kind == DocKind::Markdown)
                 .unwrap_or(false),

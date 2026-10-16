@@ -108,9 +108,11 @@ Status: IN_PROGRESS — the shell is built in `nc-platform` from the command
 registry: the custom title bar with tabs and window controls, the
 File/Edit/View menus, the formatting toolbar with the paragraph-style and list
 dropdowns, the editor surface, the status bar, and the settings page, all in the
-dark theme. The Find/Replace and Go to line dialogs are built on the search
-engine (NC-S001, NC-S006). Outstanding: the Open/Save As and Page setup
-surfaces, context menus, and high-DPI polish.
+dark theme. Every command this build implements is now dispatched from the
+registry by its keyboard accelerator (`crates/platform/src/ui/input.rs`), so the
+menu and the keyboard run the same command. The Find/Replace and Go to line
+dialogs are built on the search engine (NC-S001, NC-S006). Outstanding: the
+Page setup surface, context menus, and high-DPI polish.
 
 ### M3 — Text engine
 
@@ -184,18 +186,21 @@ prompt, and end-to-end verification.
 Exit criteria: Search and editing commands pass their acceptance tests,
 including boundary cases.
 
-Status: IN_PROGRESS — the engines are in place and the dialog surfaces are what
-is left. `nc-textproc` provides `search` (`SearchOptions`, `Direction`,
+Status: IN_PROGRESS — the engines are in place and the dialog surfaces are
+built. `nc-textproc` provides `search` (`SearchOptions`, `Direction`,
 `find_next`/`find_previous` returning `Found`/`Wrapped`/`Boundary`/`NoMatch`,
 `find_all`, `go_to_line`) and `time_date`; `nc-core` provides
 `Document::select_all`, `replace_range`/`replace_ranges` (one undo step per
 Replace All), and `status::StatusPosition`. The dialog surface is built in
 `nc-platform`: the Find/Replace dialog with match case, whole word, direction
 and wrap options; the Ctrl+F / Ctrl+H / F3 / Shift+F3 wiring; the Go to line
-dialog; and the status-notification line, all over `nc-textproc::search`.
-Outstanding: routing the remaining Edit commands (undo/redo, cut/copy/paste,
-Select all) through the shell rather than leaving them to the editor widget,
-and the F5 time/date insertion.
+dialog; and the status-notification line, all over `nc-textproc::search`. The
+shell now dispatches every implemented command's accelerator from the registry
+(`crates/platform/src/ui/input.rs`) and routes undo/redo, select all, delete, and
+the F5 time/date insertion through the document; cut/copy/paste reuse `egui`'s
+clipboard events, with the menu entries requesting the same. Outstanding:
+end-to-end verification of the commands and the search boundary cases. The F5
+insertion writes UTC (a recorded limitation, NC-S007).
 
 ### M6 — Tabs and application lifecycle
 

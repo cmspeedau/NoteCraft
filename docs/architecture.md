@@ -145,9 +145,17 @@ The window, drawn with `egui` and hosted by `eframe`, is the only UI backend:
 - `status_bar`: caret position, character count, document kind, zoom, line
   endings, and encoding.
 - `settings`: the two-column Settings page.
+- `input`: the keyboard accelerator layer — it turns a key press into the
+  `CommandId` the registry names for that key and runs it through `actions`, so
+  the menu and the keyboard converge on one implementation. It dispatches only
+  commands this build implements and that are available, and leaves the focused
+  widget's own editing keys alone.
 - `state`: the shell state (tabs, active document, view options) and the derived
   availability context.
 - `actions`: the one place a fired command turns into a change in the shell.
+
+`crates/platform/src/clock.rs` reads the system clock for the F5 time/date
+insertion; it is kept out of `ui` because it is platform work, not drawing.
 
 Services the shell will need (file dialogs, print, clipboard, spell-check) sit
 behind traits so they can be faked in tests.

@@ -10,6 +10,7 @@
 
 use std::path::PathBuf;
 
+mod clock;
 mod ui;
 
 /// Errors raised by the shell while bringing up the window.

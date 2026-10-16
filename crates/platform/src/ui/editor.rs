@@ -11,7 +11,7 @@ use egui::text::{CCursor, CCursorRange, CharIndex};
 use egui::{FontId, Margin};
 use nc_core::Document;
 
-use crate::ui::state::Shell;
+use crate::ui::state::{Shell, Tab};
 use crate::ui::theme;
 
 /// The editor widget's id. Fixed so a queued selection can be stored under it
@@ -60,12 +60,18 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
             let caret = match pending {
                 Some((primary, secondary)) => {
                     apply_selection(ui.ctx(), &output, primary, secondary);
+                    set_document_selection(tab, primary, secondary);
                     primary
                 }
-                None => output
-                    .cursor_range
-                    .map(|range| usize::from(range.primary.index))
-                    .unwrap_or(shell.caret),
+                None => match output.cursor_range {
+                    Some(range) => {
+                        let primary = usize::from(range.primary.index);
+                        let secondary = usize::from(range.secondary.index);
+                        set_document_selection(tab, primary, secondary);
+                        primary
+                    }
+                    None => shell.caret,
+                },
             };
 
             shell.caret = caret;
@@ -93,6 +99,20 @@ fn apply_selection(
     }));
     state.store(ctx, output.response.id);
     output.response.request_focus();
+}
+
+/// Points the document's own selection at the range the editor widget holds.
+///
+/// `egui` keeps the caret and selection in per-widget state; commands routed
+/// through the shell (Delete, Select all, Cut) act on the document's selection,
+/// so the two are kept in step every frame — the document is the single place
+/// those commands read.
+fn set_document_selection(tab: &mut Tab, primary: usize, secondary: usize) {
+    let (anchor, head) = {
+        let text = tab.text();
+        (byte_index(text, secondary), byte_index(text, primary))
+    };
+    tab.document_mut().select(anchor, head);
 }
 
 /// An [`egui::TextBuffer`] over an `nc-core` document.

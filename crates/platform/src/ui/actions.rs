@@ -14,10 +14,12 @@ use std::path::Path;
 
 use egui::Context;
 
+use crate::clock;
 use crate::ui::state::{DocKind, FileDialog, FileDialogMode, ParagraphStyle, Prompt, Shell, Tab};
 use nc_commands::CommandId;
+use nc_core::Clipboard;
 use nc_textproc::search::find;
-use nc_textproc::{Direction, Encoding, SearchResult, find_all, go_to_line};
+use nc_textproc::{Direction, Encoding, SearchResult, TimeDate, find_all, go_to_line};
 
 /// Runs the command with the given id against the shell.
 pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
@@ -29,6 +31,14 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
         "cmd.file.save_as" => save_as_dialog(shell),
         "cmd.file.close_tab" => close_tab(shell, shell.active),
         "cmd.file.close_window" | "cmd.file.exit" => close_window(shell),
+        "cmd.edit.undo" => undo(shell),
+        "cmd.edit.redo" => redo(shell),
+        "cmd.edit.select_all" => select_all(shell),
+        "cmd.edit.delete" => delete_selection(shell),
+        "cmd.edit.cut" => cut(shell, ctx),
+        "cmd.edit.copy" => copy(shell, ctx),
+        "cmd.edit.paste" => request_paste(ctx),
+        "cmd.edit.time_date" => insert_time_date(shell, clock::now_utc()),
         "cmd.view.status_bar" => shell.status_bar_visible = !shell.status_bar_visible,
         "cmd.view.word_wrap" => shell.word_wrap = !shell.word_wrap,
         "cmd.view.zoom_in" => shell.zoom = (shell.zoom + 10).min(500),
@@ -67,6 +77,164 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
     // A window close asked for by a command is acted on at the end of the frame
     // the same way one asked for by the title bar is.
     pump(shell, ctx);
+}
+
+/// Whether this build implements `id`.
+///
+/// A command can exist in the registry while its effect is scheduled for a
+/// later milestone; [`crate::ui::input`] consults this so a key that names an
+/// inert command is not consumed for nothing (`AGENT.md` §2). Kept next to the
+/// `match` in [`run`] so the two read together; `every_landed_command_is_wired`
+/// guards that no landed command is left unimplemented.
+pub fn handles(id: CommandId) -> bool {
+    matches!(
+        id.as_str(),
+        "cmd.file.new_tab"
+            | "cmd.file.new_markdown"
+            | "cmd.file.open"
+            | "cmd.file.save"
+            | "cmd.file.save_as"
+            | "cmd.file.close_tab"
+            | "cmd.file.close_window"
+            | "cmd.file.exit"
+            | "cmd.edit.undo"
+            | "cmd.edit.redo"
+            | "cmd.edit.select_all"
+            | "cmd.edit.delete"
+            | "cmd.edit.cut"
+            | "cmd.edit.copy"
+            | "cmd.edit.paste"
+            | "cmd.edit.time_date"
+            | "cmd.edit.find"
+            | "cmd.edit.find_next"
+            | "cmd.edit.find_prev"
+            | "cmd.edit.replace"
+            | "cmd.edit.go_to"
+            | "cmd.view.status_bar"
+            | "cmd.view.word_wrap"
+            | "cmd.view.zoom_in"
+            | "cmd.view.zoom_out"
+            | "cmd.view.zoom_reset"
+            | "cmd.view.md_source"
+            | "cmd.view.md_formatted"
+            | "cmd.app.settings"
+            | "cmd.format.title"
+            | "cmd.format.subtitle"
+            | "cmd.format.heading"
+            | "cmd.format.subheading"
+            | "cmd.format.section"
+            | "cmd.format.subsection"
+            | "cmd.format.body"
+    )
+}
+
+/// The highest roadmap milestone whose commands this build implements. Bumped
+/// as a milestone lands; `every_landed_command_is_wired` holds the two in step.
+#[cfg(test)]
+pub const LANDED_MILESTONE: u8 = 5;
+
+/// Undoes the last edit in the active document (`Ctrl+Z`).
+pub fn undo(shell: &mut Shell) {
+    if let Some(tab) = shell.active_tab_mut() {
+        tab.document_mut().undo();
+    }
+    sync_caret_to_document(shell);
+}
+
+/// Redoes the last undone edit (`Ctrl+Y`).
+pub fn redo(shell: &mut Shell) {
+    if let Some(tab) = shell.active_tab_mut() {
+        tab.document_mut().redo();
+    }
+    sync_caret_to_document(shell);
+}
+
+/// Selects the whole active document (`Ctrl+A`).
+pub fn select_all(shell: &mut Shell) {
+    let Some(tab) = shell.active_tab_mut() else {
+        return;
+    };
+    tab.document_mut().select_all();
+    let count = tab.text().chars().count();
+    shell.caret = count;
+    // The primary end is where a following search or keystroke travels from, so
+    // it starts at the end of the document with the anchor back at the start.
+    shell.pending_selection = Some((count, 0));
+}
+
+/// Deletes the active document's selection (`Del`/`Delete`).
+pub fn delete_selection(shell: &mut Shell) {
+    if let Some(tab) = shell.active_tab_mut() {
+        tab.document_mut().delete_selection();
+    }
+    sync_caret_to_document(shell);
+}
+
+/// Copies the selection to the clipboard (`Ctrl+C`).
+pub fn copy(shell: &mut Shell, ctx: &Context) {
+    if let Some(tab) = shell.active_tab() {
+        let mut clipboard = EguiClipboard(ctx);
+        tab.file.document().copy_to(&mut clipboard);
+    }
+}
+
+/// Copies the selection and deletes it (`Ctrl+X`).
+pub fn cut(shell: &mut Shell, ctx: &Context) {
+    let cut = {
+        let Some(tab) = shell.active_tab_mut() else {
+            return;
+        };
+        let mut clipboard = EguiClipboard(ctx);
+        tab.document_mut().cut_to(&mut clipboard)
+    };
+    if cut {
+        sync_caret_to_document(shell);
+    }
+}
+
+/// Asks the windowing layer for the clipboard's text (`Ctrl+V`, menu Paste).
+///
+/// The text does not come back synchronously: the backend answers with an
+/// `egui::Event::Paste` on the next frame, which the editor widget inserts
+/// through the same document (`crate::ui::input`).
+pub fn request_paste(ctx: &Context) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+}
+
+/// Inserts the time and date F5 writes, as one undoable edit.
+pub fn insert_time_date(shell: &mut Shell, moment: TimeDate) {
+    if let Some(tab) = shell.active_tab_mut() {
+        tab.document_mut()
+            .insert_uncoalesced(&moment.time_and_date());
+    }
+    sync_caret_to_document(shell);
+}
+
+/// Points the queued editor caret at the active document's own caret, after a
+/// shell command moved it.
+fn sync_caret_to_document(shell: &mut Shell) {
+    let Some(tab) = shell.active_tab() else {
+        return;
+    };
+    let caret = char_index(tab.text(), tab.file.document().caret());
+    shell.caret = caret;
+    shell.pending_selection = Some((caret, caret));
+}
+
+/// The clipboard the shell copies through, backed by `egui`.
+///
+/// `get_text` is never consulted: paste is driven by the backend's paste event,
+/// not read back through this trait.
+struct EguiClipboard<'a>(&'a Context);
+
+impl Clipboard for EguiClipboard<'_> {
+    fn get_text(&self) -> Option<String> {
+        None
+    }
+
+    fn set_text(&mut self, text: String) {
+        self.0.copy_text(text);
+    }
 }
 
 /// Opens the Find / Replace dialog, in Find or Replace mode.
@@ -941,5 +1109,89 @@ mod tests {
             "the window closes once nothing is dirty"
         );
         assert!(!shell.closing_window);
+    }
+
+    #[test]
+    fn every_landed_command_is_wired() {
+        for spec in nc_commands::REGISTRY {
+            if spec.milestone.number() <= LANDED_MILESTONE {
+                assert!(
+                    handles(spec.id),
+                    "{} (M{}) is not wired, so its accelerator would be inert",
+                    spec.id,
+                    spec.milestone.number(),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn undo_and_redo_route_through_the_document() {
+        let mut shell = shell_edited("hello");
+
+        undo(&mut shell);
+        assert_eq!(shell.tabs[0].text(), "");
+        assert_eq!(shell.pending_selection, Some((0, 0)));
+
+        redo(&mut shell);
+        assert_eq!(shell.tabs[0].text(), "hello");
+        assert_eq!(shell.caret, 5);
+    }
+
+    #[test]
+    fn select_all_selects_the_whole_document() {
+        let mut shell = shell_with("one two");
+
+        select_all(&mut shell);
+
+        assert_eq!(shell.pending_selection, Some((7, 0)));
+        assert_eq!(shell.caret, 7);
+        assert!(shell.tabs[0].file.document().has_selection());
+        assert!(
+            shell.availability().has_selection,
+            "Cut/Copy become available"
+        );
+    }
+
+    #[test]
+    fn delete_removes_the_selection_through_the_document() {
+        let mut shell = shell_with("one two");
+        shell.tabs[0].document_mut().select(0, 3);
+
+        delete_selection(&mut shell);
+
+        assert_eq!(shell.tabs[0].text(), " two");
+        assert_eq!(shell.caret, 0);
+    }
+
+    #[test]
+    fn copy_leaves_the_text_alone_and_cut_removes_it() {
+        let ctx = egui::Context::default();
+
+        let mut shell = shell_with("one two");
+        shell.tabs[0].document_mut().select(0, 3);
+        copy(&mut shell, &ctx);
+        assert_eq!(shell.tabs[0].text(), "one two");
+
+        let mut shell = shell_with("one two");
+        shell.tabs[0].document_mut().select(0, 3);
+        cut(&mut shell, &ctx);
+        assert_eq!(shell.tabs[0].text(), " two");
+        assert_eq!(shell.caret, 0);
+    }
+
+    #[test]
+    fn f5_inserts_the_time_and_date_as_one_edit() {
+        let mut shell = Shell::new();
+
+        insert_time_date(&mut shell, TimeDate::new(2026, 12, 10, 15, 47, 6));
+
+        assert_eq!(shell.tabs[0].text(), "3:47 PM 12/10/2026");
+        assert!(shell.tabs[0].is_dirty());
+        assert_eq!(shell.caret, 18);
+
+        // The whole insertion comes back out with one undo.
+        undo(&mut shell);
+        assert_eq!(shell.tabs[0].text(), "");
     }
 }

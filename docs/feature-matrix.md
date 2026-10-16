@@ -9,14 +9,26 @@ surface lives in `crates/commands`.
 
 `IMPLEMENTED` means the code exists; `VERIFIED` means its acceptance tests pass.
 
-**Current phase: M2 shell + M3–M5 engines.** The egui/eframe shell draws the
-window, menus, toolbar, editor, status bar, and settings page; the `nc-core` and
-`nc-textproc` engines back editing, file I/O, and search. The dialog surfaces
-are specified in [`ui-reference.md`](ui-reference.md) §5–§9; the Find/Replace,
-Go-to, and Open/Save-as dialogs are built and their commands wired, with the
-unsaved-changes, overwrite, and unrepresentable prompts. The page-setup surface,
-the outside-change prompt, and the Markdown, session, and settings-persistence
-work are still ahead.
+**Current phase: M2 shell + M3–M5 engines, with the accelerators wired.** The
+egui/eframe shell draws the window, menus, toolbar, editor, status bar, and
+settings page; the `nc-core` and `nc-textproc` engines back editing, file I/O,
+and search. Every command this build implements now has a live keyboard
+accelerator, dispatched from the registry (`crates/platform/src/ui/input.rs`),
+and the Edit commands (undo/redo, select all, delete) and the F5 time/date
+insertion are routed through the shell's document rather than the editor widget.
+Cut, copy and paste reuse `egui`'s clipboard events — the windowing layer turns
+`Ctrl+X`/`Ctrl+C`/`Ctrl+V` into those events before a key press exists — and the
+menu entries request the same events, so the menu and the keyboard agree.
+`has_selection` is now reported from the document, so Cut/Copy/Delete enable with
+a selection. The Find/Replace, Go-to, and Open/Save-as dialogs are built and
+their commands wired, with the unsaved-changes, overwrite, and unrepresentable
+prompts. The page-setup surface, the outside-change prompt, and the Markdown and
+session work are still ahead. Nothing is `VERIFIED` until its acceptance tests
+pass end to end.
+
+Known limitation: the F5 time/date insertion writes **UTC**, because the standard
+library exposes no local time zone and the project carries no time-zone database
+(NC-S007; to revisit with the M8 localisation work).
 
 ---
 

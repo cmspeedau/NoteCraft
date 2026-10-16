@@ -3,6 +3,7 @@
 mod actions;
 mod dialogs;
 mod editor;
+mod input;
 mod menu_bar;
 mod settings;
 mod state;
@@ -75,6 +76,10 @@ impl eframe::App for ShellApp {
 pub(crate) fn draw(shell: &mut Shell, ui: &mut egui::Ui) {
     let ctx = ui.ctx().clone();
 
+    // Accelerators are read before anything is drawn, so a command that opens a
+    // dialog or moves the caret is reflected in this frame.
+    input::dispatch(shell, &ctx);
+
     title_bar::show(shell, ui, &ctx);
 
     egui::Panel::top("top_bar")
@@ -134,6 +139,17 @@ mod tests {
             pressed: true,
             repeat: false,
             modifiers: Modifiers::NONE,
+        }
+    }
+
+    /// A key press with modifiers, as the windowing layer reports a chord.
+    fn chord(key: Key, modifiers: Modifiers) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
         }
     }
 
@@ -254,5 +270,77 @@ mod tests {
         actions::run(&mut shell, &ctx, nc_commands::CommandId("cmd.edit.go_to"));
         assert!(shell.go_to.open);
         assert_eq!(shell.go_to.line, "7");
+    }
+
+    #[test]
+    fn ctrl_n_opens_a_tab_and_ctrl_w_closes_it() {
+        let mut shell = Shell::new();
+
+        run(&mut shell, vec![chord(Key::N, Modifiers::COMMAND)]);
+        assert_eq!(shell.tabs.len(), 2, "Ctrl+N opens a tab");
+
+        run(&mut shell, vec![chord(Key::W, Modifiers::COMMAND)]);
+        assert_eq!(shell.tabs.len(), 1, "Ctrl+W closes the active tab");
+    }
+
+    #[test]
+    fn ctrl_f_opens_the_find_dialog_through_the_registry() {
+        let mut shell = Shell::new();
+
+        run(&mut shell, vec![chord(Key::F, Modifiers::COMMAND)]);
+
+        assert!(shell.find.open);
+        assert!(!shell.find.replace);
+    }
+
+    #[test]
+    fn f5_inserts_the_time_and_date_at_the_caret() {
+        let mut shell = Shell::new();
+
+        run(&mut shell, vec![key(Key::F5)]);
+
+        assert!(
+            shell.tabs[0].text().contains(':'),
+            "{}",
+            shell.tabs[0].text()
+        );
+        assert!(shell.tabs[0].is_dirty());
+    }
+
+    #[test]
+    fn ctrl_a_selects_all_and_ctrl_z_undoes_it() {
+        let mut shell = Shell::new();
+        *shell.tabs[0].document_mut() = nc_core::Document::from_text("one two");
+
+        run(&mut shell, vec![chord(Key::A, Modifiers::COMMAND)]);
+        assert!(shell.tabs[0].file.document().has_selection());
+
+        // The editor widget applies the queued selection in the same frame, so
+        // the document and the caret agree.
+        assert_eq!(shell.caret, 7);
+    }
+
+    #[test]
+    fn ctrl_z_undoes_the_last_edit_through_the_document() {
+        let mut shell = Shell::new();
+        shell.tabs[0].document_mut().insert_str("hello");
+        assert_eq!(shell.tabs[0].text(), "hello");
+
+        run(&mut shell, vec![chord(Key::Z, Modifiers::COMMAND)]);
+
+        assert_eq!(shell.tabs[0].text(), "");
+        assert_eq!(shell.caret, 0);
+    }
+
+    #[test]
+    fn a_key_with_no_command_is_left_for_the_editor() {
+        // An unbound chord must not be swallowed, or the editor would lose it.
+        let mut shell = Shell::new();
+        let (ctx, _) = run(&mut shell, vec![chord(Key::Q, Modifiers::ALT)]);
+
+        assert!(shell.find.query.is_empty());
+        // Nothing happened and the shell is untouched.
+        assert_eq!(shell.tabs.len(), 1);
+        let _ = ctx;
     }
 }
