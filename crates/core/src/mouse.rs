@@ -5,12 +5,11 @@
 //! arithmetic, and it lives here so the window shell never re-implements word
 //! or line selection.
 //!
-//! The reference's exact double- and triple-click rule is a capture item
-//! (`docs/feature-matrix.md` NC-E005), so the behaviour below is named an
-//! approximation: a double-click takes one UAX #29 word segment and a
-//! triple-click takes the whole line *including* its terminator, which is what
-//! a Windows edit control shows and what the engine can guarantee without the
-//! pinned reference machine.
+//! The exact double- and triple-click rule is a design decision recorded here
+//! (`docs/feature-matrix.md` NC-E005): a double-click takes one UAX #29 word
+//! segment and a triple-click takes the whole line *including* its terminator,
+//! which is what a familiar edit control shows and what the engine can
+//! guarantee without a window.
 
 use std::ops::Range;
 

@@ -1,14 +1,13 @@
 //! ANSI: the Windows code page, which is what a file with no BOM and no valid
-//! UTF-8 in it is read as (`docs/reference-matrix.md` §4).
+//! UTF-8 in it is read as (`docs/ui-reference.md`).
 //!
 //! The code page implemented here is Windows-1252, the Western one, which is
 //! the default on a Windows install that has not been told otherwise. A locale
 //! that selects a different code page (1251 Cyrillic, 932 Japanese, …) is
 //! therefore read with the Western mapping, which is wrong for those languages
 //! but never loses a byte: every byte maps to exactly one character and back.
-//! Which code page the reference uses for a given locale is a `TO_CAPTURE` item
-//! (`docs/reference-matrix.md` §4); when it is captured, only this module's
-//! tables change.
+//! Which code page to use for a given locale is a design decision
+//! (`docs/ui-reference.md`); if it changes, only this module's tables change.
 //!
 //! The five bytes that Windows-1252 leaves undefined (`0x81`, `0x8D`, `0x8F`,
 //! `0x90`, `0x9D`) map to the C1 control characters of the same value, so the

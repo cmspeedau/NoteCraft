@@ -11,8 +11,8 @@ use unicode_segmentation::UnicodeSegmentation;
 /// A line/column position within the buffer.
 ///
 /// Both fields are zero-based; `column` counts *grapheme clusters*, not bytes.
-/// The one-based form the reference shows in its status bar is a view concern
-/// (`docs/reference-matrix.md` §6, milestone M5).
+/// The one-based form shown in the status bar is a view concern
+/// (`docs/ui-reference.md`, milestone M5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct LineColumn {
     /// Zero-based line index.
@@ -208,9 +208,9 @@ impl TextBuffer {
     /// The start of the word at or before `byte`.
     ///
     /// Word boundaries follow UAX #29 (`unicode-segmentation`'s
-    /// `split_word_bounds`), with whitespace skipped, which is the closest
-    /// published match to a Windows edit control. The reference's exact word
-    /// definition is not captured, so this is an approximation recorded in
+    /// `split_word_bounds`), with whitespace skipped, which matches a
+    /// conventional edit control. The exact word definition is a design
+    /// decision, so this is an approximation recorded in
     /// `docs/feature-matrix.md` NC-E004.
     pub fn prev_word_bound(&self, byte: usize) -> usize {
         let at = self.clamp(byte);

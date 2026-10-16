@@ -2,7 +2,7 @@
 //!
 //! NoteCraft answers whether the bytes on disk are still what it last read or
 //! wrote; deciding what to do about it — ask, reload, or ignore — is the
-//! window's rule (`docs/reference-matrix.md` §5).
+//! window's rule (`docs/ui-reference.md`).
 
 use std::path::PathBuf;
 

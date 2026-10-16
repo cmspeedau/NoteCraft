@@ -1,15 +1,15 @@
 //! NC-S007 — the time and date F5 writes into the document.
 //!
 //! The engine owns the *text*; the shell owns *when*. These tests fill in a
-//! `TimeDate` by hand rather than reading a clock, so they pin the format the
-//! reference writes without waiting for a particular minute to come round.
+//! `TimeDate` by hand rather than reading a clock, so they pin the format F5
+//! writes without waiting for a particular minute to come round.
 //!
-//! What is settled (`docs/reference-matrix.md` S-rows for F5): the inserted
+//! What is settled (`docs/ui-reference.md` S-rows for F5): the inserted
 //! text is time, then date, separated by a space — `3:47 PM 10/12/2026`; the
 //! date runs month, then day, then year, and month and day carry no leading
 //! zeros; the clock is 12-hour, so midnight and noon are both `12`. Seconds are
-//! on the type because a clock reports them, but the reference does not write
-//! them, so `time_and_date` does not either.
+//! on the type because a clock reports them, but they are not written, so
+//! `time_and_date` does not either.
 
 use nc_textproc::{Meridiem, TimeDate};
 

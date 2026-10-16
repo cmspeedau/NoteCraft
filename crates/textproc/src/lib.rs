@@ -13,7 +13,7 @@
 //!   on disk, and the [`Document`](nc_core::Document) the text was read into.
 //!   Saving writes through a sibling temporary file and renames it into place,
 //!   so a failed write leaves the old file exactly as it was.
-//! * **Questions.** [`prompt`] names the states in which the reference asks
+//! * **Questions.** [`prompt`] names the states in which a prompt is raised
 //!   before destroying something — unsaved changes, an existing file in Save
 //!   As, characters the target encoding cannot hold, a file changed underneath
 //!   the editor.
@@ -30,7 +30,7 @@
 //! * **Reading never substitutes.** A byte string that is not valid in a given
 //!   encoding is not repaired character by character; the reader falls back to
 //!   ANSI/Windows-1252, which maps every byte to exactly one character and back
-//!   (`docs/reference-matrix.md` §4, NC-D001/NC-D002).
+//!   (`docs/ui-reference.md`, NC-D001/NC-D002).
 //! * **Reading is reversible.** Re-encoding the text of an unedited file with
 //!   the encoding and mark that were detected reproduces the input bytes
 //!   exactly, whatever they were.
@@ -40,15 +40,15 @@
 //! * **A failed write changes nothing.** The bytes are written to a temporary
 //!   file that is renamed over the target only once it is complete.
 //!
-//! # Evidence discipline
+//! # Design notes
 //!
-//! Where the reference's exact behaviour is not captured, the approximation is
+//! Where the exact behaviour is not fixed by the reference, the approximation is
 //! named as such and left `IN_PROGRESS` in `docs/feature-matrix.md` rather than
-//! asserted as parity. In this crate that means: ANSI is Windows-1252 (the
+//! asserted as exact. In this crate that means: ANSI is Windows-1252 (the
 //! Western default), so a locale that uses another code page is read with the
 //! Western table — wrong for those languages, but never lossy; and the wording
-//! of the prompts, the Save As list of encodings, and whether the reference
-//! even notices an outside change are `TO_CAPTURE` items.
+//! of the prompts, the Save As list of encodings, and whether an outside change
+//! is watched for at all are design decisions.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

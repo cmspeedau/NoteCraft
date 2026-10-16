@@ -1,7 +1,7 @@
 //! Overwrite (overtype) mode.
 //!
 //! ROADMAP M3 asks for "overwrite behavior if applicable"; the reference's
-//! behaviour is not captured and the feature matrix has no row for it, so the
+//! behaviour is a design decision and the feature matrix has no row for it, so the
 //! engine guarantees only what `Document::insert_impl` documents: an overwrite
 //! replaces one grapheme per grapheme typed and never eats the line terminator.
 

@@ -12,7 +12,7 @@ use std::process::ExitCode;
 
 /// Text shown for `--help` and on a usage error.
 pub const USAGE: &str = "\
-NoteCraft - a native, near-drop-in replacement for Windows Notepad
+NoteCraft - a fast, modern text and Markdown editor
 
 Usage:
     notepad [options] [file ...]

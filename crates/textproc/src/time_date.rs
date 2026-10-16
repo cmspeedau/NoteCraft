@@ -1,19 +1,19 @@
 //! The date and time the editor inserts at the caret
 //! (`docs/feature-matrix.md` NC-S007).
 //!
-//! F5 in the reference writes the current wall-clock time and date into the
+//! F5 writes the current wall-clock time and date into the
 //! document. This module is the engine half of that: it turns the fields a wall
-//! clock shows into the two strings the reference writes, so the whole feature
+//! clock shows into the two strings that are inserted, so the whole feature
 //! can be tested without waiting for a particular minute to come around.
 //!
 //! Reading the clock is the shell's job — [`TimeDate`] is filled in from
 //! whatever the platform layer can read — which is the same split the rest of
 //! the engine uses: engine decides the text, shell decides when.
 //!
-//! # Evidence discipline
+//! # Design notes
 //!
-//! The reference's `TO_CAPTURE` note covers the exact punctuation here. What is
-//! settled and encoded below (`docs/reference-matrix.md` S-rows for F5):
+//! The exact punctuation is settled and encoded below
+//! (`docs/ui-reference.md` S-rows for F5):
 //!
 //! * the inserted text is *time, then date*, separated by a space —
 //!   `3:47 PM 12/10/2026`;
@@ -21,8 +21,8 @@
 //!   `12`, never `0`;
 //! * month and day are written without leading zeros.
 //!
-//! Seconds are kept on the type because a clock reports them; the reference
-//! does not write them, so neither does [`TimeDate::time_and_date`].
+//! Seconds are kept on the type because a clock reports them; they are not
+//! written into the text, so neither does [`TimeDate::time_and_date`].
 
 /// Whether a time is before or after noon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,7 +33,7 @@ pub enum Meridiem {
     Pm,
 }
 
-/// A wall-clock date and time, as the reference's F5 inserts it.
+/// A wall-clock date and time, as F5 inserts it.
 ///
 /// The fields are civil, not a timestamp: `hour` is 0–23 on a 24-hour clock,
 /// and the 12-hour reading is derived by [`TimeDate::hour12`]. Nothing here
@@ -51,7 +51,7 @@ pub struct TimeDate {
     pub hour: u32,
     /// The minute, 0–59.
     pub minute: u32,
-    /// The second, 0–59. Reported by the clock, not written by the reference.
+    /// The second, 0–59. Reported by the clock, not written into the text.
     pub second: u32,
 }
 
@@ -86,7 +86,7 @@ impl TimeDate {
         }
     }
 
-    /// `AM` or `PM`, as the reference writes it.
+    /// `AM` or `PM`, as written.
     pub const fn meridiem_name(&self) -> &'static str {
         match self.meridiem() {
             Meridiem::Am => "AM",

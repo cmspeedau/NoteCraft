@@ -1,7 +1,7 @@
 //! NC-E001 — Undo and Redo.
 //!
 //! `docs/feature-matrix.md` NC-E001. The reference's exact grouping of a key
-//! run into undo steps is a capture item; these tests pin the behaviour the
+//! run into undo steps is a design decision; these tests pin the behaviour the
 //! engine *does* guarantee, so the approximation cannot drift silently.
 
 use nc_core::Document;

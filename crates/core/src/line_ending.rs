@@ -2,8 +2,8 @@
 
 /// A line-ending style.
 ///
-/// Source: `docs/reference-matrix.md` §4 — a new document saved by the
-/// reference uses CRLF, and an existing file keeps whatever style it had.
+/// Source: `docs/ui-reference.md` — a new document uses CRLF, and an existing
+/// file keeps whatever style it had.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum LineEnding {
     /// CRLF (`\r\n`).
@@ -44,8 +44,7 @@ impl LineEnding {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LineEndingReport {
     /// The style taken to be *the file's* style. This is the first style that
-    /// occurs in the file, which is what later milestones will re-check
-    /// against the reference when `mixed` is true.
+    /// occurs in the file, which is the style used when `mixed` is true.
     pub style: LineEnding,
     /// Number of CRLF terminators seen.
     pub crlf: usize,

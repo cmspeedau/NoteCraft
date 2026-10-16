@@ -3,7 +3,7 @@
 //! Every edit raises the flag and a successful save lowers it; undo and redo
 //! raise it too, since the document is no longer what was written even when the
 //! text has come back to the same characters. The window is what asks the user
-//! before closing (`docs/reference-matrix.md` §5).
+//! before closing (`docs/ui-reference.md`).
 
 use std::path::PathBuf;
 

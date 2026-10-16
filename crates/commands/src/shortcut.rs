@@ -1,11 +1,8 @@
-//! Keyboard shortcuts: modifier sets, key identity, and Windows virtual-key
-//! mapping.
+//! Keyboard shortcuts: modifier sets, key identity, and their display labels.
 //!
 //! Everything here is pure data and arithmetic so it can be unit-tested on any
-//! host. The virtual-key numbers are the Win32 `VK_*` values; they are kept in
-//! this crate because the registry is the single source of truth for what a
-//! shortcut *means*, and the native shell only translates a key press into one
-//! of these numbers.
+//! host. The registry is the single source of truth for what a shortcut *means*;
+//! the shell maps a key press to one of these and the menu renders the label.
 
 use std::fmt;
 
@@ -42,6 +39,13 @@ impl Modifiers {
         alt: false,
     };
 
+    /// Control and Alt.
+    pub const CTRL_ALT: Self = Self {
+        ctrl: true,
+        shift: false,
+        alt: true,
+    };
+
     /// Shift only.
     pub const SHIFT: Self = Self {
         ctrl: false,
@@ -56,52 +60,14 @@ impl Modifiers {
         alt: true,
     };
 
-    /// Returns these modifiers with Control added.
-    pub const fn ctrl(self) -> Self {
-        Self { ctrl: true, ..self }
-    }
-
-    /// Returns these modifiers with Shift added.
-    pub const fn shift(self) -> Self {
-        Self {
-            shift: true,
-            ..self
-        }
-    }
-
-    /// Returns these modifiers with Alt added.
-    pub const fn alt(self) -> Self {
-        Self { alt: true, ..self }
-    }
-
     /// Whether any modifier is held.
     pub const fn is_empty(self) -> bool {
         !self.ctrl && !self.shift && !self.alt
     }
-
-    /// The Win32 `ACCEL.fVirt` / `FVIRTKEY|F*` flags for these modifiers.
-    ///
-    /// `FVIRTKEY` (0x01), `FSHIFT` (0x04), `FCONTROL` (0x08), `FALT` (0x10).
-    /// A shortcut whose only modifier is Shift is expressed by the key itself
-    /// in some layouts, so callers using this for an accelerator table must
-    /// still set [`Modifiers::shift`] explicitly; the shell does.
-    pub const fn windows_flags(self) -> u8 {
-        let mut flags = 0x01; // FVIRTKEY
-        if self.shift {
-            flags |= 0x04; // FSHIFT
-        }
-        if self.ctrl {
-            flags |= 0x08; // FCONTROL
-        }
-        if self.alt {
-            flags |= 0x10; // FALT
-        }
-        flags
-    }
 }
 
 impl fmt::Display for Modifiers {
-    /// Renders the modifier prefix in Windows menu order (`Ctrl+Shift+Alt+`).
+    /// Renders the modifier prefix (`Ctrl+Shift+Alt+`).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.ctrl {
             f.write_str("Ctrl+")?;
@@ -154,47 +120,7 @@ pub enum Key {
 }
 
 impl Key {
-    /// The Win32 virtual-key code for this key.
-    pub const fn virtual_key(self) -> u16 {
-        match self {
-            Key::Letter(letter) => {
-                // VK_A (0x41) .. VK_Z (0x5A); letters are stored uppercase.
-                let upper = letter.to_ascii_uppercase() as u32;
-                0x41 + (upper - 'A' as u32) as u16
-            }
-            Key::Digit(digit) => 0x30 + digit as u16, // VK_0 (0x30)
-            Key::Function(number) => 0x6F + number as u16, // VK_F1 (0x70)
-            Key::Plus => 0xBB,                        // VK_OEM_PLUS
-            Key::Minus => 0xBD,                       // VK_OEM_MINUS
-            Key::Delete => 0x2E,                      // VK_DELETE
-            Key::Tab => 0x09,                         // VK_TAB
-            Key::Escape => 0x1B,                      // VK_ESCAPE
-            Key::Question => 0xBF,                    // VK_OEM_2
-            Key::Home => 0x24,                        // VK_HOME
-            Key::End => 0x23,                         // VK_END
-            Key::PageUp => 0x21,                      // VK_PRIOR
-            Key::PageDown => 0x22,                    // VK_NEXT
-            Key::Space => 0x20,                       // VK_SPACE
-            Key::Enter => 0x0D,                       // VK_RETURN
-            Key::Backspace => 0x08,                   // VK_BACK
-        }
-    }
-
-    /// Whether a shift-modified press of this key produces `self`.
-    ///
-    /// Windows reports `VK_OEM_PLUS` for `=` and `+`, and `VK_OEM_2` for `/`
-    /// and `?`; the registry stores the shifted identity, so a lookup for a
-    /// Shift-modified press must fall back to the unshifted key before it
-    /// fails.
-    pub const fn unshifted(self) -> Option<Self> {
-        match self {
-            Key::Plus => Some(Key::Plus),
-            Key::Question => Some(Key::Question),
-            other => Some(other),
-        }
-    }
-
-    /// The label Windows uses for this key in an accelerator string.
+    /// The label shown for this key in an accelerator string.
     pub const fn label(self) -> &'static str {
         match self {
             Key::Letter(_) => "",
@@ -268,21 +194,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn virtual_keys_match_win32_constants() {
-        assert_eq!(Key::Letter('n').virtual_key(), 0x4E);
-        assert_eq!(Key::Letter('z').virtual_key(), 0x5A);
-        assert_eq!(Key::Digit(0).virtual_key(), 0x30);
-        assert_eq!(Key::Digit(9).virtual_key(), 0x39);
-        assert_eq!(Key::Function(1).virtual_key(), 0x70);
-        assert_eq!(Key::Function(12).virtual_key(), 0x7B);
-        assert_eq!(Key::Plus.virtual_key(), 0xBB);
-        assert_eq!(Key::Minus.virtual_key(), 0xBD);
-        assert_eq!(Key::Escape.virtual_key(), 0x1B);
-        assert_eq!(Key::Tab.virtual_key(), 0x09);
-    }
-
-    #[test]
-    fn shortcut_labels_match_the_reference_matrix() {
+    fn shortcut_labels_match_the_menus() {
         let cases = [
             (Shortcut::new(Modifiers::CTRL, Key::Letter('n')), "Ctrl+N"),
             (
@@ -295,14 +207,13 @@ mod tests {
                 Shortcut::new(Modifiers::SHIFT, Key::Function(3)),
                 "Shift+F3",
             ),
-            (Shortcut::new(Modifiers::CTRL, Key::Tab), "Ctrl+Tab"),
-            (
-                Shortcut::new(Modifiers::CTRL_SHIFT, Key::Tab),
-                "Ctrl+Shift+Tab",
-            ),
             (Shortcut::new(Modifiers::CTRL, Key::Plus), "Ctrl+Plus"),
             (Shortcut::new(Modifiers::CTRL, Key::Minus), "Ctrl+Minus"),
             (Shortcut::new(Modifiers::CTRL, Key::Digit(0)), "Ctrl+0"),
+            (
+                Shortcut::new(Modifiers::CTRL_ALT, Key::Letter('s')),
+                "Ctrl+Alt+S",
+            ),
         ];
         for (shortcut, expected) in cases {
             assert_eq!(shortcut.to_string(), expected, "shortcut label");
@@ -310,10 +221,8 @@ mod tests {
     }
 
     #[test]
-    fn windows_flags_encode_modifiers() {
-        assert_eq!(Modifiers::NONE.windows_flags(), 0x01);
-        assert_eq!(Modifiers::CTRL.windows_flags(), 0x09);
-        assert_eq!(Modifiers::CTRL_SHIFT.windows_flags(), 0x0D);
-        assert_eq!(Modifiers::ALT.windows_flags(), 0x11);
+    fn modifiers_report_emptiness() {
+        assert!(Modifiers::NONE.is_empty());
+        assert!(!Modifiers::CTRL.is_empty());
     }
 }

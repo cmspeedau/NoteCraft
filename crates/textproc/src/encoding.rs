@@ -2,7 +2,7 @@
 //!
 //! NoteCraft reads ANSI or UTF-8 (with or without a byte order mark), and
 //! UTF-16 and UTF-32 in either byte order — the encodings the reference reads
-//! and writes (`docs/reference-matrix.md` §4, NC-D001/NC-D002). A new document
+//! and writes (`docs/ui-reference.md`, NC-D001/NC-D002). A new document
 //! is written as UTF-8 without a BOM, and the encoding a file was read with is
 //! remembered and used again when it is saved (NC-D004).
 //!
@@ -19,7 +19,7 @@
 //!
 //! A BOM-less file is UTF-8 if its bytes are valid UTF-8 and ANSI otherwise.
 //! There is no guess from the shape of the bytes: a UTF-16 file is UTF-16
-//! because it carries a BOM, which is how the reference reads them.
+//! because it carries a BOM, which is how they are read.
 
 use crate::ansi;
 use crate::error::DecodeError;
@@ -129,7 +129,7 @@ pub enum Evidence {
     /// was written. Nothing is detected until the file is opened again.
     Chosen,
     /// A new document, which is written as UTF-8 without a mark
-    /// (`docs/reference-matrix.md` §4).
+    /// (`docs/ui-reference.md`).
     NewDocument,
 }
 
@@ -170,8 +170,8 @@ impl Detection {
 
     /// The encoding a Save As chose, rather than one detected in the bytes.
     ///
-    /// The reference's Save As list is an exact-order `TO_CAPTURE` item
-    /// (`docs/reference-matrix.md` §4); what is fixed is that the encoding the
+    /// The exact order of the Save As list is a design decision
+    /// (`docs/ui-reference.md`); what is fixed is that the encoding the
     /// user picks is the one the file is written in, and the one the status bar
     /// then names.
     pub const fn chosen(encoding: Encoding, bom: bool) -> Self {
@@ -318,8 +318,8 @@ pub fn encode(
 /// represent with `?`, and returning the characters that were replaced.
 ///
 /// This is only for the case where the user has been told what will be lost and
-/// said to save anyway. What the reference puts in their place is a `TO_CAPTURE`
-/// item (`docs/reference-matrix.md` §4).
+/// said to save anyway. What goes in their place is a design decision
+/// (`docs/ui-reference.md`).
 pub fn encode_lossy(text: &str, encoding: Encoding, bom: bool) -> (Vec<u8>, Vec<char>) {
     let characters = unrepresentable(text, encoding);
     let bytes = encode_units(text, encoding, bom, &mut |_| Some('?'));

@@ -3,8 +3,8 @@
 //! The arithmetic from a byte offset to a 1-based line and column belongs to
 //! the engine, not the window, so it can be tested without a window
 //! (`docs/architecture.md` §4). What the status bar *says* — the wording and
-//! which of its fields are shown — is a captured gap; these tests pin the
-//! numbers, and nothing here decides how they are spelled.
+//! which of its fields are shown — is not fixed by the reference; these tests
+//! pin the numbers, and nothing here decides how they are spelled.
 //!
 //! The caret is the end of the selection, so a status bar reading with text
 //! selected shows where the selection ends.

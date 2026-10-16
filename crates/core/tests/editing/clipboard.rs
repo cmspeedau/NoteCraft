@@ -1,8 +1,8 @@
 //! NC-E002 — Copy, Cut, and Paste.
 //!
 //! `docs/feature-matrix.md` NC-E002. The document copies through the
-//! [`nc_core::Clipboard`] trait, so the whole round trip is testable off
-//! Windows; the Win32 clipboard implements the same trait behind `cfg(windows)`.
+//! [`nc_core::Clipboard`] trait, so the whole round trip is testable headlessly;
+//! the shell supplies the real clipboard behind the same trait.
 
 use nc_core::{Clipboard, Document, MemoryClipboard};
 

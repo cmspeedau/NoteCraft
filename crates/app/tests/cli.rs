@@ -1,5 +1,9 @@
-//! End-to-end checks that drive the built `notepad` binary the way a shell
-//! would. These exercise the real process boundary, not just the library.
+//! End-to-end checks that drive the built binary the way a shell would. These
+//! exercise the real process boundary, not just the library.
+//!
+//! A bare launch now opens a window and runs the event loop, so it cannot be
+//! exercised in a host-side test; the window itself is covered by the shell's
+//! own tests. These tests cover the paths that return before the window opens.
 
 use std::process::Command;
 
@@ -29,13 +33,4 @@ fn unknown_option_is_a_usage_error() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
-}
-
-/// A bare launch must return cleanly on a host without a native window.
-/// On Windows this opens a real window and is covered by the UI suite instead.
-#[cfg(not(windows))]
-#[test]
-fn headless_launch_exits_cleanly() {
-    let out = Command::new(BIN).output().unwrap();
-    assert!(out.status.success(), "exit: {:?}", out.status);
 }

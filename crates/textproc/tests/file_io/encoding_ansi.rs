@@ -1,11 +1,10 @@
 //! NC-D001/NC-D002 — the ANSI code page, the fallback that can read anything.
 //!
-//! ANSI here is the Windows Western code page, which the reference uses as its
-//! "ANSI" (`docs/reference-matrix.md` §4). Every byte has one character and
-//! every character it holds has one byte, so reading any byte string as ANSI
-//! never substitutes and never loses anything. The locale-specific code pages
-//! the reference picks per locale are a `TO_CAPTURE` item, so only this table
-//! changes when they are captured.
+//! ANSI here is the Windows Western code page, which is the editor's "ANSI"
+//! (`docs/ui-reference.md`). Every byte has one character and every character it
+//! holds has one byte, so reading any byte string as ANSI never substitutes and
+//! never loses anything. The locale-specific code pages are a design decision,
+//! so only this table changes if one is chosen.
 
 use nc_textproc::ansi::{self, decode_byte, encode_char};
 use nc_textproc::{Encoding, Evidence, detect, interpret};

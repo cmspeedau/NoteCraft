@@ -1,6 +1,6 @@
 //! NC-E005 — mouse selection: click, drag, double-click, triple-click.
 //!
-//! The reference's exact click rule is a capture item, so these tests pin the
+//! The exact click rule is a design decision, so these tests pin the
 //! approximation `crates/core/src/mouse.rs` names: one UAX #29 word segment for
 //! a double-click, the whole line including its terminator for a triple-click,
 //! and a granular drag that grows from the far edge of the unit the button went

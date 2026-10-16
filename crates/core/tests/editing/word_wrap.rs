@@ -101,7 +101,7 @@ fn tabs_advance_to_the_next_tab_stop_while_wrapping() {
 
 #[test]
 fn wrapping_a_wide_character_counts_one_column() {
-    // The reference's handling of double-width glyphs is a capture item; the
+    // The reference's handling of double-width glyphs is a design decision; the
     // engine counts graphemes, which this pins.
     let segments = segments("漢字漢字", 3);
     assert_eq!(segments, vec!["漢字漢", "字"]);

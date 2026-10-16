@@ -4,14 +4,14 @@
 //! the movement, so every key the editor binds can be tested without a window.
 //! Vertical movement carries a *desired column*: the column the caret was in
 //! before the move, so that walking down through short lines and back out again
-//! returns the caret to where it started — the behaviour every Windows text
-//! control has, and the one the reference's arrow keys show.
+//! returns the caret to where it started — the behaviour a conventional text
+//! control has.
 
 use crate::buffer::{LineColumn, TextBuffer};
 use crate::selection::Selection;
 
 /// Lines moved by Page Up / Page Down until the viewport can report its own
-/// height (milestone M2). The reference's exact page step is a capture item
+/// height (milestone M2). The exact page step is a design decision
 /// (`docs/feature-matrix.md` NC-E004).
 pub const PAGE_LINES: usize = 10;
 

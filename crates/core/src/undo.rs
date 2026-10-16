@@ -69,16 +69,16 @@ impl Entry {
 
 /// A linear undo history with a redo stack.
 ///
-/// Two reference behaviours are *not* captured yet, so this type makes them
+/// Two behaviours are *not* fixed by the reference yet, so this type makes them
 /// explicit rather than guessing (`AGENT.md` §2):
 ///
-/// * Here, consecutive typing merges into one history entry (as the reference
-///   does for a run of typed characters) while a newline, a paste, and a
-///   deletion each start their own entry. The reference's exact grouping is a
-///   capture item — see `docs/feature-matrix.md` NC-E001.
-/// * The history is unbounded. The reference's undo depth is also a capture
-///   item; [`UndoStack::truncate`] exists so a depth can be imposed once it is
-///   pinned.
+/// * Here, consecutive typing merges into one history entry (as a run of typed
+///   characters normally does) while a newline, a paste, and a deletion each
+///   start their own entry. The exact grouping is a design decision — see
+///   `docs/feature-matrix.md` NC-E001.
+/// * The history is unbounded. A bounded undo depth is also a design decision;
+///   [`UndoStack::truncate`] exists so a depth can be imposed once one is
+///   chosen.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UndoStack {
     done: Vec<Entry>,

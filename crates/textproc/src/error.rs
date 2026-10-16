@@ -39,7 +39,7 @@ impl std::error::Error for DecodeError {}
 /// Characters that cannot be written in the encoding a document is saved in.
 ///
 /// This is the ANSI case: every character outside the code page has no byte.
-/// The reference's behaviour is a `TO_CAPTURE` item, so NoteCraft asks instead
+/// The behaviour is a design decision, so NoteCraft asks instead
 /// of guessing: [`crate::encode`] reports the characters, and
 /// [`crate::encode_lossy`] writes them as `?` once the user has said to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +98,7 @@ pub enum Error {
     #[error(transparent)]
     Encode(#[from] EncodeError),
     /// The document has never been saved, so there is nowhere to save it to.
-    /// The reference opens the Save As dialog here.
+    /// Save As is opened here instead.
     #[error("the document has no path yet")]
     NoPath,
 }

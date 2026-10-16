@@ -5,13 +5,12 @@
 //! window shell, so it can be tested without a window
 //! (`docs/feature-matrix.md` NC-E010, `docs/architecture.md` §4).
 //!
-//! What the reference's status bar *says* — the wording, which of its fields
-//! are shown, and whether the column counts tabs or spaces — is a captured gap
-//! (`docs/reference-matrix.md` §5: "Line:Column, encoding, zoom %, word-wrap
-//! indicator — exact fields `TO_CAPTURE`"), so this module commits to the
-//! numbers only: the line counting from 1, and the column counting from 1 in
-//! graphemes within that line, measured the way `TextBuffer` measures a column.
-//! Nothing here decides how the numbers are spelled.
+//! What the status bar *says* — the wording, which of its fields are shown, and
+//! whether the column counts tabs or spaces — belongs to the shell
+//! (`docs/ui-reference.md`), so this module commits to the numbers only: the
+//! line counting from 1, and the column counting from 1 in graphemes within that
+//! line, measured the way `TextBuffer` measures a column. Nothing here decides
+//! how the numbers are spelled.
 
 use crate::buffer::{LineColumn, TextBuffer};
 

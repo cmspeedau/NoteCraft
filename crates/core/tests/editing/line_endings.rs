@@ -3,9 +3,9 @@
 //! The buffer holds `\n` terminators only; the file's own style is remembered on
 //! the `Document` and put back on save. A file that is opened and never edited is
 //! written back byte for byte, so a mixed file is not silently rewritten. Which
-//! style the reference uses by default is a `TO_CAPTURE` item
-//! (`docs/reference-matrix.md` §4); this suite pins the behaviour the engine
-//! promises, not the reference's exact default.
+//! style a new document uses by default is a design decision
+//! (`docs/ui-reference.md`); this suite pins the behaviour the engine promises,
+//! not any particular default.
 
 use nc_core::{Document, LineEnding};
 

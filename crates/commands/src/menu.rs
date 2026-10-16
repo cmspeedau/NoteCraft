@@ -1,13 +1,13 @@
-//! The menu-bar model: a resolved, ordered view of the registry ready for a
-//! native menu to render.
+//! The menu-bar model: a resolved, ordered view of the registry ready for the
+//! shell to render.
 //!
 //! The registry (`crate::registry`) is the data; this module turns it into the
 //! tree a shell consumes, applying availability at build time and normalising
-//! separators so a shell never has to. Building the model is pure, so the
-//! exact menu a user will see can be asserted in a test.
+//! separators so a shell never has to. Building the model is pure, so the exact
+//! menu a user will see can be asserted in a test.
 
 use crate::availability::AvailabilityContext;
-use crate::registry::{self, CommandId, CommandSpec, MenuBar};
+use crate::registry::{self, CommandId, CommandSpec, MenuBar, Toggle};
 use std::fmt;
 
 /// A top-level menu in the menu bar, in display order.
@@ -19,21 +19,11 @@ pub enum TopMenu {
     Edit,
     /// The `View` menu.
     View,
-    /// The `Format` menu.
-    Format,
-    /// The `Help` menu.
-    Help,
 }
 
 impl TopMenu {
     /// Every top-level menu, in display order.
-    pub const ALL: [TopMenu; 5] = [
-        TopMenu::File,
-        TopMenu::Edit,
-        TopMenu::View,
-        TopMenu::Format,
-        TopMenu::Help,
-    ];
+    pub const ALL: [TopMenu; 3] = [TopMenu::File, TopMenu::Edit, TopMenu::View];
 
     /// The label shown in the menu bar.
     pub const fn label(self) -> &'static str {
@@ -41,8 +31,6 @@ impl TopMenu {
             TopMenu::File => "File",
             TopMenu::Edit => "Edit",
             TopMenu::View => "View",
-            TopMenu::Format => "Format",
-            TopMenu::Help => "Help",
         }
     }
 }
@@ -75,6 +63,8 @@ pub enum MenuItem {
         accelerator: Option<String>,
         /// Whether the item is clickable in the context it was built for.
         enabled: bool,
+        /// The check state for a toggle item, or `None` for a plain command.
+        checked: Option<bool>,
     },
     /// A separator line.
     Separator,
@@ -99,6 +89,17 @@ impl MenuItem {
     /// Whether this item is a clickable command.
     pub fn is_enabled(&self) -> bool {
         matches!(self, MenuItem::Command { enabled: true, .. })
+    }
+
+    /// Whether this item is a toggle that is currently checked.
+    pub fn is_checked(&self) -> bool {
+        matches!(
+            self,
+            MenuItem::Command {
+                checked: Some(true),
+                ..
+            }
+        )
     }
 }
 
@@ -142,6 +143,7 @@ fn resolve_node(node: &MenuNode, context: AvailabilityContext) -> Option<MenuIte
                 spec,
                 accelerator: spec.accelerator(),
                 enabled: spec.is_available(context),
+                checked: spec.toggle.map(|toggle| checked(toggle, context)),
             })
         }
         MenuNode::Separator => Some(MenuItem::Separator),
@@ -155,6 +157,38 @@ fn resolve_node(node: &MenuNode, context: AvailabilityContext) -> Option<MenuIte
             }
         }
     }
+}
+
+/// The current check state of a toggle item.
+pub fn checked(toggle: Toggle, context: AvailabilityContext) -> bool {
+    match toggle {
+        Toggle::StatusBar => context.status_bar_visible,
+        Toggle::WordWrap => context.word_wrap,
+        Toggle::FormattedView => context.formatted_view,
+    }
+}
+
+/// Whether every command inside `items` is disabled — a submenu like this is
+/// shown greyed rather than opening.
+pub fn all_disabled(items: &[MenuItem]) -> bool {
+    let mut saw_command = false;
+    for item in items {
+        match item {
+            MenuItem::Command { enabled, .. } => {
+                saw_command = true;
+                if *enabled {
+                    return false;
+                }
+            }
+            MenuItem::Submenu { items, .. } => {
+                if !all_disabled(items) {
+                    return false;
+                }
+            }
+            MenuItem::Separator => {}
+        }
+    }
+    saw_command
 }
 
 /// Collapses runs of separators to one and trims leading or trailing
@@ -181,18 +215,18 @@ mod tests {
     use crate::shortcut::Key;
 
     #[test]
-    fn menu_bar_has_the_reference_menus_in_order() {
+    fn menu_bar_has_the_three_menus_in_order() {
         let bar = build_menu_bar(AvailabilityContext::initial());
         let titles: Vec<_> = bar.iter().map(|menu| menu.menu.label()).collect();
-        assert_eq!(titles, vec!["File", "Edit", "View", "Format"]);
+        assert_eq!(titles, vec!["File", "Edit", "View"]);
     }
 
     #[test]
-    fn file_menu_starts_with_new_and_ends_with_exit() {
+    fn file_menu_starts_with_new_tab_and_ends_with_exit() {
         let bar = build_menu_bar(AvailabilityContext::initial());
         let file = &bar[0];
         let commands: Vec<_> = file.items.iter().filter_map(MenuItem::command).collect();
-        assert_eq!(commands.first().unwrap().id.as_str(), "cmd.file.new");
+        assert_eq!(commands.first().unwrap().id.as_str(), "cmd.file.new_tab");
         assert_eq!(commands.last().unwrap().id.as_str(), "cmd.file.exit");
     }
 
@@ -219,7 +253,7 @@ mod tests {
         let new_item = file
             .items
             .iter()
-            .find(|item| item.command().map(|s| s.id.as_str()) == Some("cmd.file.new"))
+            .find(|item| item.command().map(|s| s.id.as_str()) == Some("cmd.file.new_tab"))
             .unwrap();
         match new_item {
             MenuItem::Command { accelerator, .. } => {
@@ -255,14 +289,41 @@ mod tests {
     }
 
     #[test]
+    fn view_toggles_report_their_check_state() {
+        let bar = build_menu_bar(AvailabilityContext::initial());
+        let view = bar.iter().find(|m| m.menu == TopMenu::View).unwrap();
+        let status = view
+            .items
+            .iter()
+            .find(|i| i.command().map(|s| s.id.as_str()) == Some("cmd.view.status_bar"))
+            .unwrap();
+        assert!(status.is_checked());
+    }
+
+    #[test]
+    fn markdown_submenu_is_all_disabled_for_a_plain_document() {
+        let bar = build_menu_bar(AvailabilityContext::initial());
+        let view = bar.iter().find(|m| m.menu == TopMenu::View).unwrap();
+        let md = view
+            .items
+            .iter()
+            .find_map(|i| match i {
+                MenuItem::Submenu { title, items } if *title == "Markdown" => Some(items),
+                _ => None,
+            })
+            .expect("Markdown submenu present");
+        assert!(all_disabled(md));
+    }
+
+    #[test]
     fn separators_are_normalised() {
         let collapsed = normalise(vec![
             MenuItem::Separator,
             MenuItem::Separator,
-            command("cmd.file.new"),
-            MenuItem::Separator,
-            MenuItem::Separator,
             command("cmd.file.open"),
+            MenuItem::Separator,
+            MenuItem::Separator,
+            command("cmd.file.save"),
             MenuItem::Separator,
         ]);
         assert_eq!(collapsed.len(), 3);
@@ -276,6 +337,7 @@ mod tests {
             spec: registry::by_id(id).unwrap(),
             accelerator: None,
             enabled: true,
+            checked: None,
         }
     }
 

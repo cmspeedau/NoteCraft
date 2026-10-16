@@ -5,11 +5,10 @@
 //! the tab-stop width, so it can be tested without drawing anything — the
 //! viewport that consumes it arrives in milestone M2/M5.
 //!
-//! The reference's own wrap points are not yet captured in detail, so the
-//! break rule here is stated plainly rather than presented as parity: break at
-//! the last whitespace that fits, and if a single run of non-whitespace is
-//! wider than the viewport, break inside it rather than overflow
-//! (`docs/feature-matrix.md` NC-E006).
+//! The exact wrap points are a design decision, so the break rule here is
+//! stated plainly rather than presented as exact: break at the last whitespace
+//! that fits, and if a single run of non-whitespace is wider than the viewport,
+//! break inside it rather than overflow (`docs/feature-matrix.md` NC-E006).
 
 use unicode_segmentation::UnicodeSegmentation;
 

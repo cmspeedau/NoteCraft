@@ -148,7 +148,7 @@ fn saving_over_a_file_that_changed_underneath_still_writes_ours() {
     assert!(file.insert_str("!"));
     file.save().expect("a save");
     // A plain save writes the document; it is the window that decides whether
-    // to ask first (`docs/reference-matrix.md` §5).
+    // to ask first (`docs/ui-reference.md`).
     assert_eq!(std::fs::read(&path).expect("the file"), b"!one");
     assert_eq!(file.external_change(), ExternalChange::None);
 }

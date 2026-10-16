@@ -1,9 +1,9 @@
 //! NC-E007 — Insert and delete tabs.
 //!
-//! `docs/feature-matrix.md` NC-E007. The reference's tab-stop width and its
-//! Tab-key behaviour are capture items (`docs/reference-matrix.md` §5), so the
-//! engine keeps the width as a parameter and these tests pin the arithmetic and
-//! the storage rather than a guess at the reference.
+//! `docs/feature-matrix.md` NC-E007. The tab-stop width and Tab-key behaviour
+//! are design decisions (`docs/ui-reference.md`), so the engine keeps the width
+//! as a parameter and these tests pin the arithmetic and the storage rather than
+//! a guess at the default.
 
 use nc_core::{TabStop, display_width};
 

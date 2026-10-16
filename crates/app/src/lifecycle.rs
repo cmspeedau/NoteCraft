@@ -33,7 +33,7 @@ pub fn run(cli: Cli) -> Result<i32> {
     Ok(outcome.exit_code)
 }
 
-/// Window title, mirroring the reference convention: the open document's name
+/// Window title, following the usual convention: the open document's name
 /// followed by the application name, or "Untitled" when nothing is open.
 fn window_title(cli: &Cli) -> String {
     match cli.files.first() {

@@ -19,16 +19,16 @@
 //! * Positions are byte offsets into the buffer's text; every operation clamps
 //!   its arguments to the nearest character boundary rather than panicking.
 //!
-//! # Evidence discipline
+//! # Design discipline
 //!
 //! Two rules from `AGENT.md` §2 shape this crate:
 //!
-//! 1. Nothing is invented. Where the reference's exact behaviour is not
-//!    captured, the approximation is named as such in a doc comment and left
-//!    marked `IN_PROGRESS` in `docs/feature-matrix.md`, not asserted as parity.
-//! 2. Behaviour the reference clearly has (a caret, an undo history, an EOL
+//! 1. Nothing is invented. Where the exact behaviour is a design decision, the
+//!    choice is named as such in a doc comment and left marked `IN_PROGRESS` in
+//!    `docs/feature-matrix.md`, not asserted as exact.
+//! 2. Behaviour the editor clearly needs (a caret, an undo history, an EOL
 //!    round-trip) is implemented rather than stubbed, because "not yet
-//!    captured" is not a licence to skip it.
+//!    specified" is not a licence to skip it.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

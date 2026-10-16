@@ -2,7 +2,7 @@
 //!
 //! A wide encoding without a BOM cannot be told from ANSI, so a file in one is
 //! UTF-16 or UTF-32 because it carries the mark, in either byte order
-//! (`docs/reference-matrix.md` §4). A mark whose body is not decodable falls
+//! (`docs/ui-reference.md`). A mark whose body is not decodable falls
 //! back to ANSI rather than substituting characters.
 
 use nc_textproc::encoding::encode;

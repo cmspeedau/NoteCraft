@@ -1,6 +1,6 @@
 [package]
 name = "nc-platform"
-description = "NoteCraft platform services: window creation, message loop, shell integration"
+description = "NoteCraft shell: the egui/eframe window, menus, toolbar, status bar, and settings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,19 +13,6 @@ nc-commands.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
-# The portable window backend, off by default: the shipped Windows build uses
-# the native backend, and the egui backend is there for hosts without Win32.
-eframe = { workspace = true, optional = true }
-egui = { workspace = true, optional = true }
-
-[features]
-# Present the shell through egui/eframe instead of the native Win32 backend.
-egui = ["dep:eframe", "dep:egui"]
-
-[target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Gdi",
-    "Win32_System_LibraryLoader",
-    "Win32_UI_WindowsAndMessaging",
-] }
+# The window shell. egui draws the UI and eframe hosts the window and event loop.
+eframe.workspace = true
+egui.workspace = true

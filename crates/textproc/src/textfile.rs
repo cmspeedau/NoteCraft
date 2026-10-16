@@ -5,7 +5,7 @@
 //! path, the bytes as they are on disk, and the [`Document`] the text was read
 //! into. The encoding a file was read as is remembered and reused on save, so
 //! ordinary save never changes how a file is written unless the user asks
-//! (`docs/reference-matrix.md` §4, NC-D004).
+//! (`docs/ui-reference.md`, NC-D004).
 
 use std::ffi::OsString;
 use std::fs;
@@ -19,8 +19,8 @@ use crate::error::{Error, Result};
 
 /// Whether the file on disk still holds what NoteCraft last read or wrote.
 ///
-/// Whether the reference *detects* an outside change at all is a `TO_CAPTURE`
-/// item (`docs/reference-matrix.md` §5), so NoteCraft answers the question and
+/// Whether an outside change is *detected* at all is a design decision
+/// (`docs/ui-reference.md`), so NoteCraft answers the question and
 /// leaves the policy — prompt, reload, or ignore — to the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExternalChange {
@@ -60,8 +60,8 @@ pub struct TextFile {
 impl TextFile {
     /// A new, empty document with no file behind it yet.
     ///
-    /// It is written as UTF-8 without a byte order mark, which is what the
-    /// reference writes a new document as (`docs/reference-matrix.md` §4); the
+    /// It is written as UTF-8 without a byte order mark (`docs/ui-reference.md`);
+    /// the
     /// text it writes uses CRLF, which is `nc-core`'s rule for a new document.
     pub fn untitled() -> Self {
         Self {
@@ -201,7 +201,7 @@ impl TextFile {
 
     /// Whether the document has unsaved changes.
     ///
-    /// What the reference then asks is a `TO_CAPTURE` item; this crate only
+    /// What is then asked is a design decision; this crate only
     /// reports the state the question is asked about.
     pub fn is_dirty(&self) -> bool {
         self.document.is_dirty()
@@ -268,8 +268,8 @@ impl TextFile {
 
     /// Writes the document to its file, in the encoding it was read in.
     ///
-    /// Fails if the document has no path yet, which is where the reference
-    /// opens Save As instead.
+    /// Fails if the document has no path yet, which is where Save As is opened
+    /// instead.
     pub fn save(&mut self) -> Result<Saved> {
         let text = self.document.save_text();
         let bytes = encoding::encode(&text, self.encoding(), self.has_bom())?;

@@ -1,22 +1,23 @@
-//! When each menu command is enabled.
+//! When each command is enabled.
 //!
-//! Menu enablement is state, not a property of the command alone, so the
-//! registry declares a rule per command and the shell supplies the state it
-//! knows. This keeps the "why is this greyed out?" logic testable without a
-//! window.
+//! Enablement is state, not a property of the command alone, so the registry
+//! declares a rule per command and the shell supplies the state it knows. This
+//! keeps the "why is this greyed out?" logic testable without a window.
 
 /// The condition under which a command may be invoked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Availability {
     /// Always enabled.
     Always,
-    /// Enabled when a document exists (so: all the time in the current shell).
+    /// Never enabled; used for placeholder entries that only hold a place.
+    Never,
+    /// Enabled when a document exists.
     Edited,
     /// Enabled only when the current document has unsaved changes.
     Dirty,
     /// Enabled only when there is a selection.
     Selection,
-    /// Enabled only when the document is being edited in a rich/Markdown mode.
+    /// Enabled only when the document is a Markdown document.
     Markdown,
     /// Enabled only when the AI service is reachable and configured.
     Service,
@@ -27,22 +28,28 @@ pub enum Availability {
 /// The shell state that availability rules are evaluated against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AvailabilityContext {
-    /// Whether at least one document (including the empty untitled one) exists.
+    /// Whether at least one document is open.
     pub document_present: bool,
     /// Whether the current document has unsaved changes.
     pub dirty: bool,
     /// Whether the current selection is non-empty.
     pub has_selection: bool,
-    /// Whether the current document is in a Markdown editing mode.
+    /// Whether the current document is a Markdown document.
     pub markdown_enabled: bool,
     /// Whether the AI service is configured and reachable.
     pub service_available: bool,
     /// How many tabs are open on the current window.
     pub tab_count: usize,
+    /// Whether the status bar is currently shown (the `View ▸ Status bar` check).
+    pub status_bar_visible: bool,
+    /// Whether word wrap is currently on (the `View ▸ Word wrap` check).
+    pub word_wrap: bool,
+    /// Whether a Markdown document is shown formatted rather than as source.
+    pub formatted_view: bool,
 }
 
 impl AvailabilityContext {
-    /// The state at first launch: one empty, clean, unselected document.
+    /// The state at first launch: one empty, clean, unselected plain document.
     pub const fn initial() -> Self {
         Self {
             document_present: true,
@@ -51,6 +58,9 @@ impl AvailabilityContext {
             markdown_enabled: false,
             service_available: false,
             tab_count: 1,
+            status_bar_visible: true,
+            word_wrap: true,
+            formatted_view: false,
         }
     }
 }
@@ -66,6 +76,7 @@ impl Availability {
     pub const fn allows(self, context: AvailabilityContext) -> bool {
         match self {
             Availability::Always => true,
+            Availability::Never => false,
             Availability::Edited => context.document_present,
             Availability::Dirty => context.document_present && context.dirty,
             Availability::Selection => context.document_present && context.has_selection,
@@ -84,6 +95,7 @@ mod tests {
     fn initial_context_disables_document_dependent_commands() {
         let ctx = AvailabilityContext::initial();
         assert!(Availability::Always.allows(ctx));
+        assert!(!Availability::Never.allows(ctx));
         assert!(Availability::Edited.allows(ctx));
         assert!(!Availability::Dirty.allows(ctx));
         assert!(!Availability::Selection.allows(ctx));

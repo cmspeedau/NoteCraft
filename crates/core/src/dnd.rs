@@ -5,7 +5,7 @@
 //! anything at all — while the viewport owns the gesture and the platform owns
 //! the cross-application half.
 //!
-//! Whether a modifier turns a drag into a copy is a capture item
+//! Whether a modifier turns a drag into a copy is a design decision
 //! (`docs/feature-matrix.md` NC-E009), so nothing here guesses at one: an
 //! internal drop *moves* the text, and the copy case is left to the viewport,
 //! which can reach it through the clipboard commands (`Ctrl+C` / `Ctrl+V`).

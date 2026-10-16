@@ -5,9 +5,8 @@
 //! exposes the editing operations the command registry names — insert, delete,
 //! undo, redo, select all, copy, cut, paste.
 //!
-//! Nothing here talks to a window, a file, or the platform clipboard: the
-//! Win32 shell drives these methods and reads the results
-//! (`docs/architecture.md` §4).
+//! Nothing here talks to a window, a file, or the platform clipboard: the shell
+//! drives these methods and reads the results (`docs/architecture.md` §4).
 
 use std::ops::Range;
 
@@ -50,8 +49,7 @@ impl Default for Document {
 impl Document {
     /// A new, empty document.
     ///
-    /// It uses CRLF, which is the style the reference writes a new document
-    /// with (`docs/reference-matrix.md` §4), and starts unmodified.
+    /// It uses CRLF (`docs/ui-reference.md`) and starts unmodified.
     pub fn new() -> Self {
         Self {
             buffer: TextBuffer::new(),
@@ -72,8 +70,7 @@ impl Document {
     ///
     /// The exact bytes handed in are remembered, so saving a document that has
     /// not been edited reproduces them byte for byte — including a file with
-    /// mixed line endings, whose save behaviour the reference has not been
-    /// captured for.
+    /// mixed line endings, whose save behaviour is a design decision.
     pub fn from_text(text: &str) -> Self {
         let report = line_ending::detect(text);
         let mut document = Self::new();
@@ -181,7 +178,7 @@ impl Document {
 
     /// Whether typing replaces the text ahead of the caret (overwrite mode).
     ///
-    /// The reference's overwrite behaviour is not captured, and there is no
+    /// The overwrite behaviour is a design decision, and there is no
     /// matrix row for it yet (`ROADMAP.md` M3, "overwrite behavior if
     /// applicable"), so what the engine guarantees is deliberately narrow: an
     /// overwrite replaces one grapheme per grapheme typed and never eats the
@@ -219,8 +216,8 @@ impl Document {
     /// The caret's position as the status bar reads it: 1-based line and column
     /// (`docs/feature-matrix.md` NC-E010).
     ///
-    /// The position is read from the caret — the *end* of the selection, which
-    /// is the reference's own reading: with text selected the status bar shows
+    /// The position is read from the caret — the *end* of the selection: with
+    /// text selected the status bar shows
     /// the end of the selection, and with no selection the caret. The column
     /// counts graphemes within the line.
     pub fn status_position(&self) -> StatusPosition {
@@ -388,8 +385,8 @@ impl Document {
         let after = Selection::caret(range.start);
         self.selection = after;
         self.desired_column = None;
-        // Consecutive deletions do not merge: the reference's grouping of a
-        // Backspace run is a capture item (NC-E001), so each deletion stays
+        // Consecutive deletions do not merge: the grouping of a Backspace run is
+        // a design decision (NC-E001), so each deletion stays
         // its own step rather than guessing.
         self.record(
             Edit {

@@ -1,9 +1,9 @@
 //! Tab stops and display-width arithmetic.
 //!
-//! The reference's tab-stop width and its Tab-key behaviour are not yet
-//! captured (`docs/reference-matrix.md` §5), so the engine exposes the width as
-//! a parameter with the conventional default of 8 columns and keeps the
-//! arithmetic separate and testable (`docs/feature-matrix.md` NC-E007).
+//! The tab-stop width and Tab-key behaviour are a design decision
+//! (`docs/ui-reference.md`), so the engine exposes the width as a parameter
+//! with the conventional default of 8 columns and keeps the arithmetic separate
+//! and testable (`docs/feature-matrix.md` NC-E007).
 
 /// The distance between tab stops, in display columns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -40,10 +40,10 @@ impl Default for TabStop {
 /// The display width of `text`, with a tab advancing to the next tab stop.
 ///
 /// Width is counted in grapheme clusters, so a combining sequence or an
-/// emoji ZWJ sequence advances by one column. Characters that are wide in the
-/// reference's font (CJK, for instance) are counted as one column too: the
-/// reference's exact handling of them is a capture item, so the approximation
-/// is named here rather than presented as parity.
+/// emoji ZWJ sequence advances by one column. Characters that are wide in most
+/// fonts (CJK, for instance) are counted as one column too: the exact handling
+/// of them is a design decision, so the approximation is named here rather than
+/// presented as exact.
 pub fn display_width(text: &str, tab_stop: TabStop, start_column: usize) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     let mut column = start_column;

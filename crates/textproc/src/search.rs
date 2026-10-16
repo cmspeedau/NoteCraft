@@ -23,11 +23,11 @@
 //!   non-overlapping matches in order, which is exactly what
 //!   `Document::replace_ranges` requires: one undo step for the whole run.
 //!
-//! # Evidence discipline
+//! # Design notes
 //!
-//! The reference's exact behaviour is not captured for every corner, and where
-//! it is not, the choice is named rather than asserted as parity
-//! (`docs/reference-matrix.md` §5). In this module that means: matches are
+//! Where the exact behaviour is not fixed for every corner, the choice is named
+//! rather than asserted as exact (`docs/ui-reference.md`). In this module that
+//! means: matches are
 //! non-overlapping and found left to right (so a needle that could match
 //! inside itself, like `aa` in `aaa`, matches once from the left rather than
 //! twice); a *whole word* edge is any character that is not a letter, a digit
@@ -40,7 +40,7 @@ use std::ops::Range;
 
 /// Which way a search travels from the caret.
 ///
-/// The direction is one of the reference's Find options
+/// The direction is one of the Find options
 /// (`docs/feature-matrix.md` NC-S004).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Direction {
@@ -53,18 +53,18 @@ pub enum Direction {
 
 /// How a search looks (`docs/feature-matrix.md` NC-S004).
 ///
-/// The reference's Find dialog carries *Match case* and *Match whole word
+/// The Find dialog carries *Match case* and *Match whole word
 /// only*, both off when it opens, and both kept for the next Find.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SearchOptions {
-    /// Compare case exactly. Off by default, as in the reference.
+    /// Compare case exactly. Off by default.
     pub match_case: bool,
-    /// Match only whole words. Off by default, as in the reference.
+    /// Match only whole words. Off by default.
     pub whole_word: bool,
 }
 
 impl SearchOptions {
-    /// The reference's defaults: either case, anywhere in a word.
+    /// The defaults: either case, anywhere in a word.
     pub const fn new() -> Self {
         Self {
             match_case: false,
@@ -139,13 +139,13 @@ pub enum SearchResult {
     /// The match the search was looking for.
     Found(Match),
     /// The match the search was looking for, reached by wrapping around one
-    /// end of the document. The reference stops and says so before wrapping,
+    /// end of the document. The search stops and says so before wrapping,
     /// which is why this is not just a [`SearchResult::Found`].
     Wrapped(Match),
     /// The search ran out of document without wrapping, and there *is* a match
-    /// elsewhere: the reference's "Beginning/end of document reached" notice.
+    /// elsewhere: the "Beginning/end of document reached" notice.
     Boundary,
-    /// The text is not in the document at all: the reference's "Cannot find"
+    /// The text is not in the document at all: the "Cannot find"
     /// message.
     NoMatch,
 }
@@ -169,7 +169,7 @@ impl SearchResult {
 /// (`docs/feature-matrix.md` NC-S001, NC-S002).
 ///
 /// `from` is the caret — or the end of the selection, since that is where the
-/// reference's caret is — and is clamped to the text and down to a character
+/// caret is — and is clamped to the text and down to a character
 /// boundary. A match *at* `from` counts, travelling either way.
 ///
 /// With `wraps` set the search carries on from the other end of the document
@@ -235,7 +235,7 @@ pub fn find_previous(
 /// The result is exactly the shape `Document::replace_ranges` wants, so
 /// Replace All is `find_all` followed by one call, and the whole run is one
 /// undo step. An empty needle finds nothing rather than matching at every
-/// position, which is what the reference's disabled Find button amounts to.
+/// position, which is what a disabled Find button amounts to.
 pub fn find_all(haystack: &str, needle: &str, options: SearchOptions) -> Vec<Match> {
     if needle.is_empty() || needle.len() > haystack.len() {
         return Vec::new();
@@ -272,7 +272,7 @@ pub fn find_all(haystack: &str, needle: &str, options: SearchOptions) -> Vec<Mat
 /// Lines are counted from 1, the way the status bar counts them. A line number
 /// that is not in the document clamps rather than failing: 0 and 1 are the
 /// start of the text, and a number past the last line is the start of the last
-/// line — which is the behaviour the reference's dialog has, and the reason
+/// line — which is the behaviour the dialog has, and the reason
 /// this returns an offset instead of an error for the shell to report.
 pub fn go_to_line(text: &str, line: usize) -> usize {
     if line <= 1 {

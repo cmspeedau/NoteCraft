@@ -1,7 +1,7 @@
 //! NC-E009 — drag and drop text.
 //!
 //! `dnd.rs` decides *where* a drop lands; the document performs the move. The
-//! reference's modifier rule (drag-copy) is a capture item, so the engine only
+//! reference's modifier rule (drag-copy) is a design decision, so the engine only
 //! guarantees the plain internal drag: a move, selected afterwards, undone as a
 //! single step.
 

@@ -2,10 +2,9 @@
 
 /// A system clipboard, or a stand-in for one.
 ///
-/// The engine never touches the platform clipboard directly: the Win32
-/// clipboard (`CF_UNICODETEXT`) and the headless stand-in both implement this
-/// trait, which is what lets Copy/Cut/Paste be tested off Windows
-/// (`docs/architecture.md` §4).
+/// The engine never touches the platform clipboard directly: the shell's system
+/// clipboard and the headless stand-in both implement this trait, which is what
+/// lets Copy/Cut/Paste be tested without a window (`docs/architecture.md` §4).
 pub trait Clipboard {
     /// The clipboard's current text, if it holds any.
     fn get_text(&self) -> Option<String>;

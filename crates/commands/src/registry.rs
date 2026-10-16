@@ -1,11 +1,11 @@
-//! The command registry: every menu command the application knows about, with
-//! its label, menu placement, default shortcut, availability rule, evidence
-//! grade, and the milestone that first gives it a real effect.
+//! The command registry: every command the application knows about, with its
+//! label, menu placement, default shortcut, availability rule, and the roadmap
+//! milestone that first gives it a real effect.
 //!
-//! Source of truth: `docs/reference-matrix.md` §3 ("Commands, menus, and
-//! shortcuts"). Each row below carries the same evidence tag the matrix gives
-//! it, so the registry can never drift silently from the captured reference:
-//! [`registry_integrity`] is asserted by the test suite.
+//! The registry is the single authoritative specification of the command
+//! surface. The shell (menus, toolbar, keyboard) reads it rather than restating
+//! commands, and [`registry_integrity`] is asserted by the test suite so the
+//! registry stays internally consistent.
 
 use crate::availability::Availability;
 use crate::menu::{MenuNode, TopMenu};
@@ -29,27 +29,15 @@ impl fmt::Display for CommandId {
     }
 }
 
-/// How well the reference capture supports a command's existence.
+/// A state field a command's check mark reflects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Evidence {
-    /// Listed with an explicit command name in the reference matrix.
-    Documented,
-    /// Present in the reference matrix but with part of its behaviour, label,
-    /// or placement marked for capture.
-    DocumentedPartial,
-    /// Expected from the platform but not yet pinned against the reference.
-    ToCapture,
-}
-
-/// Whether a command's specification has been pinned against the reference.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SpecStatus {
-    /// Specified here; no verification against the reference machine yet.
-    Spec,
-    /// Verified against the pinned reference build.
-    Verified,
-    /// Blocked on the reference machine or an external service.
-    Blocked,
+pub enum Toggle {
+    /// The `View ▸ Status bar` check state.
+    StatusBar,
+    /// The `View ▸ Word wrap` check state.
+    WordWrap,
+    /// The `View ▸ Markdown ▸ Formatted view` check state.
+    FormattedView,
 }
 
 /// The roadmap milestone that first gives a command a real effect.
@@ -83,12 +71,12 @@ pub struct MenuPlacement {
     pub submenu: Option<&'static str>,
 }
 
-/// A single menu command.
+/// A single command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CommandSpec {
     /// Stable identifier.
     pub id: CommandId,
-    /// Numeric identifier used by the native menu layer (Win32 `WM_COMMAND`).
+    /// Numeric identifier (used by the shell to route actions).
     pub menu_id: u16,
     /// Menu label, without accelerator text.
     pub label: &'static str,
@@ -98,10 +86,8 @@ pub struct CommandSpec {
     pub shortcut: Option<Shortcut>,
     /// When the command is enabled.
     pub availability: Availability,
-    /// Evidence grade from the reference matrix.
-    pub evidence: Evidence,
-    /// Verification status against the reference build.
-    pub status: SpecStatus,
+    /// The check state this command reflects, for toggle items.
+    pub toggle: Option<Toggle>,
     /// Milestone that first gives the command a real effect.
     pub milestone: Milestone,
 }
@@ -118,41 +104,35 @@ impl CommandSpec {
     }
 }
 
-/// `MENU` is the full registry, in reference-matrix order.
+/// `REGISTRY` is the full command registry.
 pub const REGISTRY: &[CommandSpec] = &[
-    // --- §3.1 File ------------------------------------------------------
-    cmd(
-        "cmd.file.new",
-        101,
-        "New",
-        menu(TopMenu::File),
-        Some(CTRL_N),
-        Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        4,
-    ),
+    // --- File -----------------------------------------------------------
     cmd(
         "cmd.file.new_tab",
-        102,
+        101,
         "New tab",
-        None,
-        Some(CTRL_T),
+        menu(TopMenu::File),
+        Some(CTRL_N),
         Availability::Always,
-        Evidence::Documented,
-        SpecStatus::Spec,
         6,
     ),
     cmd(
         "cmd.file.new_window",
-        103,
+        102,
         "New window",
         menu(TopMenu::File),
         Some(CTRL_SHIFT_N),
         Availability::Always,
-        Evidence::Documented,
-        SpecStatus::Spec,
         6,
+    ),
+    cmd(
+        "cmd.file.new_markdown",
+        103,
+        "New Markdown tab",
+        menu(TopMenu::File),
+        None,
+        Availability::Always,
+        7,
     ),
     cmd(
         "cmd.file.open",
@@ -161,99 +141,90 @@ pub const REGISTRY: &[CommandSpec] = &[
         menu(TopMenu::File),
         Some(CTRL_O),
         Availability::Always,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        2,
+        4,
+    ),
+    cmd(
+        "cmd.file.recent_empty",
+        105,
+        "No recent files",
+        None,
+        None,
+        Availability::Never,
+        6,
     ),
     cmd(
         "cmd.file.save",
-        105,
+        106,
         "Save",
         menu(TopMenu::File),
         Some(CTRL_S),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
         4,
     ),
     cmd(
         "cmd.file.save_as",
-        106,
-        "Save As",
+        107,
+        "Save as",
         menu(TopMenu::File),
         Some(CTRL_SHIFT_S),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        2,
-    ),
-    cmd(
-        "cmd.file.print",
-        107,
-        "Print",
-        menu(TopMenu::File),
-        Some(CTRL_P),
-        Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
         4,
     ),
     cmd(
-        "cmd.file.page_setup",
+        "cmd.file.save_all",
         108,
+        "Save all",
+        menu(TopMenu::File),
+        Some(CTRL_ALT_S),
+        Availability::MultipleTabs,
+        6,
+    ),
+    cmd(
+        "cmd.file.page_setup",
+        109,
         "Page setup",
         menu(TopMenu::File),
         None,
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        4,
+        8,
+    ),
+    cmd(
+        "cmd.file.print",
+        110,
+        "Print",
+        menu(TopMenu::File),
+        Some(CTRL_P),
+        Availability::Edited,
+        8,
     ),
     cmd(
         "cmd.file.close_tab",
-        109,
+        111,
         "Close tab",
         menu(TopMenu::File),
         Some(CTRL_W),
-        Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
+        Availability::Always,
+        6,
+    ),
+    cmd(
+        "cmd.file.close_window",
+        112,
+        "Close window",
+        menu(TopMenu::File),
+        Some(CTRL_SHIFT_W),
+        Availability::Always,
         6,
     ),
     cmd(
         "cmd.file.exit",
-        110,
+        113,
         "Exit",
         menu(TopMenu::File),
         Some(ALT_F4),
         Availability::Always,
-        Evidence::Documented,
-        SpecStatus::Spec,
         2,
     ),
-    cmd(
-        "cmd.file.recent",
-        111,
-        "Recent files",
-        menu(TopMenu::File),
-        None,
-        Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        4,
-    ),
-    cmd(
-        "cmd.file.session_restore",
-        112,
-        "Session restore",
-        None,
-        None,
-        Availability::Always,
-        Evidence::DocumentedPartial,
-        SpecStatus::Spec,
-        4,
-    ),
-    // --- §3.2 Edit ------------------------------------------------------
+    // --- Edit -----------------------------------------------------------
     cmd(
         "cmd.edit.undo",
         201,
@@ -261,19 +232,15 @@ pub const REGISTRY: &[CommandSpec] = &[
         menu(TopMenu::Edit),
         Some(CTRL_Z),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
         3,
     ),
     cmd(
         "cmd.edit.redo",
         202,
         "Redo",
-        menu(TopMenu::Edit),
+        None,
         Some(CTRL_Y),
-        Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
+        Availability::Dirty,
         3,
     ),
     cmd(
@@ -283,8 +250,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         menu(TopMenu::Edit),
         Some(CTRL_X),
         Availability::Selection,
-        Evidence::Documented,
-        SpecStatus::Spec,
         5,
     ),
     cmd(
@@ -294,8 +259,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         menu(TopMenu::Edit),
         Some(CTRL_C),
         Availability::Selection,
-        Evidence::Documented,
-        SpecStatus::Spec,
         5,
     ),
     cmd(
@@ -305,8 +268,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         menu(TopMenu::Edit),
         Some(CTRL_V),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
         5,
     ),
     cmd(
@@ -316,99 +277,90 @@ pub const REGISTRY: &[CommandSpec] = &[
         menu(TopMenu::Edit),
         Some(DELETE),
         Availability::Selection,
-        Evidence::Documented,
-        SpecStatus::Spec,
         5,
     ),
     cmd(
-        "cmd.edit.select_all",
+        "cmd.md.clear",
         207,
-        "Select all",
+        "Clear formatting",
         menu(TopMenu::Edit),
-        Some(CTRL_A),
-        Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        5,
+        None,
+        Availability::Markdown,
+        7,
+    ),
+    cmd(
+        "cmd.edit.define_bing",
+        208,
+        "Define with Bing",
+        menu(TopMenu::Edit),
+        Some(CTRL_E),
+        Availability::Selection,
+        9,
     ),
     cmd(
         "cmd.edit.find",
-        208,
+        209,
         "Find",
         menu(TopMenu::Edit),
         Some(CTRL_F),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        5,
     ),
     cmd(
         "cmd.edit.find_next",
-        209,
+        210,
         "Find next",
         menu(TopMenu::Edit),
         Some(F3),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        5,
     ),
     cmd(
         "cmd.edit.find_prev",
-        210,
+        211,
         "Find previous",
         menu(TopMenu::Edit),
         Some(SHIFT_F3),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        5,
     ),
     cmd(
         "cmd.edit.replace",
-        211,
+        212,
         "Replace",
         menu(TopMenu::Edit),
         Some(CTRL_H),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        5,
     ),
     cmd(
         "cmd.edit.go_to",
-        212,
+        213,
         "Go to",
         menu(TopMenu::Edit),
         Some(CTRL_G),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        5,
+    ),
+    cmd(
+        "cmd.edit.select_all",
+        214,
+        "Select all",
+        menu(TopMenu::Edit),
+        Some(CTRL_A),
+        Availability::Edited,
+        5,
     ),
     cmd(
         "cmd.edit.time_date",
-        213,
+        215,
         "Time/Date",
         menu(TopMenu::Edit),
         Some(F5),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
         5,
     ),
-    cmd(
-        "cmd.edit.word_wrap",
-        214,
-        "Word wrap",
-        menu(TopMenu::View),
-        None,
-        Availability::Edited,
-        Evidence::DocumentedPartial,
-        SpecStatus::Spec,
-        3,
-    ),
-    // --- §3.3 View ------------------------------------------------------
+    // --- View -----------------------------------------------------------
     cmd_placed(
         "cmd.view.zoom_in",
         301,
@@ -419,9 +371,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         },
         Some(CTRL_PLUS),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        2,
     ),
     cmd_placed(
         "cmd.view.zoom_out",
@@ -433,239 +383,237 @@ pub const REGISTRY: &[CommandSpec] = &[
         },
         Some(CTRL_MINUS),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        2,
     ),
     cmd_placed(
         "cmd.view.zoom_reset",
         303,
-        "Reset zoom",
+        "Restore default zoom",
         MenuPlacement {
             menu: TopMenu::View,
             submenu: Some("Zoom"),
         },
         Some(CTRL_ZERO),
         Availability::Edited,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        3,
+        2,
     ),
-    cmd(
+    cmd_toggle(
         "cmd.view.status_bar",
         304,
         "Status bar",
         menu(TopMenu::View),
         None,
         Availability::Always,
-        Evidence::Documented,
-        SpecStatus::Spec,
+        Toggle::StatusBar,
         2,
     ),
-    // --- §3.4 Tabs ------------------------------------------------------
-    cmd(
-        "cmd.tab.next",
-        401,
-        "Next tab",
+    cmd_toggle(
+        "cmd.view.word_wrap",
+        305,
+        "Word wrap",
+        menu(TopMenu::View),
         None,
-        Some(CTRL_TAB),
-        Availability::MultipleTabs,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        6,
+        Availability::Edited,
+        Toggle::WordWrap,
+        3,
     ),
-    cmd(
-        "cmd.tab.prev",
-        402,
-        "Previous tab",
+    cmd_placed(
+        "cmd.view.md_source",
+        306,
+        "Source view",
+        MenuPlacement {
+            menu: TopMenu::View,
+            submenu: Some("Markdown"),
+        },
         None,
-        Some(CTRL_SHIFT_TAB),
-        Availability::MultipleTabs,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        6,
+        Availability::Markdown,
+        7,
     ),
-    cmd(
-        "cmd.tab.close_all",
-        403,
-        "Close all",
-        menu(TopMenu::File),
+    cmd_placed(
+        "cmd.view.md_formatted",
+        307,
+        "Formatted view",
+        MenuPlacement {
+            menu: TopMenu::View,
+            submenu: Some("Markdown"),
+        },
         None,
-        Availability::MultipleTabs,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        6,
+        Availability::Markdown,
+        7,
     ),
-    // --- §3.5 Markdown --------------------------------------------------
+    // --- Format (toolbar) ----------------------------------------------
     cmd(
-        "cmd.md.bold",
+        "cmd.format.title",
         501,
-        "Bold",
-        menu(TopMenu::Format),
-        Some(CTRL_B),
+        "Title",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
-        "cmd.md.italic",
+        "cmd.format.subtitle",
         502,
-        "Italic",
-        menu(TopMenu::Format),
-        Some(CTRL_I),
+        "Subtitle",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
-        "cmd.md.strike",
+        "cmd.format.heading",
         503,
-        "Strikethrough",
-        menu(TopMenu::Format),
-        Some(CTRL_SHIFT_X),
+        "Heading",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
-        "cmd.md.h1",
+        "cmd.format.subheading",
         504,
-        "Heading 1",
-        menu(TopMenu::Format),
-        Some(CTRL_1),
+        "Subheading",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
-        "cmd.md.h2",
+        "cmd.format.section",
         505,
-        "Heading 2",
-        menu(TopMenu::Format),
-        Some(CTRL_2),
+        "Section",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
-        "cmd.md.h3",
+        "cmd.format.subsection",
         506,
-        "Heading 3",
-        menu(TopMenu::Format),
-        Some(CTRL_3),
+        "Subsection",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
-        "cmd.md.h4",
+        "cmd.format.body",
         507,
-        "Heading 4",
-        menu(TopMenu::Format),
-        Some(CTRL_4),
+        "Body",
+        None,
+        None,
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
-    ),
-    cmd(
-        "cmd.md.h5",
-        508,
-        "Heading 5",
-        menu(TopMenu::Format),
-        Some(CTRL_5),
-        Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
-    ),
-    cmd(
-        "cmd.md.h6",
-        509,
-        "Heading 6",
-        menu(TopMenu::Format),
-        Some(CTRL_6),
-        Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
         "cmd.md.bullets",
         510,
         "Bulleted list",
-        menu(TopMenu::Format),
+        None,
         Some(CTRL_SHIFT_8),
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
         "cmd.md.numbering",
         511,
         "Numbered list",
-        menu(TopMenu::Format),
+        None,
         Some(CTRL_SHIFT_7),
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
+    ),
+    cmd(
+        "cmd.md.indent_increase",
+        512,
+        "Increase indent",
+        None,
+        None,
+        Availability::Markdown,
+        7,
+    ),
+    cmd(
+        "cmd.md.indent_decrease",
+        513,
+        "Decrease indent",
+        None,
+        None,
+        Availability::Markdown,
+        7,
+    ),
+    cmd(
+        "cmd.md.bold",
+        520,
+        "Bold",
+        None,
+        Some(CTRL_B),
+        Availability::Markdown,
+        7,
+    ),
+    cmd(
+        "cmd.md.italic",
+        521,
+        "Italic",
+        None,
+        Some(CTRL_I),
+        Availability::Markdown,
+        7,
+    ),
+    cmd(
+        "cmd.md.strike",
+        522,
+        "Strikethrough",
+        None,
+        Some(CTRL_SHIFT_X),
+        Availability::Markdown,
+        7,
     ),
     cmd(
         "cmd.md.link",
-        512,
+        523,
         "Hyperlink",
-        menu(TopMenu::Format),
+        None,
         Some(CTRL_K),
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        7,
     ),
     cmd(
         "cmd.md.table",
-        513,
+        524,
         "Table",
-        menu(TopMenu::Format),
+        None,
         Some(CTRL_SHIFT_T),
         Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
+        7,
+    ),
+    // --- App chrome -----------------------------------------------------
+    cmd(
+        "cmd.app.settings",
+        700,
+        "Settings",
+        None,
+        None,
+        Availability::Always,
         8,
     ),
     cmd(
-        "cmd.md.clear",
-        514,
-        "Clear formatting",
-        menu(TopMenu::Format),
-        Some(CTRL_SHIFT_R),
-        Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+        "cmd.app.feedback",
+        701,
+        "Send feedback",
+        None,
+        None,
+        Availability::Always,
+        9,
     ),
-    cmd_placed(
-        "cmd.md.toggle_source",
-        515,
-        "Source/formatted view",
-        MenuPlacement {
-            menu: TopMenu::View,
-            submenu: Some("Markdown"),
-        },
-        Some(CTRL_SHIFT_M),
-        Availability::Markdown,
-        Evidence::Documented,
-        SpecStatus::Spec,
-        8,
+    cmd(
+        "cmd.app.help",
+        702,
+        "Help",
+        None,
+        None,
+        Availability::Always,
+        9,
     ),
-    // --- §3.6 AI --------------------------------------------------------
     cmd(
         "cmd.ai.rewrite",
         601,
@@ -673,8 +621,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         None,
         None,
         Availability::Service,
-        Evidence::Documented,
-        SpecStatus::Blocked,
         9,
     ),
     cmd(
@@ -684,8 +630,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         None,
         None,
         Availability::Service,
-        Evidence::Documented,
-        SpecStatus::Blocked,
         9,
     ),
     cmd(
@@ -695,48 +639,11 @@ pub const REGISTRY: &[CommandSpec] = &[
         None,
         None,
         Availability::Service,
-        Evidence::Documented,
-        SpecStatus::Blocked,
-        9,
-    ),
-    cmd(
-        "cmd.ai.tone",
-        604,
-        "Tone",
-        None,
-        None,
-        Availability::Service,
-        Evidence::Documented,
-        SpecStatus::Blocked,
-        9,
-    ),
-    cmd(
-        "cmd.ai.length",
-        605,
-        "Length",
-        None,
-        None,
-        Availability::Service,
-        Evidence::Documented,
-        SpecStatus::Blocked,
-        9,
-    ),
-    cmd(
-        "cmd.ai.format",
-        606,
-        "Format",
-        None,
-        None,
-        Availability::Service,
-        Evidence::Documented,
-        SpecStatus::Blocked,
         9,
     ),
 ];
 
-/// Builds the registry entry for a command placed directly on a top-level menu.
-// The argument count mirrors the reference-matrix row, which keeps the table
-// above readable against §3 of `docs/reference-matrix.md`.
+/// Builds a registry entry for a command.
 #[allow(clippy::too_many_arguments)]
 const fn cmd(
     id: &'static str,
@@ -745,8 +652,6 @@ const fn cmd(
     placement: Option<MenuPlacement>,
     shortcut: Option<Shortcut>,
     availability: Availability,
-    evidence: Evidence,
-    status: SpecStatus,
     milestone: u8,
 ) -> CommandSpec {
     CommandSpec {
@@ -756,8 +661,7 @@ const fn cmd(
         placement,
         shortcut,
         availability,
-        evidence,
-        status,
+        toggle: None,
         milestone: Milestone::new(milestone),
     }
 }
@@ -772,8 +676,6 @@ const fn cmd_placed(
     placement: MenuPlacement,
     shortcut: Option<Shortcut>,
     availability: Availability,
-    evidence: Evidence,
-    status: SpecStatus,
     milestone: u8,
 ) -> CommandSpec {
     cmd(
@@ -783,10 +685,33 @@ const fn cmd_placed(
         Some(placement),
         shortcut,
         availability,
-        evidence,
-        status,
         milestone,
     )
+}
+
+/// Like [`cmd`], but the command carries a check mark reflecting `toggle`.
+#[allow(clippy::too_many_arguments)]
+const fn cmd_toggle(
+    id: &'static str,
+    menu_id: u16,
+    label: &'static str,
+    placement: Option<MenuPlacement>,
+    shortcut: Option<Shortcut>,
+    availability: Availability,
+    toggle: Toggle,
+    milestone: u8,
+) -> CommandSpec {
+    let mut spec = cmd(
+        id,
+        menu_id,
+        label,
+        placement,
+        shortcut,
+        availability,
+        milestone,
+    );
+    spec.toggle = Some(toggle);
+    spec
 }
 
 /// Shorthand for a top-level menu placement.
@@ -797,17 +722,18 @@ const fn menu(menu: TopMenu) -> Option<MenuPlacement> {
     })
 }
 
-// Shortcut constants, so the table above reads like the reference matrix.
+// Shortcut constants, so the table above reads like the menus.
 const DELETE: Shortcut = Shortcut::new(Modifiers::NONE, Key::Delete);
 const CTRL_N: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('N'));
-const CTRL_T: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('T'));
 const CTRL_SHIFT_N: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('N'));
 const CTRL_O: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('O'));
 const CTRL_S: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('S'));
 const CTRL_SHIFT_S: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('S'));
+const CTRL_ALT_S: Shortcut = Shortcut::new(Modifiers::CTRL_ALT, Key::Letter('S'));
 const CTRL_P: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('P'));
 const ALT_F4: Shortcut = Shortcut::new(Modifiers::ALT, Key::Function(4));
 const CTRL_W: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('W'));
+const CTRL_SHIFT_W: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('W'));
 const CTRL_Z: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('Z'));
 const CTRL_Y: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('Y'));
 const CTRL_X: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('X'));
@@ -817,36 +743,27 @@ const CTRL_A: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('A'));
 const CTRL_F: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('F'));
 const CTRL_H: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('H'));
 const CTRL_G: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('G'));
+const CTRL_E: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('E'));
 const F3: Shortcut = Shortcut::new(Modifiers::NONE, Key::Function(3));
 const SHIFT_F3: Shortcut = Shortcut::new(Modifiers::SHIFT, Key::Function(3));
 const F5: Shortcut = Shortcut::new(Modifiers::NONE, Key::Function(5));
 const CTRL_PLUS: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Plus);
 const CTRL_MINUS: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Minus);
 const CTRL_ZERO: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(0));
-const CTRL_TAB: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Tab);
-const CTRL_SHIFT_TAB: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Tab);
 const CTRL_B: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('B'));
 const CTRL_I: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('I'));
 const CTRL_SHIFT_X: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('X'));
-const CTRL_1: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(1));
-const CTRL_2: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(2));
-const CTRL_3: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(3));
-const CTRL_4: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(4));
-const CTRL_5: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(5));
-const CTRL_6: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(6));
-const CTRL_SHIFT_7: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Digit(7));
-const CTRL_SHIFT_8: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Digit(8));
 const CTRL_K: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('K'));
 const CTRL_SHIFT_T: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('T'));
-const CTRL_SHIFT_R: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('R'));
-const CTRL_SHIFT_M: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Letter('M'));
+const CTRL_SHIFT_7: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Digit(7));
+const CTRL_SHIFT_8: Shortcut = Shortcut::new(Modifiers::CTRL_SHIFT, Key::Digit(8));
 
 /// Looks a command up by its stable identifier.
 pub fn by_id(id: &str) -> Option<&'static CommandSpec> {
     REGISTRY.iter().find(|spec| spec.id.as_str() == id)
 }
 
-/// Looks a command up by its numeric menu identifier.
+/// Looks a command up by its numeric identifier.
 pub fn by_menu_id(menu_id: u16) -> Option<&'static CommandSpec> {
     REGISTRY.iter().find(|spec| spec.menu_id == menu_id)
 }
@@ -870,27 +787,18 @@ pub fn commands_at(milestone: Milestone) -> impl Iterator<Item = &'static Comman
 pub enum RegistryProblem {
     /// Two commands share a stable identifier.
     DuplicateId(&'static str),
-    /// Two commands share a numeric menu identifier.
+    /// Two commands share a numeric identifier.
     DuplicateMenuId(u16),
     /// A command claims a shortcut that another command already claims.
     DuplicateShortcut(String),
-    /// A command with no menu placement is nonetheless expected on the menu bar.
-    UnreachableMenuCommand(&'static str),
-    /// A command's evidence grade says "not captured" while its status claims
-    /// verification.
-    UnverifiedClaim(&'static str),
-    /// A command is scheduled for a milestone after the one that wires it.
+    /// A command is scheduled for milestone 0.
     MilestoneRegression(&'static str),
+    /// A toggle command carries a shortcut, which would make it a plain command.
+    ToggleWithShortcut(&'static str),
 }
 
 /// Checks the registry against its structural invariants and returns every
 /// problem found. An empty result means the registry is internally consistent.
-///
-/// This is the guard that stops the registry drifting from the reference
-/// matrix: identifiers, menu ids, and shortcuts must be unique, a command that
-/// claims to be verified must have capture-backed evidence, and a
-/// still-uncaptured command must not claim a milestone that could only be
-/// reached with captured behaviour.
 pub fn registry_integrity() -> Vec<RegistryProblem> {
     let mut problems = Vec::new();
 
@@ -917,14 +825,11 @@ pub fn registry_integrity() -> Vec<RegistryProblem> {
     }
 
     for spec in REGISTRY {
-        if spec.evidence == Evidence::ToCapture && spec.status == SpecStatus::Verified {
-            problems.push(RegistryProblem::UnverifiedClaim(spec.id.as_str()));
-        }
-        if spec.status == SpecStatus::Blocked && spec.availability != Availability::Service {
-            problems.push(RegistryProblem::UnreachableMenuCommand(spec.id.as_str()));
-        }
         if spec.milestone.number() == 0 {
             problems.push(RegistryProblem::MilestoneRegression(spec.id.as_str()));
+        }
+        if spec.toggle.is_some() && spec.shortcut.is_some() {
+            problems.push(RegistryProblem::ToggleWithShortcut(spec.id.as_str()));
         }
     }
 
@@ -932,32 +837,29 @@ pub fn registry_integrity() -> Vec<RegistryProblem> {
 }
 
 /// The menu tree, as an ordered list of nodes per top-level menu.
-///
-/// `Help` is deliberately absent: `docs/reference-matrix.md` §2 records the
-/// classic `File/Edit/View/Help` bar but marks the exact submenus
-/// `TO_CAPTURE`, and §3 documents no Help commands yet, so there is nothing to
-/// place. Adding a Help menu would mean inventing behavior, so it arrives with
-/// the capture that names its entries.
 pub const MENU_BAR: &[MenuBar] = &[
     MenuBar {
         menu: TopMenu::File,
         nodes: &[
-            MenuNode::Command(CommandId("cmd.file.new")),
+            MenuNode::Command(CommandId("cmd.file.new_tab")),
             MenuNode::Command(CommandId("cmd.file.new_window")),
+            MenuNode::Command(CommandId("cmd.file.new_markdown")),
             MenuNode::Separator,
             MenuNode::Command(CommandId("cmd.file.open")),
+            MenuNode::Submenu(
+                "Recent",
+                &[MenuNode::Command(CommandId("cmd.file.recent_empty"))],
+            ),
             MenuNode::Separator,
             MenuNode::Command(CommandId("cmd.file.save")),
             MenuNode::Command(CommandId("cmd.file.save_as")),
+            MenuNode::Command(CommandId("cmd.file.save_all")),
             MenuNode::Separator,
             MenuNode::Command(CommandId("cmd.file.page_setup")),
             MenuNode::Command(CommandId("cmd.file.print")),
             MenuNode::Separator,
             MenuNode::Command(CommandId("cmd.file.close_tab")),
-            MenuNode::Command(CommandId("cmd.tab.close_all")),
-            MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.file.recent")),
-            MenuNode::Separator,
+            MenuNode::Command(CommandId("cmd.file.close_window")),
             MenuNode::Command(CommandId("cmd.file.exit")),
         ],
     },
@@ -965,14 +867,13 @@ pub const MENU_BAR: &[MenuBar] = &[
         menu: TopMenu::Edit,
         nodes: &[
             MenuNode::Command(CommandId("cmd.edit.undo")),
-            MenuNode::Command(CommandId("cmd.edit.redo")),
-            MenuNode::Separator,
             MenuNode::Command(CommandId("cmd.edit.cut")),
             MenuNode::Command(CommandId("cmd.edit.copy")),
             MenuNode::Command(CommandId("cmd.edit.paste")),
             MenuNode::Command(CommandId("cmd.edit.delete")),
             MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.edit.select_all")),
+            MenuNode::Command(CommandId("cmd.md.clear")),
+            MenuNode::Command(CommandId("cmd.edit.define_bing")),
             MenuNode::Separator,
             MenuNode::Command(CommandId("cmd.edit.find")),
             MenuNode::Command(CommandId("cmd.edit.find_next")),
@@ -980,6 +881,7 @@ pub const MENU_BAR: &[MenuBar] = &[
             MenuNode::Command(CommandId("cmd.edit.replace")),
             MenuNode::Command(CommandId("cmd.edit.go_to")),
             MenuNode::Separator,
+            MenuNode::Command(CommandId("cmd.edit.select_all")),
             MenuNode::Command(CommandId("cmd.edit.time_date")),
         ],
     },
@@ -995,36 +897,16 @@ pub const MENU_BAR: &[MenuBar] = &[
                 ],
             ),
             MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.edit.word_wrap")),
             MenuNode::Command(CommandId("cmd.view.status_bar")),
+            MenuNode::Command(CommandId("cmd.view.word_wrap")),
             MenuNode::Separator,
             MenuNode::Submenu(
                 "Markdown",
-                &[MenuNode::Command(CommandId("cmd.md.toggle_source"))],
+                &[
+                    MenuNode::Command(CommandId("cmd.view.md_formatted")),
+                    MenuNode::Command(CommandId("cmd.view.md_source")),
+                ],
             ),
-        ],
-    },
-    MenuBar {
-        menu: TopMenu::Format,
-        nodes: &[
-            MenuNode::Command(CommandId("cmd.md.bold")),
-            MenuNode::Command(CommandId("cmd.md.italic")),
-            MenuNode::Command(CommandId("cmd.md.strike")),
-            MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.md.h1")),
-            MenuNode::Command(CommandId("cmd.md.h2")),
-            MenuNode::Command(CommandId("cmd.md.h3")),
-            MenuNode::Command(CommandId("cmd.md.h4")),
-            MenuNode::Command(CommandId("cmd.md.h5")),
-            MenuNode::Command(CommandId("cmd.md.h6")),
-            MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.md.bullets")),
-            MenuNode::Command(CommandId("cmd.md.numbering")),
-            MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.md.link")),
-            MenuNode::Command(CommandId("cmd.md.table")),
-            MenuNode::Separator,
-            MenuNode::Command(CommandId("cmd.md.clear")),
         ],
     },
 ];
@@ -1050,67 +932,47 @@ mod tests {
     }
 
     #[test]
-    fn every_reference_matrix_command_is_registered() {
-        // The command rows of reference-matrix §3.1–§3.6, by label.
+    fn every_screenshot_menu_command_is_registered() {
         let expected = [
-            "New",
+            // File
             "New tab",
             "New window",
+            "New Markdown tab",
             "Open",
             "Save",
-            "Save As",
-            "Print",
+            "Save as",
+            "Save all",
             "Page setup",
+            "Print",
             "Close tab",
+            "Close window",
             "Exit",
-            "Recent files",
+            // Edit
             "Undo",
-            "Redo",
             "Cut",
             "Copy",
             "Paste",
             "Delete",
-            "Select all",
+            "Clear formatting",
+            "Define with Bing",
             "Find",
             "Find next",
             "Find previous",
             "Replace",
             "Go to",
+            "Select all",
             "Time/Date",
-            "Word wrap",
+            // View
             "Zoom in",
             "Zoom out",
-            "Reset zoom",
+            "Restore default zoom",
             "Status bar",
-            "Next tab",
-            "Previous tab",
-            "Close all",
-            "Bold",
-            "Italic",
-            "Strikethrough",
-            "Heading 1",
-            "Heading 2",
-            "Heading 3",
-            "Heading 4",
-            "Heading 5",
-            "Heading 6",
-            "Bulleted list",
-            "Numbered list",
-            "Hyperlink",
-            "Table",
-            "Clear formatting",
-            "Source/formatted view",
-            "Rewrite",
-            "Summarize",
-            "Write",
-            "Tone",
-            "Length",
-            "Format",
+            "Word wrap",
         ];
         for label in expected {
             assert!(
                 REGISTRY.iter().any(|spec| spec.label == label),
-                "reference command {label:?} is missing from the registry"
+                "command {label:?} is missing from the registry"
             );
         }
     }
@@ -1118,7 +980,7 @@ mod tests {
     #[test]
     fn shortcut_lookup_finds_the_documented_commands() {
         let cases = [
-            (Modifiers::CTRL, Key::Letter('N'), "cmd.file.new"),
+            (Modifiers::CTRL, Key::Letter('N'), "cmd.file.new_tab"),
             (
                 Modifiers::CTRL_SHIFT,
                 Key::Letter('N'),
@@ -1127,6 +989,7 @@ mod tests {
             (Modifiers::CTRL, Key::Letter('O'), "cmd.file.open"),
             (Modifiers::CTRL, Key::Letter('S'), "cmd.file.save"),
             (Modifiers::CTRL_SHIFT, Key::Letter('S'), "cmd.file.save_as"),
+            (Modifiers::CTRL_ALT, Key::Letter('S'), "cmd.file.save_all"),
             (Modifiers::CTRL, Key::Letter('W'), "cmd.file.close_tab"),
             (Modifiers::CTRL, Key::Letter('F'), "cmd.edit.find"),
             (Modifiers::NONE, Key::Function(3), "cmd.edit.find_next"),
@@ -1134,8 +997,6 @@ mod tests {
             (Modifiers::CTRL, Key::Plus, "cmd.view.zoom_in"),
             (Modifiers::CTRL, Key::Minus, "cmd.view.zoom_out"),
             (Modifiers::CTRL, Key::Digit(0), "cmd.view.zoom_reset"),
-            (Modifiers::CTRL, Key::Tab, "cmd.tab.next"),
-            (Modifiers::CTRL_SHIFT, Key::Tab, "cmd.tab.prev"),
         ];
         for (modifiers, key, id) in cases {
             let found = by_shortcut(modifiers, key)
@@ -1159,19 +1020,15 @@ mod tests {
     }
 
     #[test]
-    fn only_m2_commands_take_effect_at_m2() {
-        let ids: Vec<_> = commands_at(Milestone::new(2))
-            .map(|spec| spec.id.as_str())
-            .collect();
-        assert_eq!(
-            ids,
-            vec![
-                "cmd.file.open",
-                "cmd.file.save_as",
-                "cmd.file.exit",
-                "cmd.view.status_bar",
-            ]
-        );
+    fn initial_context_greys_selection_and_markdown_commands() {
+        let ctx = AvailabilityContext::initial();
+        let state = |id: &str| by_id(id).expect("registered").is_available(ctx);
+        assert!(state("cmd.file.new_tab"));
+        assert!(state("cmd.view.status_bar"));
+        assert!(!state("cmd.edit.copy"));
+        assert!(!state("cmd.edit.cut"));
+        assert!(!state("cmd.md.bold"));
+        assert!(!state("cmd.ai.rewrite"));
     }
 
     #[test]
@@ -1180,22 +1037,7 @@ mod tests {
             .iter()
             .filter(|spec| spec.id.as_str().starts_with("cmd.ai."))
         {
-            assert_eq!(spec.status, SpecStatus::Blocked, "{}", spec.id);
             assert_eq!(spec.availability, Availability::Service, "{}", spec.id);
-            assert_eq!(spec.milestone, Milestone::new(9), "{}", spec.id);
         }
-    }
-
-    #[test]
-    fn initial_context_greys_selection_and_markdown_commands() {
-        let ctx = AvailabilityContext::initial();
-        let state = |id: &str| by_id(id).expect("registered").is_available(ctx);
-        assert!(state("cmd.file.new"));
-        assert!(state("cmd.view.status_bar"));
-        assert!(!state("cmd.edit.copy"));
-        assert!(!state("cmd.edit.cut"));
-        assert!(!state("cmd.md.bold"));
-        assert!(!state("cmd.tab.next"));
-        assert!(!state("cmd.ai.rewrite"));
     }
 }

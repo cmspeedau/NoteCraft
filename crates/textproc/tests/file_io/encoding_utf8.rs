@@ -3,7 +3,7 @@
 //! A BOM-less file is UTF-8 when its bytes are valid UTF-8 and ANSI otherwise;
 //! a UTF-8 mark is believed only when the body lives up to it. Nothing here
 //! substitutes a character for input it cannot read
-//! (`docs/reference-matrix.md` §4).
+//! (`docs/ui-reference.md`).
 
 use nc_textproc::encoding::{encode, interpret};
 use nc_textproc::{Detection, Encoding, Evidence, TextFile, detect};

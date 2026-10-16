@@ -1,6 +1,6 @@
 [package]
 name = "nc-app"
-description = "NoteCraft — a native, near-drop-in replacement for Windows Notepad"
+description = "NoteCraft — a fast, modern text and Markdown editor"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
-# The shipped Windows executable. Named `notepad.exe` on Windows targets.
+# The executable. Named `notepad` on Windows targets, `notecraft` elsewhere.
 [[bin]]
 name = "notepad"
 path = "src/main.rs"
@@ -23,8 +23,3 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[features]
-# Build against the portable egui/eframe window backend instead of the native
-# Win32 one: `cargo run -p nc-app --features egui`.
-egui = ["nc-platform/egui"]

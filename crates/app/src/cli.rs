@@ -1,6 +1,6 @@
 //! Command-line handling for the `notepad` binary.
 //!
-//! The reference app opens any paths given on the command line and otherwise
+//! NoteCraft opens any paths given on the command line and otherwise
 //! starts with a single untitled document. We keep the parser dependency-free
 //! and hand-rolled so its behavior is fully unit-testable and does not drift
 //! with a third-party crate.

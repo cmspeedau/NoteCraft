@@ -47,8 +47,8 @@ fn a_new_document_is_empty_utf8_crlf_and_has_no_file() {
     assert_eq!(file.path(), std::path::Path::new(""));
     assert_eq!(file.external_change(), ExternalChange::None);
 
-    // UTF-8 without a mark, which is what the reference writes a new document
-    // as (`docs/reference-matrix.md` §4), and CRLF, which is the engine's rule
+    // UTF-8 without a mark (`docs/ui-reference.md`), and CRLF, which is the
+    // engine's rule
     // for a document with no file to copy a style from.
     assert_eq!(file.encoding(), Encoding::Utf8);
     assert_eq!(file.encoding_label(), "UTF-8");

@@ -1,27 +1,27 @@
-//! The questions the reference asks before something is destroyed.
+//! The questions an editor asks before something is destroyed.
 //!
 //! Nothing here writes, reads, or asks anything. Each function answers one
-//! question about a [`TextFile`]: *would the reference put a prompt on screen
-//! here, and about what?* Answering is the caller's business — "Don't Save"
-//! means closing without saving, "Save" means the ordinary save path, and
-//! cancel means doing nothing.
+//! question about a [`TextFile`]: *would a prompt go on screen here, and about
+//! what?* Answering is the caller's business — "Don't Save" means closing
+//! without saving, "Save" means the ordinary save path, and cancel means doing
+//! nothing.
 //!
 //! What is modelled is the *state* that raises each question. The wording of
-//! the prompts is a `TO_CAPTURE` item (`docs/reference-matrix.md` §5), so the
-//! caller puts the captured words in; the questions themselves are the ones
-//! `ROADMAP.md` M4 names — unsaved changes, overwrite confirmation, explicit
-//! encoding behaviour, and outside changes if the reference detects them.
+//! the prompts is a design decision (`docs/ui-reference.md`), so the caller
+//! supplies it; the questions themselves are the ones `ROADMAP.md` M4 names —
+//! unsaved changes, overwrite confirmation, explicit encoding behaviour, and
+//! outside changes if the editor watches for them.
 
 use std::path::{Path, PathBuf};
 
 use crate::encoding::{self, Encoding};
 use crate::textfile::{ExternalChange, TextFile};
 
-/// A question the reference asks before a change takes effect.
+/// A question asked before a change takes effect.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Question {
     /// The document has unsaved changes that are about to be discarded. The
-    /// reference's three answers are Save, Don't Save, and Cancel.
+    /// three answers are Save, Don't Save, and Cancel.
     UnsavedChanges,
     /// Save As picked a file that is already there.
     Overwrite {
@@ -29,7 +29,7 @@ pub enum Question {
         path: PathBuf,
     },
     /// The text holds characters the encoding it would be written in cannot
-    /// represent, and the reference asks before they are replaced. The three
+    /// represent, and a prompt is raised before they are replaced. The three
     /// answers are to keep the document open (cancel), to pick another
     /// encoding, or to write it anyway as `?`.
     Unrepresentable {
@@ -40,7 +40,7 @@ pub enum Question {
     },
     /// The file changed on disk since NoteCraft read or wrote it.
     ///
-    /// Whether the reference asks at all is a `TO_CAPTURE` item; this is the
+    /// Whether a prompt is raised at all is a design decision; this is the
     /// state the question would be asked about.
     OutsideChange {
         /// The file that changed.
@@ -55,8 +55,8 @@ pub fn before_discarding(file: &TextFile) -> Option<Question> {
 
 /// Whether saving would ask about characters the encoding cannot hold.
 ///
-/// A document with no path is not asked about: the reference opens Save As
-/// first, and the answer there decides the encoding.
+/// A document with no path is not asked about: Save As is opened first, and
+/// the answer there decides the encoding.
 pub fn before_saving(file: &TextFile) -> Option<Question> {
     if !file.has_path() {
         return None;
