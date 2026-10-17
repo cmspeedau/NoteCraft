@@ -1,10 +1,11 @@
 //! The settings page, opened from the gear in the toolbar.
 
-use egui::{Align, CornerRadius, Frame, Layout, Margin, RichText, vec2};
+use egui::accesskit::Role;
+use egui::{Align, CornerRadius, Frame, Layout, Margin, RichText, WidgetType, vec2};
 
 use crate::ui::fonts::FAMILIES;
 use crate::ui::state::{AppTheme, OpenBehavior, Shell};
-use crate::ui::{theme::Palette, widgets};
+use crate::ui::{a11y, theme::Palette, widgets};
 
 /// Draws the settings page.
 pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
@@ -49,7 +50,7 @@ fn settings_column(shell: &mut Shell, ui: &mut egui::Ui, palette: Palette) {
             "App theme",
             Some("Select which app theme to display"),
             |ui| {
-                dropdown(ui, "theme", &mut shell.theme);
+                dropdown(ui, "theme", "App theme", &mut shell.theme);
             },
         );
     });
@@ -66,13 +67,13 @@ fn settings_column(shell: &mut Shell, ui: &mut egui::Ui, palette: Palette) {
             "Word wrap",
             Some("Fit text within window by default"),
             |ui| {
-                switch_with_label(ui, palette, &mut shell.word_wrap);
+                switch_with_label(ui, palette, "Word wrap", &mut shell.word_wrap);
             },
         );
     });
     card(ui, palette, |ui| {
         row(ui, palette, "Formatting", None, |ui| {
-            switch_with_label(ui, palette, &mut shell.formatting);
+            switch_with_label(ui, palette, "Formatting", &mut shell.formatting);
         });
     });
 
@@ -80,7 +81,7 @@ fn settings_column(shell: &mut Shell, ui: &mut egui::Ui, palette: Palette) {
     section(ui, "Opening NoteCraft");
     card(ui, palette, |ui| {
         row(ui, palette, "Opening files", None, |ui| {
-            dropdown(ui, "opening", &mut shell.opening);
+            dropdown(ui, "opening", "Opening files", &mut shell.opening);
         });
     });
 }
@@ -173,9 +174,10 @@ impl MenuOption for OpenBehavior {
     }
 }
 
-/// A dropdown bound to a [`MenuOption`] type.
-fn dropdown<T: MenuOption>(ui: &mut egui::Ui, id: &str, selected: &mut T) {
-    egui::ComboBox::from_id_salt(id)
+/// A dropdown bound to a [`MenuOption`] type, named for the setting it sets: a
+/// combo box shows only its value, and "Dark" does not say what it is dark of.
+fn dropdown<T: MenuOption>(ui: &mut egui::Ui, id: &str, name: &str, selected: &mut T) {
+    let combo = egui::ComboBox::from_id_salt(id)
         .selected_text(selected.title())
         .width(180.0)
         .show_ui(ui, |ui| {
@@ -189,11 +191,12 @@ fn dropdown<T: MenuOption>(ui: &mut egui::Ui, id: &str, selected: &mut T) {
                 }
             }
         });
+    a11y::label(&combo.response, WidgetType::ComboBox, name);
 }
 
 /// The font-family dropdown.
 fn font_dropdown(ui: &mut egui::Ui, shell: &mut Shell) {
-    egui::ComboBox::from_id_salt("font")
+    let combo = egui::ComboBox::from_id_salt("font")
         .selected_text(shell.font_family)
         .width(180.0)
         .show_ui(ui, |ui| {
@@ -207,13 +210,17 @@ fn font_dropdown(ui: &mut egui::Ui, shell: &mut Shell) {
                 }
             }
         });
+    a11y::label(&combo.response, WidgetType::ComboBox, "Font");
 }
 
-/// A switch followed by its on/off label.
-fn switch_with_label(ui: &mut egui::Ui, palette: Palette, on: &mut bool) {
+/// A switch followed by its on/off label, named for the setting it sets: the
+/// label beside it reads "On", which is the state and not the setting.
+fn switch_with_label(ui: &mut egui::Ui, palette: Palette, name: &str, on: &mut bool) {
     let label = if *on { "On" } else { "Off" };
     ui.label(RichText::new(label).size(13.0).color(palette.text_dim));
-    widgets::switch(ui, on, palette);
+    let switch = widgets::switch(ui, on, palette);
+    a11y::state(&switch, WidgetType::Checkbox, name, *on);
+    a11y::role(ui.ctx(), switch.id, Role::Switch);
 }
 
 // ---- The settings file ------------------------------------------------------

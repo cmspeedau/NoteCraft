@@ -321,10 +321,10 @@ matrix waiting on a capture.
 
 ### M8 — Settings and desktop integration
 
-Status: IN_PROGRESS — four rows are verified (theme, font, persistence, the formatting
-switch) plus the word-wrap row it shares with the editor, and every setting the capture
-shows now produces the behaviour its row names; what remains is the rows that need a
-surface the capture alone does not settle.
+Status: IN_PROGRESS — five rows are verified (theme, font, persistence, the formatting
+switch, accessibility) plus the word-wrap row it shares with the editor, and every setting
+the capture shows now produces the behaviour its row names; what remains is the rows that
+need a surface the capture alone does not settle.
 
 *The theme applies* (`NC-P001`). `Settings ▸ App theme` wrote a field no code read;
 the colours are now a `Palette` value resolved per frame from the choice plus what the
@@ -377,9 +377,24 @@ branch, so a write that detoured through the encoding question left the tab open
 window half-closed. That continuation is now one value — `SaveThen::{Keep, Close, Replace}`
 — recorded before any detour and spent by whichever path finishes the write.
 
-What remains is the rest of the settings the capture shows: spell check, accessibility
-evidence, file associations and printing, with page setup (§8) the captured screen that
-printing needs first.
+*And every control says what it is* (`NC-P007`). The row was "Names, focus order", and
+nothing was named: a screen reader reached the tab strip, the glyph buttons (`B`, `🔗`,
+`▦`, `✕`) and the pill switches and read a list of characters, or nothing at all. Names
+now come from a small module that says what to call a control the shell paints or writes
+as a glyph, what its state is, and — for the captured back arrow this build does not act
+on — that it is unavailable; `egui` already names what it draws itself. The tests read the
+tree a painted frame produces, which is the tree a screen reader is handed: every stop Tab
+can reach, on seven surfaces, carries a name with a letter in it, and the order is pinned
+as the one the frame registers, including the two right-aligned groups that walk right to
+left because that is the direction their layout is built in. The formatted view, which
+paints the document instead of editing it, now exposes the document's own text — a reader
+used to find the body of the window empty. Two measurements shaped it: the title-bar drag
+area had become a Tab stop by sensing clicks, and now senses drags only; and nesting a
+left-to-right group inside a right-to-left one puts it at the bar's left edge, so the
+visual order and the registration order cannot both be had and the capture's layout wins.
+
+What remains is the rest of the settings the capture shows: spell check, file associations
+and printing, with page setup (§8) the captured screen that printing needs first.
 
 - Font family and size.
 - Word wrap and view preferences.

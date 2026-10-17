@@ -151,7 +151,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Squiggle, suggestions | `tests/settings/spell.rs` |
 | NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | VERIFIED | Toolbar hides when off | `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P006 | High-DPI scaling | MANDATORY | M2/M8 | SPECIFIED | IMPLEMENTED | Layout follows the display scale | egui runtime |
-| NC-P007 | Accessibility / screen-reader support | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Names, focus order | `tests/visual/a11y.rs` |
+| NC-P007 | Accessibility / screen-reader support | MANDATORY | M8 | SPECIFIED | VERIFIED | Names, focus order | `crates/platform/src/ui/a11y.rs`, `crates/platform/src/ui/title_bar.rs`, `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/editor.rs`, `crates/platform/src/ui/status_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/dialogs.rs` |
 | NC-P008 | File association & shell integration | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Open-with, default app | `tests/file_io/assoc.rs` |
 | NC-P009 | Command-line file args | MANDATORY | M1/M6 | SPECIFIED | IMPLEMENTED | Opens the named files | `crates/app/tests/cli.rs` |
 | NC-P010 | Localization / keyboard-layout correctness | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Layouts correct | `tests/keyboard/layouts.rs` |
@@ -175,11 +175,11 @@ library exposes no local time zone and the project carries no time-zone database
 | Total tracked features | 68 |
 | IMPLEMENTED | 33 |
 | IN_PROGRESS | 0 |
-| NOT_STARTED | 10 |
-| VERIFIED | 24 |
+| NOT_STARTED | 9 |
+| VERIFIED | 25 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Twenty-four rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Twenty-five rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -385,6 +385,32 @@ now carries a time, as every real frame does, and `theme.rs` sets the scroll to 
 rather than glide, because a Find that slides the caret towards its match over a third of
 a second misreports a command that has already run.
 
+**`NC-P007` was a window a screen reader read as a list of glyphs.** Its whole
+acceptance was "Names, focus order", and nothing was named: the tabs, their close
+buttons and the `+ ✕ ▢ —` strip, the formatting controls whose entire text is `B`,
+`🔗`, `▦` or `Aa`, the avatar, the pill switches and every dropdown on the
+settings page. `egui` names what it draws, so the menus and the dialog buttons were
+already read aloud; what it cannot name is what the shell paints, or writes as a
+glyph — which was nearly everything a window is made of. The work is a small
+module (`a11y.rs`) that says what to call a response, a role finer than
+`WidgetType` offers, a state, a painted string, and — for the one control the
+capture shows and this build does not act on, the title bar's back arrow —
+"unavailable". The tests read the tree a frame produces, which is the same tree a
+screen reader is handed, and hold two things: every stop Tab can reach, on seven
+surfaces (source and formatted view, settings, Find and Replace, Go to, the Open
+dialog, a prompt), has a name with a letter in it, because a glyph is not a name;
+and the order is the one the frame registers — pinned, not chosen. The last piece
+is a node for the formatted view: it paints the document and holds no text field,
+so a reader found the body of the window empty; it now exposes the document's own
+text, though not its structure, which is recorded in §13.
+
+Two measurements shaped it. The title bar's drag area was a `click_and_drag`
+rectangle across the whole bar, which made it an unnamed Tab stop ahead of the
+first tab; it now senses drags only. And a right-to-left group cannot be made to
+register left to right by nesting a left-to-right one inside it — the group lands
+at the bar's left edge instead — so the registration order follows the layout the
+capture fixes, and the tests record it.
+
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no
 match for "context menu" or "right-click" in the file — and §11 states outright
@@ -400,8 +426,9 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 > behaviour criteria are `VERIFIED` against a dedicated acceptance suite, and so is
 > all of M7 — every Markdown command, the source/rendered view pair, and the
 > serialization the file is written with. M8 has begun: the theme applies and
-> survives a restart, settings are stored, and the font list is real — four families this
-> build actually carries, applied to the editor, and the formatting switch now hides
-> the toolbar it names. Still ahead are spell check, accessibility
-> evidence, printing and page setup, and the outside-change prompt. The visual
+> survives a restart, settings are stored, the font list is real — four families this
+> build actually carries, applied to the editor — the formatting switch now hides
+> the toolbar it names, every open honours the opening-files setting, and every
+> control Tab can reach says what it is. Still ahead are spell check, printing and
+> page setup, and the outside-change prompt. The visual
 > criteria await a display, and the tab context menu awaits a reference decision.

@@ -1,10 +1,14 @@
 //! The title bar: app icon, tab strip, new-tab button, and window controls.
 
-use egui::{Align, Align2, Context, CornerRadius, FontId, Layout, Sense, Stroke, ViewportCommand};
+use egui::accesskit::Role;
+use egui::{
+    Align, Align2, Context, CornerRadius, FontId, Layout, Sense, Stroke, ViewportCommand,
+    WidgetType,
+};
 
 use crate::ui::state::{DocKind, Shell, Tab};
 use crate::ui::theme::Palette;
-use crate::ui::{actions, widgets};
+use crate::ui::{a11y, actions, widgets};
 
 /// The height of the title bar, in points.
 pub const HEIGHT: f32 = 40.0;
@@ -26,8 +30,12 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
         .show(ui, |ui| {
             // Registered before the controls so the empty parts of the bar drag
             // the window while the controls still receive their clicks.
+            //
+            // `Sense::DRAG` rather than `click_and_drag`: a click that drags nothing
+            // is not something this bar does, and the click sense would put the
+            // whole title bar in the tab order as an unnamed stop (`NC-P007`).
             let bar = ui.max_rect();
-            let drag = ui.interact(bar, ui.id().with("title_drag"), Sense::click_and_drag());
+            let drag = ui.interact(bar, ui.id().with("title_drag"), Sense::DRAG);
             if drag.drag_started() {
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
@@ -38,7 +46,13 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
             let palette = shell.palette;
             ui.horizontal_centered(|ui| {
                 app_icon(ui, palette);
-                let _ = widgets::icon_button(ui, "‹");
+                // Captured, and inert in this build: there is nowhere to go back
+                // to. It is named and announced as unavailable rather than left
+                // out, so the screen a reader is told about is the one that is
+                // drawn (`NC-P007`, `docs/ui-reference.md` §13).
+                let back = widgets::icon_button(ui, "‹");
+                a11y::label(&back, WidgetType::Button, "Back");
+                a11y::inert(ui.ctx(), back.id);
                 ui.add_space(2.0);
 
                 egui::ScrollArea::horizontal()
@@ -58,6 +72,7 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
                     });
 
                 let new_tab = widgets::icon_button(ui, "+");
+                a11y::label(&new_tab, WidgetType::Button, "New tab");
                 if new_tab.clicked() {
                     shell.open_tab(DocKind::Plain);
                 }
@@ -79,16 +94,30 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
 
 /// The three window buttons, right to left.
 fn window_controls(ui: &mut egui::Ui, ctx: &Context, shell: &mut Shell) {
-    if widgets::icon_button(ui, "✕").clicked() {
+    let close = widgets::icon_button(ui, "✕");
+    a11y::label(&close, WidgetType::Button, "Close window");
+    if close.clicked() {
         // Closing the window prompts for unsaved documents (`NC-D005`).
         actions::close_window(shell);
     }
     let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
     let maximize_glyph = if maximized { "❐" } else { "▢" };
-    if widgets::icon_button(ui, maximize_glyph).clicked() {
+    let maximize = widgets::icon_button(ui, maximize_glyph);
+    a11y::label(
+        &maximize,
+        WidgetType::Button,
+        if maximized {
+            "Restore window"
+        } else {
+            "Maximize window"
+        },
+    );
+    if maximize.clicked() {
         ctx.send_viewport_cmd(ViewportCommand::Maximized(!maximized));
     }
-    if widgets::icon_button(ui, "—").clicked() {
+    let minimize = widgets::icon_button(ui, "—");
+    a11y::label(&minimize, WidgetType::Button, "Minimize window");
+    if minimize.clicked() {
         ctx.send_viewport_cmd(ViewportCommand::Minimized(true));
     }
 }
@@ -124,6 +153,16 @@ fn tab_widget(
     let width = (title.chars().count() as f32 * 7.5 + 52.0).clamp(120.0, 220.0);
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
 
+    // What a screen reader is told about the tab: its document's name, which one
+    // is being shown, and whether anything in it is unsaved — the last of which
+    // is a dot on the strip and nothing else (`NC-P007`).
+    a11y::label(&response, WidgetType::SelectableLabel, &title);
+    a11y::role(ui.ctx(), response.id, Role::Tab);
+    a11y::selected(ui.ctx(), response.id, active);
+    if tab.is_dirty() {
+        a11y::described(ui.ctx(), response.id, "Unsaved changes");
+    }
+
     let close_rect = egui::Rect::from_center_size(
         egui::pos2(rect.right() - 16.0, rect.center().y),
         egui::vec2(22.0, 22.0),
@@ -133,6 +172,7 @@ fn tab_widget(
         ui.id().with(("tab_close", index)),
         Sense::click(),
     );
+    a11y::label(&close, WidgetType::Button, format!("Close {title}"));
 
     let painter = ui.painter();
     let fill = if active {

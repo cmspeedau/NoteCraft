@@ -1,5 +1,6 @@
 //! The window shell: layout composition and the eframe application.
 
+mod a11y;
 mod actions;
 /// The M6 drawn-surface assertions. Test-only: they read back the shapes the
 /// shell paints, which live in private state.

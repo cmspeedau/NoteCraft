@@ -3,6 +3,7 @@
 
 use egui::{Align, Align2, FontId, Layout, RichText};
 
+use crate::ui::a11y;
 use crate::ui::state::Shell;
 use crate::ui::theme::Palette;
 
@@ -49,7 +50,17 @@ pub fn show(shell: &Shell, ui: &mut egui::Ui) {
                 });
             });
 
+            // The document kind is painted in the middle of the bar and has no
+            // widget behind it, so a screen reader is told about it here
+            // (`NC-P007`).
             let label = tab.map(|t| t.kind_label()).unwrap_or("Plain text");
+            let galley = ui.painter().layout_no_wrap(
+                label.to_owned(),
+                FontId::proportional(12.0),
+                shell.palette.text_dim,
+            );
+            let text_rect = egui::Rect::from_center_size(rect.center(), galley.size());
+            a11y::painted(ui.ctx(), ui.id().with("document_kind"), text_rect, label);
             ui.painter().text(
                 rect.center(),
                 Align2::CENTER_CENTER,

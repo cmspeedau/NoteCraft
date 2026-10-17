@@ -24,9 +24,10 @@
 use std::ops::Range;
 
 use egui::text::{CCursor, CCursorRange, CharIndex};
-use egui::{FontId, Margin};
+use egui::{FontId, Margin, WidgetType};
 use nc_core::Document;
 
+use crate::ui::a11y;
 use crate::ui::markdown_view;
 use crate::ui::state::{Shell, Tab};
 
@@ -94,6 +95,16 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
             let caret = if shell.formatted_view() {
                 let tab = &shell.tabs[index];
                 markdown_view::show(tab, ui, EDIT_FONT_SIZE * zoom, palette);
+                // A rendering of the text is not a text field, so the document is
+                // exposed to a screen reader here instead: without this the body
+                // of the window reads as empty (`NC-P007`).
+                a11y::document(
+                    ui.ctx(),
+                    ui.id().with(("formatted_document", index)),
+                    ui.max_rect(),
+                    tab.title(),
+                    tab.text(),
+                );
                 char_index(tab.text(), tab.document().caret())
             } else {
                 source_view(shell, index, ui, pending)
@@ -137,6 +148,7 @@ fn source_view(
         .id_salt("editor_scroll")
         .auto_shrink([false; 2])
         .show(ui, |ui| {
+            let title = shell.tabs[index].title();
             let tab = &mut shell.tabs[index];
             let output = {
                 let mut buffer = DocBuffer(tab.document_mut());
@@ -162,6 +174,11 @@ fn source_view(
                         .show(ui)
                 }
             };
+
+            // The document the editor is editing, so a screen reader says which
+            // one it has arrived in rather than only that there is a text field
+            // (`NC-P007`). The text itself `egui` reports as the field's value.
+            a11y::label(&output.response, WidgetType::TextEdit, &title);
 
             // The caret a queued selection moves to, or the one the user left
             // the editor with.

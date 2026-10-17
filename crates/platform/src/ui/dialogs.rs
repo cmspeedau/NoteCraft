@@ -8,8 +8,9 @@
 
 use std::path::PathBuf;
 
-use egui::{Align2, Context, Key, RichText, Vec2};
+use egui::{Align2, Context, Key, RichText, Vec2, WidgetType};
 
+use crate::ui::a11y;
 use crate::ui::actions;
 use crate::ui::state::{FileDialogMode, Prompt, Shell};
 use nc_textproc::Direction;
@@ -50,6 +51,7 @@ fn find(shell: &mut Shell, ctx: &Context) {
                         .id(egui::Id::new("find_query"))
                         .desired_width(240.0),
                 );
+                a11y::label(&response, WidgetType::TextEdit, "Find what");
                 if shell.find.focus {
                     response.request_focus();
                     shell.find.focus = false;
@@ -66,10 +68,11 @@ fn find(shell: &mut Shell, ctx: &Context) {
             if shell.find.replace {
                 ui.horizontal(|ui| {
                     ui.label("Replace with");
-                    ui.add(
+                    let response = ui.add(
                         egui::TextEdit::singleline(&mut shell.find.replacement)
                             .desired_width(240.0),
                     );
+                    a11y::label(&response, WidgetType::TextEdit, "Replace with");
                 });
             }
 
@@ -138,6 +141,7 @@ fn go_to(shell: &mut Shell, ctx: &Context) {
                         .id(egui::Id::new("go_to_line"))
                         .desired_width(90.0),
                 );
+                a11y::label(&response, WidgetType::TextEdit, "Line number");
                 if shell.go_to.focus {
                     response.request_focus();
                     shell.go_to.focus = false;
@@ -196,7 +200,9 @@ fn file_dialog(shell: &mut Shell, ctx: &Context) {
             ui.set_min_width(460.0);
 
             ui.horizontal(|ui| {
-                if ui.button("‹").clicked() {
+                let up = ui.button("‹");
+                a11y::label(&up, WidgetType::Button, "Up one level");
+                if up.clicked() {
                     dialog.go_up();
                 }
                 ui.label(dialog.directory.display().to_string());
@@ -245,6 +251,7 @@ fn file_dialog(shell: &mut Shell, ctx: &Context) {
                         .id(egui::Id::new("file_name"))
                         .desired_width(300.0),
                 );
+                a11y::label(&response, WidgetType::TextEdit, "File name");
                 if dialog.focus {
                     response.request_focus();
                     dialog.focus = false;
@@ -256,13 +263,14 @@ fn file_dialog(shell: &mut Shell, ctx: &Context) {
 
             ui.horizontal(|ui| {
                 ui.label("Encoding");
-                egui::ComboBox::from_id_salt("file_encoding")
+                let combo = egui::ComboBox::from_id_salt("file_encoding")
                     .selected_text(dialog.encoding.label())
                     .show_ui(ui, |ui| {
                         for choice in dialog.choices() {
                             ui.selectable_value(&mut dialog.encoding, *choice, choice.label());
                         }
                     });
+                a11y::label(&combo.response, WidgetType::ComboBox, "Encoding");
             });
 
             if let Some(error) = &dialog.error {

@@ -378,3 +378,57 @@ Markdown syntax the editor does not implement — footnotes, raw HTML, fenced co
 definition lists, `==highlight==`, admonitions — is not parsed and not rewritten:
 it is text, it is saved back byte for byte, and formatting a neighbouring line
 does not touch it (NC-M011).
+
+## 13. What a screen reader is told
+
+*Decision — the capture is a picture, so it says nothing about names or focus
+order, and no screen reader runs in the tests.* What is asserted is the
+[AccessKit](https://accesskit.dev) tree a painted frame produces, which is the
+tree a screen reader is handed: the claim is "this is what is announced",
+measured rather than heard. `egui` builds most of it itself — a widget added as
+`ui.button("Save")` arrives named `Save` with the role of a button, so the menus,
+the dialog buttons, the licence links and the check boxes need nothing from this
+shell. What `egui` cannot name is what this shell paints: the pill switch, a tab,
+the avatar, and every button whose whole visible text is a glyph.
+
+| Control | What it is announced as |
+| --- | --- |
+| Title bar `‹` | `Back`, *unavailable*: it is in the capture and there is nowhere to go back to in this build. Announced rather than dropped from the tree, so the screen and the picture agree. Its sibling in the Open dialog does go up a level, and is `Up one level`. |
+| A tab | Role *tab*, named after its document, *selected* when it is the one being shown, and carrying the description `Unsaved changes` while its dot is painted. The dot says nothing to a reader otherwise. |
+| A tab's close button | `Close ` and the document's name, so ten tabs do not offer ten identical buttons. |
+| `+` | `New tab` |
+| `✕` / `▢` / `—` | `Close window` / `Maximize window`, or `Restore window` while maximized / `Minimize window` |
+| `H1 ▾` / `≡ ▾` / `✨ ▾` | `Paragraph style` / `Lists` / `AI`, as combo boxes: the visible text is the current value, not the name |
+| `B` / `I` / `S` / `🔗` / `▦` / `Aa` | `Bold` / `Italic` / `Strikethrough` / `Insert a link` / `Insert a table` / `Clear all formatting` |
+| `⚙` / avatar / `💬` | `Settings` / `Account` / `Send feedback` |
+| The editor | Named after the document it is editing; the text itself is the field's value |
+| Find, Go to, Open and Save As | `Find what`, `Replace with`, `Line number`, `File name`, `Encoding` — each field named by what it is *for*, so a screen reader does not read an empty field whose name is empty |
+| The settings page's switches | Role *switch*, named `Word wrap` or `Formatting`, with its on/off state. The word beside the pill is the state, so it cannot be the name. |
+| The settings page's dropdowns | Named `App theme`, `Font`, `Opening files`, with the value read separately — "App theme, Dark", not a control called "Dark" |
+| The status bar's document kind | A label whose value is `Plain text` or `Markdown`: painted text has no widget behind it, so it gets a node where it is painted |
+| The formatted view | The document's own text, as one *document* node named after the file. The view paints the text instead of editing it, so without this the body of the window reads as empty. |
+
+**Focus order** is `egui`'s: Tab moves through the widgets in the order a frame
+creates them, and the tests hold the window to the order it produces rather than
+imposing one. It begins in the title bar — `Back`, the tabs and their close
+buttons, `New tab`, then the three window buttons — continues along the top bar
+(the menus, the formatting controls, the right-hand group) and ends in the
+editor. Two groups walk **right to left**: the window buttons, and the top bar's
+right-hand controls, because that is the direction their layout is built in.
+Nesting a left-to-right group inside a right-to-left one puts the group at the
+*left* edge of the bar (measured: buttons at x 0, 45 and 85 in a 600-wide bar), so
+the visual order and the registration order cannot both be had from `egui`'s
+layouts, and the layout the capture fixes wins. A reader is not stuck with it:
+`egui` also moves focus by direction, and that is spatial.
+
+The title bar's **drag area is not a Tab stop**: it senses drags only
+(`Sense::DRAG`), because a click that drags nothing is not something this bar
+does, and the click-and-drag sense it had put the whole title bar into the tab
+order as an unnamed stop. Decorative art — the app icon, the avatar's face —
+carries no name for the same reason it carries no text: announcing it would only
+be noise.
+
+What is **not** exposed: the formatted view's structure. Its text is reachable as
+one value, but which line is a heading, which a list item and which a table is
+painted and not said. That is a limit of exposing a rendering as a document, and
+it is recorded here rather than left as an assumption.

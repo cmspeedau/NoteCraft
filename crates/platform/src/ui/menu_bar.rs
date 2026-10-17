@@ -1,11 +1,11 @@
 //! The top bar: the `File`/`Edit`/`View` menus, the formatting toolbar, and the
 //! account / settings controls.
 
-use egui::{Align, Context, Layout, RichText};
+use egui::{Align, Context, Layout, RichText, WidgetType};
 
 use crate::ui::state::{ParagraphStyle, Shell};
 use crate::ui::theme::Palette;
-use crate::ui::{actions, widgets};
+use crate::ui::{a11y, actions, widgets};
 use nc_commands::{CommandId, MenuItem, all_disabled, build_menu_bar, by_id};
 
 /// The height of the top bar, in points.
@@ -139,27 +139,33 @@ fn format_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context, _palette:
     list_menu(shell, ui, ctx);
 
     let bold = widgets::rich_button(ui, RichText::new("B").strong()).on_hover_text("Bold");
+    a11y::label(&bold, WidgetType::Button, "Bold");
     if bold.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.bold"));
     }
     let italic = widgets::rich_button(ui, RichText::new("I").italics()).on_hover_text("Italic");
+    a11y::label(&italic, WidgetType::Button, "Italic");
     if italic.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.italic"));
     }
     let strike =
         widgets::rich_button(ui, RichText::new("S").strikethrough()).on_hover_text("Strikethrough");
+    a11y::label(&strike, WidgetType::Button, "Strikethrough");
     if strike.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.strike"));
     }
     let link = widgets::icon_button(ui, "🔗").on_hover_text("Insert a link");
+    a11y::label(&link, WidgetType::Button, "Insert a link");
     if link.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.link"));
     }
     let table = widgets::icon_button(ui, "▦").on_hover_text("Insert a table");
+    a11y::label(&table, WidgetType::Button, "Insert a table");
     if table.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.table"));
     }
     let clear = widgets::rich_button(ui, RichText::new("Aa")).on_hover_text("Clear all formatting");
+    a11y::label(&clear, WidgetType::Button, "Clear all formatting");
     if clear.clicked() {
         actions::run(shell, ctx, CommandId("cmd.md.clear"));
     }
@@ -176,7 +182,7 @@ fn paragraph_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
         .active_tab()
         .map(|tab| tab.paragraph)
         .unwrap_or(ParagraphStyle::Body);
-    ui.menu_button("H1 ▾", |ui| {
+    let menu = ui.menu_button("H1 ▾", |ui| {
         for style in ParagraphStyle::ALL {
             if ui
                 .selectable_label(style == current, style.label())
@@ -187,6 +193,9 @@ fn paragraph_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
             }
         }
     });
+    // The visible label is the current style; what the button is for is the
+    // paragraph style as a whole (`NC-P007`).
+    a11y::label(&menu.response, WidgetType::ComboBox, "Paragraph style");
 }
 
 /// The bulleted / numbered list dropdown (`docs/ui-reference.md` §3: *Bulleted
@@ -201,7 +210,7 @@ fn paragraph_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
 /// know it.
 fn list_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
     let context = shell.availability();
-    ui.menu_button("≡ ▾", |ui| {
+    let menu = ui.menu_button("≡ ▾", |ui| {
         for id in [
             "cmd.md.bullets",
             "cmd.md.numbering",
@@ -221,23 +230,24 @@ fn list_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
             }
         }
     });
+    a11y::label(&menu.response, WidgetType::ComboBox, "Lists");
 }
 
 /// The sparkle / feedback / account / settings controls on the right.
 fn right_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context, palette: Palette) {
-    if widgets::icon_button(ui, "⚙")
-        .on_hover_text("Settings")
-        .clicked()
-    {
+    let settings = widgets::icon_button(ui, "⚙").on_hover_text("Settings");
+    a11y::label(&settings, WidgetType::Button, "Settings");
+    if settings.clicked() {
         actions::run(shell, ctx, CommandId("cmd.app.settings"));
     }
     avatar(ui, palette);
-    let _ = widgets::icon_button(ui, "💬").on_hover_text("Send feedback");
+    let feedback = widgets::icon_button(ui, "💬").on_hover_text("Send feedback");
+    a11y::label(&feedback, WidgetType::Button, "Send feedback");
 
     // The AI ("sparkle") menu. Its entries are service-gated, so they show
     // greyed until the service is configured.
     let context = shell.availability();
-    ui.menu_button("✨ ▾", |ui| {
+    let ai = ui.menu_button("✨ ▾", |ui| {
         for id in ["cmd.ai.rewrite", "cmd.ai.summarize", "cmd.ai.write"] {
             if let Some(spec) = by_id(id) {
                 let enabled = spec.is_available(context);
@@ -250,11 +260,13 @@ fn right_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context, palette: P
             }
         }
     });
+    a11y::label(&ai.response, WidgetType::ComboBox, "AI");
 }
 
 /// The round account avatar.
 fn avatar(ui: &mut egui::Ui, palette: Palette) {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::click());
+    a11y::label(&response, WidgetType::Button, "Account");
     ui.painter()
         .circle_filled(rect.center(), 13.0, palette.border);
     ui.painter().text(
