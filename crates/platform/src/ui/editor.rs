@@ -13,7 +13,6 @@ use nc_core::Document;
 
 use crate::ui::markdown_view;
 use crate::ui::state::{Shell, Tab};
-use crate::ui::theme;
 
 /// The editor widget's id. Fixed so a queued selection can be stored under it
 /// and tests can read the caret back.
@@ -33,7 +32,7 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
     egui::CentralPanel::no_frame()
         .frame(
             egui::Frame::NONE
-                .fill(theme::BG)
+                .fill(shell.palette.bg)
                 .inner_margin(Margin::symmetric(12, 10)),
         )
         .show(ui, |ui| {
@@ -41,6 +40,7 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
             if index >= shell.tabs.len() {
                 return;
             }
+            let palette = shell.palette;
             let wrap = shell.word_wrap;
             let zoom = shell.zoom as f32 / 100.0;
             let width = if wrap {
@@ -55,7 +55,7 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
             // All the view has to keep honest is the status bar's line and column.
             if shell.formatted_view() {
                 let tab = &shell.tabs[index];
-                markdown_view::show(tab, ui, EDIT_FONT_SIZE * zoom);
+                markdown_view::show(tab, ui, EDIT_FONT_SIZE * zoom, palette);
                 let caret = char_index(tab.text(), tab.document().caret());
                 let (line, column) = line_column(tab.text(), caret);
                 shell.caret = caret;

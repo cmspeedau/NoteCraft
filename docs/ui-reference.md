@@ -137,6 +137,16 @@ left, "About this app" on the right.
 **Opening NoteCraft**
 - Opening files — dropdown (Open in a new tab / Open in a new window / Replace the current tab)
 
+### What the controls do
+
+*Decision — the capture shows the page and its control labels, but a screenshot cannot
+show what a setting changes, and it was taken in one theme on one machine.*
+
+| Control | Behaviour |
+| --- | --- |
+| App theme | The three choices mean what they say: `Light` and `Dark` are obeyed whatever the operating system reports; `Use system setting` follows the system, and where a platform reports nothing the dark palette stays — the look this file was captured in — rather than guessing light. **The light palette has no capture to copy**, so it keeps the dark one's relationships (content surfaces lighter than the chrome, settings cards the same fill as the chrome, borders a step beyond it, text a step off the extreme) with the accent taken from Windows 11's light-mode blue. Nothing about layout differs between themes: same widgets, same positions, different colours. |
+| Theme and extra windows (§11) | Every window of a run shares one `egui` style, so the palette is installed at the start of each window's own drawing rather than once per application — a second window asking for another palette cannot leave the first one painted in the wrong colours. Whether the choice belongs to the window it was made in or to the whole application the capture does not say; the settings page itself belongs to the window it is open in. |
+
 ### Right column — About this app
 
 - Product name and version

@@ -20,7 +20,7 @@
 use egui::RichText;
 
 use crate::ui::state::Tab;
-use crate::ui::theme;
+use crate::ui::theme::Palette;
 
 /// How many bytes of source indentation read as one level of nesting.
 const INDENT_SPACES: usize = 2;
@@ -175,7 +175,7 @@ pub(crate) fn view_of(kind: nc_markdown::BlockKind) -> BlockView {
 ///
 /// `base` is the editor's own font size, so a normal line measures the same in
 /// either view.
-pub(crate) fn show(tab: &Tab, ui: &mut egui::Ui, base: f32) {
+pub(crate) fn show(tab: &Tab, ui: &mut egui::Ui, base: f32, palette: Palette) {
     // Cloned, not borrowed: `Ui::style` hands back a reference into the ui, and the
     // scroll area below needs to borrow the ui mutably.
     let style = ui.style().clone();
@@ -198,7 +198,14 @@ pub(crate) fn show(tab: &Tab, ui: &mut egui::Ui, base: f32) {
                     " ".repeat(view.indent * INDENT_SPACES),
                     view.marker.as_deref().unwrap_or("")
                 );
-                ui.label(job_for(block.content(), &lead, &view, base, &style));
+                ui.label(job_for(
+                    block.content(),
+                    &lead,
+                    &view,
+                    base,
+                    &style,
+                    palette,
+                ));
                 ui.add_space(base * 0.22);
             }
         });
@@ -215,13 +222,14 @@ fn job_for(
     view: &BlockView,
     base: f32,
     style: &egui::Style,
+    palette: Palette,
 ) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     if !lead.is_empty() {
         RichText::new(lead)
             .monospace()
             .size(base)
-            .color(theme::TEXT_DIM)
+            .color(palette.text_dim)
             .append_to(
                 &mut job,
                 style,
@@ -230,7 +238,7 @@ fn job_for(
             );
     }
     for run in runs(content) {
-        rich_text(&run, view, base).append_to(
+        rich_text(&run, view, base, palette).append_to(
             &mut job,
             style,
             egui::FontSelection::Default,
@@ -241,7 +249,7 @@ fn job_for(
 }
 
 /// The `egui` text for one run in one block's presentation.
-fn rich_text(run: &Run, view: &BlockView, base: f32) -> RichText {
+fn rich_text(run: &Run, view: &BlockView, base: f32, palette: Palette) -> RichText {
     // Size first, then the emphases: `egui` resolves the family variant for bold
     // and italic from the flags, so the size is set on top of whatever it picks.
     let scale = if run.style.code { 0.92 } else { view.scale };
@@ -258,9 +266,9 @@ fn rich_text(run: &Run, view: &BlockView, base: f32) -> RichText {
         rich = rich.strikethrough();
     }
     if run.style.link {
-        rich.color(theme::ACCENT).underline()
+        rich.color(palette.accent).underline()
     } else if view.dim {
-        rich.color(theme::TEXT_DIM)
+        rich.color(palette.text_dim)
     } else {
         rich
     }

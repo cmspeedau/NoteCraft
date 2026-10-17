@@ -7,6 +7,8 @@ use nc_commands::{AvailabilityContext, CommandId};
 use nc_core::{Document, LineEnding};
 use nc_textproc::{Direction, Encoding, SearchOptions, TextFile};
 
+use crate::ui::theme::Palette;
+
 /// Whether a document is plain text or Markdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocKind {
@@ -672,8 +674,16 @@ pub struct Shell {
     pub word_wrap: bool,
     /// The zoom percentage.
     pub zoom: u32,
-    /// The chosen app theme.
+    /// The chosen app theme (`Settings ▸ App theme`).
     pub theme: AppTheme,
+    /// The colours in force for this frame.
+    ///
+    /// Derived state, not a setting: it is what `theme` resolves to, refreshed at
+    /// the top of every frame (`crate::ui::draw`) from the choice and what the
+    /// system reports. It lives on the shell rather than being recomputed by each
+    /// widget because every widget in one frame has to agree on it — and because a
+    /// painted frame can then be asserted against the palette it was drawn with.
+    pub palette: Palette,
     /// The editor font family name.
     pub font_family: &'static str,
     /// Where opened files go.
@@ -724,6 +734,7 @@ impl Shell {
             word_wrap: true,
             zoom: 100,
             theme: AppTheme::Dark,
+            palette: Palette::DARK,
             font_family: FONT_FAMILIES[0],
             opening: OpenBehavior::NewTab,
             ai_enabled: false,

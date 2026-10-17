@@ -3,19 +3,20 @@
 use egui::{Align, CornerRadius, Frame, Layout, Margin, RichText, vec2};
 
 use crate::ui::state::{AppTheme, FONT_FAMILIES, OpenBehavior, Shell};
-use crate::ui::{theme, widgets};
+use crate::ui::{theme::Palette, widgets};
 
 /// Draws the settings page.
 pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
     egui::CentralPanel::no_frame()
         .frame(
             Frame::NONE
-                .fill(theme::BG)
+                .fill(shell.palette.bg)
                 .inner_margin(Margin::symmetric(30, 16)),
         )
         .show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.label(RichText::new("Settings").size(32.0).color(theme::TEXT));
+                let palette = shell.palette;
+                ui.label(RichText::new("Settings").size(32.0).color(palette.text));
                 ui.add_space(16.0);
 
                 ui.horizontal_top(|ui| {
@@ -24,13 +25,13 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
                     ui.allocate_ui_with_layout(
                         vec2(left_width, 0.0),
                         Layout::top_down(Align::Min),
-                        |ui| settings_column(shell, ui),
+                        |ui| settings_column(shell, ui, palette),
                     );
                     ui.add_space(total * 0.04);
                     ui.allocate_ui_with_layout(
                         vec2(total * 0.34, 0.0),
                         Layout::top_down(Align::Min),
-                        about_column,
+                        |ui| about_column(ui, palette),
                     );
                 });
             });
@@ -38,11 +39,12 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
 }
 
 /// The left column: the actual settings.
-fn settings_column(shell: &mut Shell, ui: &mut egui::Ui) {
+fn settings_column(shell: &mut Shell, ui: &mut egui::Ui, palette: Palette) {
     section(ui, "Appearance");
-    card(ui, |ui| {
+    card(ui, palette, |ui| {
         row(
             ui,
+            palette,
             "App theme",
             Some("Select which app theme to display"),
             |ui| {
@@ -53,37 +55,38 @@ fn settings_column(shell: &mut Shell, ui: &mut egui::Ui) {
 
     ui.add_space(10.0);
     section(ui, "Text Formatting");
-    card(ui, |ui| {
-        row(ui, "Font", None, |ui| font_dropdown(ui, shell));
+    card(ui, palette, |ui| {
+        row(ui, palette, "Font", None, |ui| font_dropdown(ui, shell));
     });
-    card(ui, |ui| {
+    card(ui, palette, |ui| {
         row(
             ui,
+            palette,
             "Word wrap",
             Some("Fit text within window by default"),
             |ui| {
-                switch_with_label(ui, &mut shell.word_wrap);
+                switch_with_label(ui, palette, &mut shell.word_wrap);
             },
         );
     });
-    card(ui, |ui| {
-        row(ui, "Formatting", None, |ui| {
+    card(ui, palette, |ui| {
+        row(ui, palette, "Formatting", None, |ui| {
             let mut formatting = shell.word_wrap;
-            switch_with_label(ui, &mut formatting);
+            switch_with_label(ui, palette, &mut formatting);
         });
     });
 
     ui.add_space(10.0);
     section(ui, "Opening NoteCraft");
-    card(ui, |ui| {
-        row(ui, "Opening files", None, |ui| {
+    card(ui, palette, |ui| {
+        row(ui, palette, "Opening files", None, |ui| {
             dropdown(ui, "opening", &mut shell.opening);
         });
     });
 }
 
 /// The right column: the "About this app" panel.
-fn about_column(ui: &mut egui::Ui) {
+fn about_column(ui: &mut egui::Ui, palette: Palette) {
     ui.label(RichText::new("About this app").size(15.0).strong());
     ui.add_space(6.0);
     ui.label(RichText::new(format!("NoteCraft {}", env!("CARGO_PKG_VERSION"))).size(13.0));
@@ -96,7 +99,7 @@ fn about_column(ui: &mut egui::Ui) {
         "Third-Party Software Acknowledgments",
     ] {
         ui.add_space(4.0);
-        let _ = ui.link(RichText::new(link).size(13.0).color(theme::ACCENT));
+        let _ = ui.link(RichText::new(link).size(13.0).color(palette.accent));
     }
     ui.add_space(18.0);
     let _ = ui.button("Send feedback");
@@ -111,9 +114,9 @@ fn section(ui: &mut egui::Ui, title: &str) {
 }
 
 /// A settings card: a rounded, slightly lighter panel.
-fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
+fn card(ui: &mut egui::Ui, palette: Palette, body: impl FnOnce(&mut egui::Ui)) {
     Frame::NONE
-        .fill(theme::CARD)
+        .fill(palette.card)
         .corner_radius(CornerRadius::same(6))
         .inner_margin(Margin::symmetric(14, 10))
         .show(ui, |ui| {
@@ -126,15 +129,16 @@ fn card(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)) {
 /// A card row: a title, an optional subtitle, and right-aligned control.
 fn row(
     ui: &mut egui::Ui,
+    palette: Palette,
     title: &str,
     subtitle: Option<&str>,
     control: impl FnOnce(&mut egui::Ui),
 ) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(RichText::new(title).size(14.0).color(theme::TEXT));
+            ui.label(RichText::new(title).size(14.0).color(palette.text));
             if let Some(subtitle) = subtitle {
-                ui.label(RichText::new(subtitle).size(12.0).color(theme::TEXT_DIM));
+                ui.label(RichText::new(subtitle).size(12.0).color(palette.text_dim));
             }
         });
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -206,8 +210,8 @@ fn font_dropdown(ui: &mut egui::Ui, shell: &mut Shell) {
 }
 
 /// A switch followed by its on/off label.
-fn switch_with_label(ui: &mut egui::Ui, on: &mut bool) {
+fn switch_with_label(ui: &mut egui::Ui, palette: Palette, on: &mut bool) {
     let label = if *on { "On" } else { "Off" };
-    ui.label(RichText::new(label).size(13.0).color(theme::TEXT_DIM));
-    widgets::switch(ui, on);
+    ui.label(RichText::new(label).size(13.0).color(palette.text_dim));
+    widgets::switch(ui, on, palette);
 }

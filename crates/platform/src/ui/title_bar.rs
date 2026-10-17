@@ -3,7 +3,8 @@
 use egui::{Align, Align2, Context, CornerRadius, FontId, Layout, Sense, Stroke, ViewportCommand};
 
 use crate::ui::state::{DocKind, Shell, Tab};
-use crate::ui::{actions, theme, widgets};
+use crate::ui::theme::Palette;
+use crate::ui::{actions, widgets};
 
 /// The height of the title bar, in points.
 pub const HEIGHT: f32 = 40.0;
@@ -21,7 +22,7 @@ struct TabHit {
 pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
     egui::Panel::top("title_bar")
         .exact_size(HEIGHT)
-        .frame(egui::Frame::NONE.fill(theme::CHROME))
+        .frame(egui::Frame::NONE.fill(shell.palette.chrome))
         .show(ui, |ui| {
             // Registered before the controls so the empty parts of the bar drag
             // the window while the controls still receive their clicks.
@@ -34,8 +35,9 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
             let mut to_activate: Option<usize> = None;
             let mut to_close: Option<usize> = None;
 
+            let palette = shell.palette;
             ui.horizontal_centered(|ui| {
-                app_icon(ui);
+                app_icon(ui, palette);
                 let _ = widgets::icon_button(ui, "‹");
                 ui.add_space(2.0);
 
@@ -44,7 +46,8 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
                     .show(ui, |ui| {
                         ui.horizontal_centered(|ui| {
                             for (index, tab) in shell.tabs.iter().enumerate() {
-                                let hit = tab_widget(ui, index, tab, index == shell.active);
+                                let hit =
+                                    tab_widget(ui, index, tab, index == shell.active, palette);
                                 if hit.close {
                                     to_close = Some(index);
                                 } else if hit.activate {
@@ -91,10 +94,10 @@ fn window_controls(ui: &mut egui::Ui, ctx: &Context, shell: &mut Shell) {
 }
 
 /// A small blue app icon.
-fn app_icon(ui: &mut egui::Ui) {
+fn app_icon(ui: &mut egui::Ui, palette: Palette) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), Sense::hover());
     let painter = ui.painter();
-    painter.rect_filled(rect, CornerRadius::same(5), theme::ACCENT);
+    painter.rect_filled(rect, CornerRadius::same(5), palette.accent);
     let stroke = Stroke::new(1.4, egui::Color32::WHITE);
     for i in 0..3 {
         let y = rect.top() + 6.0 + i as f32 * 4.0;
@@ -109,7 +112,13 @@ fn app_icon(ui: &mut egui::Ui) {
 }
 
 /// A single tab, returning what was clicked.
-fn tab_widget(ui: &mut egui::Ui, index: usize, tab: &Tab, active: bool) -> TabHit {
+fn tab_widget(
+    ui: &mut egui::Ui,
+    index: usize,
+    tab: &Tab,
+    active: bool,
+    palette: Palette,
+) -> TabHit {
     let height = 34.0;
     let title = tab.title();
     let width = (title.chars().count() as f32 * 7.5 + 52.0).clamp(120.0, 220.0);
@@ -127,11 +136,11 @@ fn tab_widget(ui: &mut egui::Ui, index: usize, tab: &Tab, active: bool) -> TabHi
 
     let painter = ui.painter();
     let fill = if active {
-        theme::BG
+        palette.bg
     } else if response.hovered() {
-        theme::ROW_HOVER
+        palette.row_hover
     } else {
-        theme::CHROME
+        palette.chrome
     };
     painter.rect_filled(
         rect,
@@ -148,10 +157,14 @@ fn tab_widget(ui: &mut egui::Ui, index: usize, tab: &Tab, active: bool) -> TabHi
             egui::pos2(rect.left() + 6.0, rect.bottom() - 2.0),
             egui::pos2(rect.right() - 6.0, rect.bottom()),
         );
-        painter.rect_filled(underline, CornerRadius::same(1), theme::ACCENT);
+        painter.rect_filled(underline, CornerRadius::same(1), palette.accent);
     }
 
-    let text_color = if active { theme::TEXT } else { theme::TEXT_DIM };
+    let text_color = if active {
+        palette.text
+    } else {
+        palette.text_dim
+    };
     painter.text(
         egui::pos2(rect.left() + 12.0, rect.center().y),
         Align2::LEFT_CENTER,
@@ -166,20 +179,20 @@ fn tab_widget(ui: &mut egui::Ui, index: usize, tab: &Tab, active: bool) -> TabHi
         painter.circle_filled(
             egui::pos2(close_rect.center().x, close_rect.center().y),
             3.0,
-            theme::ACCENT,
+            palette.accent,
         );
     }
 
     if active || response.hovered() {
         if close.hovered() {
-            painter.rect_filled(close_rect, CornerRadius::same(4), theme::HOVER);
+            painter.rect_filled(close_rect, CornerRadius::same(4), palette.hover);
         }
         painter.text(
             close_rect.center(),
             Align2::CENTER_CENTER,
             "✕",
             FontId::proportional(11.0),
-            theme::TEXT_DIM,
+            palette.text_dim,
         );
     }
 

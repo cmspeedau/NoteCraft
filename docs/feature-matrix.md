@@ -145,7 +145,7 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-P001 | App theme (system/light/dark) | MANDATORY | M8 | SPECIFIED | IN_PROGRESS | Dropdown shown; applies the theme | `crates/platform/src/ui/settings.rs` |
+| NC-P001 | App theme (system/light/dark) | MANDATORY | M8 | SPECIFIED | IN_PROGRESS | Dropdown shown; applies the theme | `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/theme.rs` |
 | NC-P002 | Font family & size | MANDATORY | M8 | SPECIFIED | IN_PROGRESS | Dropdown shown; applies to the editor | `crates/platform/src/ui/settings.rs` |
 | NC-P003 | Word-wrap preference persistence | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Survives restart | `tests/session/settings.rs` |
 | NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Squiggle, suggestions | `tests/settings/spell.rs` |
@@ -260,6 +260,23 @@ paragraph style directly and its `≡ ▾` dropdown fired nothing at all, which 
 the same feature behaved differently depending on where it was clicked; both now
 route through `CommandId`, and the table glyph — previously inert — fires
 `cmd.md.table`.
+
+**M8 has begun with the theme, which was the one setting with nothing behind it.**
+`Settings ▸ App theme` wrote `shell.theme` and no code read it, so the dropdown could
+be set and the window would not change — the settings-page shape of the bug
+`LANDED_MILESTONE` exists to catch for commands. The colours now live in a `Palette`
+value (`crates/platform/src/ui/theme.rs`) that is resolved from the choice and what
+the system reports, and the module's colour *constants are deleted*, because a
+leftover constant is a widget that quietly stays dark in a light window and no test
+that paints the surfaces it happens to care about would notice. `appearance.rs`
+asserts the result on painted frames: a frame the shell chose light contains the
+light chrome and page colours and **none** of the dark palette's, an explicit choice
+holds still while the system changes underneath it, and `Use system setting` moves the
+open window when the system does — the last of these on one `egui` context across two
+frames, because the criterion is about the window that is already up. `NC-P001` stays
+`IN_PROGRESS`: its criterion is met by those tests, but the choice does not survive a
+restart yet, and M8's exit criterion is about restarts, so the row and `NC-P003` move
+together once settings are stored.
 
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no

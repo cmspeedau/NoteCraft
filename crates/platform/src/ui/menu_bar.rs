@@ -4,7 +4,8 @@
 use egui::{Align, Context, Layout, RichText};
 
 use crate::ui::state::{ParagraphStyle, Shell};
-use crate::ui::{actions, theme, widgets};
+use crate::ui::theme::Palette;
+use crate::ui::{actions, widgets};
 use nc_commands::{CommandId, MenuItem, all_disabled, build_menu_bar, by_id};
 
 /// The height of the top bar, in points.
@@ -13,28 +14,35 @@ pub const HEIGHT: f32 = 46.0;
 /// Draws the top bar.
 pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
     ui.horizontal_centered(|ui| {
-        menus(shell, ui, ctx);
+        let palette = shell.palette;
+        menus(shell, ui, ctx, palette);
         ui.add_space(4.0);
         ui.separator();
         ui.add_space(4.0);
-        format_toolbar(shell, ui, ctx);
+        format_toolbar(shell, ui, ctx, palette);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            right_toolbar(shell, ui, ctx);
+            right_toolbar(shell, ui, ctx, palette);
         });
     });
 }
 
 /// The `File` / `Edit` / `View` menu buttons.
-fn menus(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
+fn menus(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context, palette: Palette) {
     for model in build_menu_bar(shell.availability()) {
         ui.menu_button(model.menu.label(), |ui| {
-            menu_items(ui, &model.items, shell, ctx);
+            menu_items(ui, &model.items, shell, ctx, palette);
         });
     }
 }
 
 /// Renders one dropdown's items.
-fn menu_items(ui: &mut egui::Ui, items: &[MenuItem], shell: &mut Shell, ctx: &Context) {
+fn menu_items(
+    ui: &mut egui::Ui,
+    items: &[MenuItem],
+    shell: &mut Shell,
+    ctx: &Context,
+    palette: Palette,
+) {
     for item in items {
         match item {
             MenuItem::Separator => {
@@ -49,7 +57,7 @@ fn menu_items(ui: &mut egui::Ui, items: &[MenuItem], shell: &mut Shell, ctx: &Co
                 let text = command_label(spec.label, *checked);
                 let mut button = egui::Button::new(text).min_size(egui::vec2(210.0, 0.0));
                 if let Some(accel) = accelerator {
-                    button = button.shortcut_text(RichText::new(accel).color(theme::TEXT_DIM));
+                    button = button.shortcut_text(RichText::new(accel).color(palette.text_dim));
                 }
                 if ui.add_enabled(*enabled, button).clicked() {
                     actions::run(shell, ctx, spec.id);
@@ -62,7 +70,7 @@ fn menu_items(ui: &mut egui::Ui, items: &[MenuItem], shell: &mut Shell, ctx: &Co
                 } else if all_disabled(items) {
                     let _ = ui.add_enabled(false, egui::Button::new(*title));
                 } else {
-                    let _ = ui.menu_button(*title, |ui| menu_items(ui, items, shell, ctx));
+                    let _ = ui.menu_button(*title, |ui| menu_items(ui, items, shell, ctx, palette));
                 }
             }
         }
@@ -118,7 +126,7 @@ fn command_label(label: &str, checked: Option<bool>) -> RichText {
 }
 
 /// The formatting controls in the middle of the bar.
-fn format_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
+fn format_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context, _palette: Palette) {
     paragraph_menu(shell, ui, ctx);
     list_menu(shell, ui, ctx);
 
@@ -208,14 +216,14 @@ fn list_menu(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
 }
 
 /// The sparkle / feedback / account / settings controls on the right.
-fn right_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
+fn right_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context, palette: Palette) {
     if widgets::icon_button(ui, "⚙")
         .on_hover_text("Settings")
         .clicked()
     {
         actions::run(shell, ctx, CommandId("cmd.app.settings"));
     }
-    avatar(ui);
+    avatar(ui, palette);
     let _ = widgets::icon_button(ui, "💬").on_hover_text("Send feedback");
 
     // The AI ("sparkle") menu. Its entries are service-gated, so they show
@@ -237,16 +245,16 @@ fn right_toolbar(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
 }
 
 /// The round account avatar.
-fn avatar(ui: &mut egui::Ui) {
+fn avatar(ui: &mut egui::Ui, palette: Palette) {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(26.0, 26.0), egui::Sense::click());
     ui.painter()
-        .circle_filled(rect.center(), 13.0, theme::BORDER);
+        .circle_filled(rect.center(), 13.0, palette.border);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         "👤",
         egui::FontId::proportional(13.0),
-        theme::TEXT,
+        palette.text,
     );
     let _ = response.on_hover_text("Account");
 }

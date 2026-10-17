@@ -50,7 +50,10 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
         "NoteCraft",
         native_options,
         Box::new(move |cc| {
-            theme::install(&cc.egui_ctx);
+            // The theme the shell arrives with — its default, or the restored
+            // choice once settings persist — is installed before the first frame, so
+            // nothing is painted in the wrong palette and then corrected.
+            shell.palette = theme::apply(&cc.egui_ctx, shell.theme);
             Ok(Box::new(ShellApp {
                 shell,
                 windows: windows::Windows::new(),
@@ -131,11 +134,18 @@ pub(crate) fn draw(shell: &mut Shell, ui: &mut egui::Ui) {
     // dialog or moves the caret is reflected in this frame.
     input::dispatch(shell, &ctx);
 
+    // Then the palette, so a theme chosen in Settings — or a system that changes
+    // under a shell set to follow it — is in force for everything drawn below,
+    // including this frame. Checked rather than installed every frame: writing the
+    // style is cheap but not free, and an unchanged comparison says the same thing
+    // twice.
+    shell.palette = theme::apply(&ctx, shell.theme);
+
     title_bar::show(shell, ui, &ctx);
 
     egui::Panel::top("top_bar")
         .exact_size(menu_bar::HEIGHT)
-        .frame(egui::Frame::NONE.fill(theme::CHROME))
+        .frame(egui::Frame::NONE.fill(shell.palette.chrome))
         .show(ui, |ui| {
             menu_bar::show(shell, ui, &ctx);
         });
@@ -165,7 +175,7 @@ mod tests {
 
     fn run(shell: &mut Shell, events: Vec<egui::Event>) -> (egui::Context, egui::FullOutput) {
         let ctx = egui::Context::default();
-        theme::install(&ctx);
+        theme::install(&ctx, shell.palette);
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

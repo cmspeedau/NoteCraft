@@ -12,7 +12,6 @@ use egui::{Align2, Context, Key, RichText, Vec2};
 
 use crate::ui::actions;
 use crate::ui::state::{FileDialogMode, Prompt, Shell};
-use crate::ui::theme;
 use nc_textproc::Direction;
 
 /// Draws whichever dialog is open. The file dialog is drawn before the prompt,
@@ -171,6 +170,10 @@ fn file_dialog(shell: &mut Shell, ctx: &Context) {
         return;
     };
 
+    // Copied out first: `shell.file_dialog` is borrowed mutably for the rest of
+    // this function, so the palette has to be in hand before that borrow.
+    let palette = shell.palette;
+
     let title = match dialog.mode {
         FileDialogMode::Open => "Open",
         FileDialogMode::SaveAs => "Save as",
@@ -263,7 +266,7 @@ fn file_dialog(shell: &mut Shell, ctx: &Context) {
             });
 
             if let Some(error) = &dialog.error {
-                ui.label(RichText::new(error).color(theme::DANGER));
+                ui.label(RichText::new(error).color(palette.danger));
             }
 
             ui.separator();

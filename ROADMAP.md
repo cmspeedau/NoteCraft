@@ -320,6 +320,16 @@ matrix waiting on a capture.
 
 ### M8 — Settings and desktop integration
 
+Status: IN_PROGRESS — the first thing landed is the one setting that was a control
+with nothing behind it. `Settings ▸ App theme` wrote a field that no code read; the
+colours are now a `Palette` value resolved per frame from the choice plus what the
+system reports, the colour constants are gone so a missed site is a compile error
+rather than a widget left dark, and painted frames prove a light window contains no
+dark-palette colour and that an explicit choice ignores the system while `Use system
+setting` follows it. `NC-P001`'s "applies" half is therefore tested; what M8 turns on
+next is its exit criterion — each setting persisting and producing the same behaviour
+after a restart, which is what makes `NC-P003` the row the other settings join.
+
 - Font family and size.
 - Word wrap and view preferences.
 - Theme and system-theme behaviour.

@@ -1,10 +1,10 @@
 //! Small shared widgets: the pill switch and the flat icon button.
 
-use crate::ui::theme;
+use crate::ui::theme::Palette;
 
 /// A Windows 11 style pill switch. Returns the interaction response; the
 /// response reports `changed` when the value was toggled.
-pub fn switch(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
+pub fn switch(ui: &mut egui::Ui, on: &mut bool, palette: Palette) -> egui::Response {
     let (rect, mut response) = ui.allocate_exact_size(egui::vec2(40.0, 20.0), egui::Sense::click());
     if response.clicked() {
         *on = !*on;
@@ -13,11 +13,11 @@ pub fn switch(ui: &mut egui::Ui, on: &mut bool) -> egui::Response {
 
     let radius = rect.height() / 2.0;
     let track = if *on {
-        theme::ACCENT
+        palette.accent
     } else if response.hovered() {
-        theme::ACTIVE
+        palette.active
     } else {
-        theme::BORDER
+        palette.switch_off
     };
     ui.painter()
         .rect_filled(rect, egui::CornerRadius::same(radius as u8), track);
