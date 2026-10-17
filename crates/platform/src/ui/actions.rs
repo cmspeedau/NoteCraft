@@ -2087,6 +2087,37 @@ mod tests {
     }
 
     #[test]
+    fn the_zoom_commands_step_by_ten_and_stop_at_the_ends() {
+        // The View ▸ Zoom items and their accelerators change the editor's size;
+        // nothing but the accelerator *mapping* was pinned, so the running value and
+        // the reason it stops climbing and falling — so a document can never be
+        // zoomed to nothing or past the readable ceiling — go here. Driven through
+        // `run`, the same path a menu click and a key chord take.
+        let ctx = egui::Context::default();
+        let mut shell = Shell::new();
+        assert_eq!(shell.zoom, 100, "a document opens at 100%");
+
+        run(&mut shell, &ctx, CommandId("cmd.view.zoom_in"));
+        assert_eq!(shell.zoom, 110, "Zoom In steps up by ten");
+
+        // Pressing on does not run away: it settles at the ceiling and stays there.
+        for _ in 0..100 {
+            run(&mut shell, &ctx, CommandId("cmd.view.zoom_in"));
+        }
+        assert_eq!(shell.zoom, 500, "Zoom In stops at 500%");
+
+        // And down settles at the floor rather than at zero, which would be no text.
+        for _ in 0..200 {
+            run(&mut shell, &ctx, CommandId("cmd.view.zoom_out"));
+        }
+        assert_eq!(shell.zoom, 10, "Zoom Out stops at 10%");
+
+        // Reset returns to the plain size from wherever it ended up.
+        run(&mut shell, &ctx, CommandId("cmd.view.zoom_reset"));
+        assert_eq!(shell.zoom, 100);
+    }
+
+    #[test]
     fn new_window_sets_the_request() {
         let mut shell = Shell::new();
         let ctx = egui::Context::default();
