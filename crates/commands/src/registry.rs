@@ -182,13 +182,18 @@ pub const REGISTRY: &[CommandSpec] = &[
         Availability::MultipleTabs,
         6,
     ),
+    // `File ▸ Page setup` and `File ▸ Print` belong to the print pipeline (`NC-F007`),
+    // which does not land until M8. Both stay visible but greyed — `AGENT.md` §2
+    // forbids a present-but-unwired control reading as live and then doing nothing.
+    // When M8 wires them, these return to `Edited` (print with the current settings;
+    // Page setup opens the §8 dialog).
     cmd(
         "cmd.file.page_setup",
         109,
         "Page setup",
         menu(TopMenu::File),
         None,
-        Availability::Edited,
+        Availability::Never,
         8,
     ),
     cmd(
@@ -197,7 +202,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         "Print",
         menu(TopMenu::File),
         Some(CTRL_P),
-        Availability::Edited,
+        Availability::Never,
         8,
     ),
     cmd(
@@ -310,13 +315,16 @@ pub const REGISTRY: &[CommandSpec] = &[
         Availability::Markdown,
         7,
     ),
+    // `Edit ▸ Define with Bing` is the spell-check service's "define" action, which
+    // arrives with M9. It shows greyed rather than live-and-nothing-happens when a
+    // selection is present, per `AGENT.md` §2. Returns to `Selection` once M9 wires it.
     cmd(
         "cmd.edit.define_bing",
         208,
         "Define with Bing",
         menu(TopMenu::Edit),
         Some(CTRL_E),
-        Availability::Selection,
+        Availability::Never,
         9,
     ),
     cmd(

@@ -1924,6 +1924,32 @@ mod tests {
     }
 
     #[test]
+    fn an_unwired_command_that_shows_is_disabled() {
+        // The other half of `every_landed_command_is_wired`. That one says a landed
+        // command must be wired; this enforces `AGENT.md` §2 from the other side: a
+        // command the user can see (a menu placement) or press (an accelerator) that
+        // this build does not yet act on must be greyed, not offered live and then do
+        // nothing. Only `Never` (a placeholder a later milestone fills in) and
+        // `Service` (no AI service is configured in this build) leave such a command
+        // disabled in every state the running app can actually reach.
+        for spec in nc_commands::REGISTRY {
+            let shown = spec.placement.is_some() || spec.shortcut.is_some();
+            if shown && !handles(spec.id) {
+                assert!(
+                    matches!(
+                        spec.availability,
+                        nc_commands::Availability::Never | nc_commands::Availability::Service
+                    ),
+                    "{} is offered to the user but not wired, so §2 says it must be \
+                     disabled — yet its availability is {:?}",
+                    spec.id,
+                    spec.availability,
+                );
+            }
+        }
+    }
+
+    #[test]
     fn undo_and_redo_route_through_the_document() {
         let mut shell = shell_edited("hello");
 
