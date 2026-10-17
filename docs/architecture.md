@@ -96,7 +96,8 @@ written without a window.
   an explicitly chosen encoding (the Open dialog's list), `save`
   re-serialises in the encoding the file carries, `save_as` transcodes to a
   chosen encoding (with or without a mark), `save_lossy` writes what the target
-  can hold, and `reload` re-reads the file.
+  can hold, `reload` re-reads the file, and `keep_local_version` adopts the file
+  now on disk while keeping the editor's text.
 - Writes are atomic per file: the text is serialised to a sibling temporary file
   which is renamed over the target only once it is complete, so a failed write
   leaves the previous contents intact.

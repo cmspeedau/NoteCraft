@@ -125,10 +125,14 @@ impl TextFile {
 
     /// Rebuilds a file from stored parts, for session restore (`NC-F011`).
     ///
-    /// `text` uses `\n` terminators. There are no bytes on disk behind this
-    /// file, so a save writes the text; `dirty` carries the unsaved-changes
-    /// flag the session recorded, and `line_ending` is the style it is written
-    /// in.
+    /// `text` uses `\n` terminators. `dirty` carries the unsaved-changes flag
+    /// the session recorded, and `line_ending` is the style it is written in.
+    ///
+    /// The file, if it is still there, is read for the bytes the outside-change
+    /// check compares against (`NC-D008`): a restart takes the disk as it finds
+    /// it, so it does not report a change that happened before the session was
+    /// written. A file that is gone — or a document with no path — has no
+    /// baseline, and a save writes the text.
     pub fn restore(
         path: impl AsRef<Path>,
         encoding: Encoding,
@@ -137,10 +141,12 @@ impl TextFile {
         text: &str,
         dirty: bool,
     ) -> Self {
+        let path = path.as_ref().to_path_buf();
+        let on_disk = fs::read(&path).ok();
         Self {
-            path: path.as_ref().to_path_buf(),
+            path,
             detection: Detection::chosen(encoding, bom),
-            on_disk: None,
+            on_disk,
             document: Document::from_parts(text, line_ending, dirty),
         }
     }
@@ -374,6 +380,33 @@ impl TextFile {
         Ok(())
     }
 
+    /// Keeps the text the editor holds while taking the file now on disk as the
+    /// bytes it will be compared against and written over.
+    ///
+    /// This is what answering *Keep my version* to an outside change does
+    /// (`NC-D008`, `docs/ui-reference.md` §9): the document is left exactly as
+    /// it was — text, caret and history all stay — and marked dirty, so the next
+    /// save writes the user's version rather than the one another program left
+    /// behind. The bytes read here become the baseline
+    /// [`external_change`](Self::external_change) compares against, so the same
+    /// change does not ask again; a file that has since been removed is
+    /// remembered as absent, so a save recreates it.
+    pub fn keep_local_version(&mut self) -> Result<()> {
+        let missing = |error: &std::io::Error| error.kind() == std::io::ErrorKind::NotFound;
+        self.on_disk = match fs::read(&self.path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if missing(&error) => None,
+            Err(source) => {
+                return Err(Error::Read {
+                    path: self.path.clone(),
+                    source,
+                });
+            }
+        };
+        self.document.mark_dirty();
+        Ok(())
+    }
+
     /// Writes `bytes` to the file this document already has.
     fn write(&mut self, bytes: &[u8]) -> Result<Saved> {
         if !self.has_path() {
@@ -492,7 +525,39 @@ mod tests {
         assert_eq!(file.line_ending(), nc_core::LineEnding::Lf);
         assert_eq!(file.text(), "# Idea\nsecond line");
         assert!(file.is_dirty(), "unsaved work stays unsaved");
-        assert!(file.on_disk().is_none(), "there are no bytes behind it yet");
+        assert!(
+            file.on_disk().is_none(),
+            "the file is not there, so there is no baseline"
+        );
+    }
+
+    #[test]
+    fn a_restored_file_takes_the_bytes_still_on_disk_as_its_baseline() {
+        let directory =
+            std::env::temp_dir().join(format!("notecraft-restore-baseline-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        let path = directory.join("note.txt");
+        std::fs::write(&path, b"on disk\r\n").expect("the file");
+
+        let file = TextFile::restore(
+            &path,
+            Encoding::Utf8,
+            false,
+            nc_core::LineEnding::CrLf,
+            "unsaved\nwork",
+            true,
+        );
+        assert_eq!(
+            file.external_change(),
+            ExternalChange::None,
+            "the file is as the restart found it"
+        );
+
+        std::fs::write(&path, b"a change after the restart").expect("an outside write");
+        assert_eq!(file.external_change(), ExternalChange::Modified);
+
+        let _ = std::fs::remove_dir_all(&directory);
     }
 
     #[test]

@@ -306,10 +306,21 @@ the shell's. `Esc` always cancels, and no prompt proceeds on its own.
 | Unrepresentable | Saving would lose characters the encoding cannot hold (NC-D003) | `<n> characters cannot be saved in <encoding>. Saving will replace them with "?". Save anyway?` — `Save anyway` · `Choose another encoding` · `Cancel` |
 | Outside change | The file changed on disk since NoteCraft read it (NC-D008) | `"<name>" has changed on disk since it was last read.` — `Reload` · `Keep my version` · `Cancel` |
 
-`Don't save` discards the edits and continues the close; `Keep my version`
-leaves the editor's text as it is and marks the document dirty against the file
-now on disk. `Choose another encoding` returns to the Save As dialog (§7) with
+`Don't save` discards the edits and continues the close; `Reload` reads the file
+again, replacing the editor's text and its history; `Keep my version` leaves the
+editor's text as it is and marks the document dirty against the file now on
+disk, so the next save writes it; `Cancel` dismisses the question and changes
+nothing. `Choose another encoding` returns to the Save As dialog (§7) with
 the encoding list focused.
+
+The outside-change question is asked when the window **gains focus** — the moment
+a program that had the foreground has finished writing — so a window kept in
+front does not re-read its documents every frame. A question or dialog already on
+screen is never talked over. A change dismissed with `Cancel` is asked about
+again at the next focus gain, until it is reloaded, kept, or overwritten by a
+save. A document that comes back from a session with unsaved changes takes the
+file as it stands at the restart as its baseline, so a change made before the
+session was written is not reported.
 
 An answer can have a step after it, and that step survives the detours a save can
 take. A `Save` that answers a close writes the document and then closes the tab;

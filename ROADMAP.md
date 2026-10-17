@@ -162,15 +162,17 @@ Status: IN_PROGRESS — `crates/textproc` (`nc-textproc`) owns bytes-to-text and
 text-to-bytes: `Encoding` detection and transcoding (UTF-8 with/without a mark,
 UTF-16/UTF-32 in either order, and ANSI as Windows-1252), `LineEnding`
 round-tripping, and `TextFile` (`open`, `open_as`, `save`, `save_as`,
-`save_lossy`, `reload`). Saves are atomic: the file is written to a sibling
+`save_lossy`, `reload`, `keep_local_version`). Saves are atomic: the file is written to a sibling
 temporary file and renamed into place, so a failed write leaves the original
 intact. The shell now backs each tab with a `TextFile` — the document, its
 encoding and its dirty flag have one source — edits it through a thin
 `egui::TextBuffer` adapter, and draws the Open / Save As dialog (filesystem
 browsing and the encoding list), with Save / Save As / Open wired and the dirty
-indicator on the tab. The unsaved-changes, overwrite, and unrepresentable
-prompts are built on `nc-textproc::prompt`. Outstanding: the outside-change
-prompt, and end-to-end verification.
+indicator on the tab. The unsaved-changes, overwrite, and unrepresentable prompts
+are built on `nc-textproc::prompt`, and so is the outside-change prompt: a file
+written by another program while the window was in the background raises it when
+focus returns, with Reload, Keep my version and Cancel, each tested end to end
+(`NC-D008`). Outstanding: end-to-end verification of the remaining prompts.
 
 ### M5 — Editing commands and search
 

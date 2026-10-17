@@ -39,7 +39,7 @@ rendering of it — so bold, italic, strikethrough, headings, lists, nesting, li
 tables (writing one and growing one), clear formatting and the view toggle all change
 what the user sees, from the toolbar, the menus and the shortcuts alike. The one piece
 deliberately left undone is widening a table, which nothing in the capture would fire
-(see the verification summary). The page-setup surface and the outside-change prompt are
+(see the verification summary). The page-setup surface is
 still ahead. Seven M6 behaviour criteria are
 `VERIFIED` by an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the
 dirty marker by its painted shapes (`crates/platform/src/ui/appearance.rs`); the
@@ -113,7 +113,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-D005 | Dirty-state tracking + unsaved prompts | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Unsaved-changes prompt states surfaced (§9) | `crates/textproc/tests/file_io/dirty.rs` |
 | NC-D006 | Failed-write / read-only / permission errors | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Original file preserved (atomic write); error prompt (§9) | `crates/textproc/tests/file_io/errors.rs` |
 | NC-D007 | Empty / malformed / very large files | MANDATORY | M4/M10 | SPECIFIED | IMPLEMENTED | No crash | `crates/textproc/tests/file_io/stress.rs` |
-| NC-D008 | External file-change detection | OPTIONAL | M4 | SPECIFIED | IMPLEMENTED | Detects rewrite/removal; outside-change prompt (§9) | `crates/textproc/tests/file_io/external_change.rs` |
+| NC-D008 | External file-change detection | OPTIONAL | M4 | SPECIFIED | VERIFIED | Detects rewrite/removal; outside-change prompt (§9) | `crates/textproc/tests/file_io/external_change.rs`, `crates/platform/src/ui/lifecycle.rs` |
 
 ## E. Tabs, session, lifecycle
 
@@ -173,13 +173,13 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 33 |
+| IMPLEMENTED | 32 |
 | IN_PROGRESS | 0 |
 | NOT_STARTED | 9 |
-| VERIFIED | 25 |
+| VERIFIED | 26 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Twenty-five rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Twenty-six rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -411,6 +411,33 @@ register left to right by nesting a left-to-right one inside it — the group la
 at the bar's left edge instead — so the registration order follows the layout the
 capture fixes, and the tests record it.
 
+**The outside-change question was the last prompt with no box.** The engine could
+already tell that the bytes on disk were no longer the ones NoteCraft read
+(`NC-D008`, `ExternalChange::Modified` / `Removed`), and `nc-textproc::prompt`
+already turned that into a `Question::OutsideChange`; what was missing was the
+shell half §9 specifies. There is now a `Prompt::OutsideChange`, its card, and
+three answers. *Reload* takes the bytes on disk, re-detects the encoding and
+hands the editor a fresh document, as `TextFile::reload` always did. *Keep my
+version* leaves the text, caret and history exactly as they were and adopts the
+file now on disk as the baseline — `TextFile::keep_local_version` — while
+`Document::mark_dirty` makes the kept text unsaved work against it, so the next
+save writes the user's version and the same change is not asked about twice.
+*Cancel* changes nothing.
+
+The question is asked when the window **gains focus**, the moment a program that
+had the foreground has finished writing, so a window kept in front does not
+re-read every document every frame; the trigger and the Cancel semantics are
+recorded in §9. It is never raised over a question or a dialog that is already
+up. A restart takes the file on disk as its baseline for a restored unsaved
+document (`TextFile::restore` now reads it), so coming back to NoteCraft does not
+report a change that happened before the session was written. The shell
+acceptance tests drive the real state: a changed file raises the
+card and changes nothing yet; a focused frame after an outside write raises
+nothing, while losing and regaining focus does; Reload, Keep and Cancel each
+have the end §9 gives them; and the answer functions were mutation-checked by
+removing the dirty mark, the adopted baseline, the focus transition and the
+already-asked guard in turn.
+
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no
 match for "context menu" or "right-click" in the file — and §11 states outright
@@ -429,6 +456,7 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 > survives a restart, settings are stored, the font list is real — four families this
 > build actually carries, applied to the editor — the formatting switch now hides
 > the toolbar it names, every open honours the opening-files setting, and every
-> control Tab can reach says what it is. Still ahead are spell check, printing and
-> page setup, and the outside-change prompt. The visual
+> control Tab can reach says what it is, and a file changed underneath the window
+> raises the question §9 specifies. Still ahead are spell check, printing and
+> page setup. The visual
 > criteria await a display, and the tab context menu awaits a reference decision.

@@ -286,6 +286,12 @@ mod tests {
             ("an unsaved-changes prompt", |shell| {
                 shell.prompt = Some(Prompt::UnsavedChanges { tab: 0 });
             }),
+            ("an outside-change prompt", |shell| {
+                shell.prompt = Some(Prompt::OutsideChange {
+                    tab: 0,
+                    path: std::path::PathBuf::from("note.txt"),
+                });
+            }),
         ]
     }
 

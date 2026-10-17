@@ -526,8 +526,39 @@ pub fn pump(shell: &mut Shell, ctx: &Context) {
         return;
     }
 
+    // A window that has just been given focus looks for files another program
+    // may have written while it was in the background (NC-D008). Only a gain is
+    // checked, so a window left in front does no disk reads every frame.
+    let focused = ctx.input(|input| input.focused);
+    if focused && !shell.window_focused {
+        check_outside_changes(shell);
+    }
+    shell.window_focused = focused;
+
     if std::mem::take(&mut shell.exit_pending) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+}
+
+/// Raises the outside-change prompt for the first document whose file changed on
+/// disk since NoteCraft read it (`NC-D008`, `docs/ui-reference.md` §9).
+///
+/// The question is asked when the window gains focus, because that is when a
+/// program that had the foreground has finished writing. It never talks over a
+/// question or a dialog that is already up: one prompt at a time, and a Save As
+/// in progress is not something to interrupt.
+pub fn check_outside_changes(shell: &mut Shell) {
+    if shell.prompt.is_some() || shell.file_dialog.is_some() || shell.closing_window {
+        return;
+    }
+    let changed = shell.tabs.iter().enumerate().find_map(|(tab, document)| {
+        match nc_textproc::prompt::after_outside_change(&document.file) {
+            Some(nc_textproc::prompt::Question::OutsideChange { path }) => Some((tab, path)),
+            _ => None,
+        }
+    });
+    if let Some((tab, path)) = changed {
+        shell.prompt = Some(Prompt::OutsideChange { tab, path });
     }
 }
 
@@ -757,6 +788,46 @@ pub fn answer_unrepresentable_choose_encoding(shell: &mut Shell) {
         return;
     };
     open_save_as(shell, tab);
+}
+
+/// The answer to the outside-change prompt: read the file again (`Reload`),
+/// discarding the editor's text and its history (`NC-D008`).
+pub fn answer_outside_change_reload(shell: &mut Shell) {
+    let Some(Prompt::OutsideChange { tab, .. }) = shell.prompt.take() else {
+        return;
+    };
+    let Some(document) = shell.tabs.get_mut(tab) else {
+        return;
+    };
+    let name = document.title();
+    match document.file.reload() {
+        Ok(()) => {
+            // The document that was reloaded is a new one, caret at the start.
+            if shell.active == tab {
+                sync_caret_to_document(shell);
+            }
+            // Another document may have changed while this one was being read.
+            check_outside_changes(shell);
+        }
+        Err(_) => shell.notification = Some(format!("Could not reload \"{name}\"")),
+    }
+}
+
+/// The answer to the outside-change prompt: keep the text the editor holds
+/// (`Keep my version`), marking it dirty against the file now on disk so the
+/// next save writes it (`NC-D008`).
+pub fn answer_outside_change_keep(shell: &mut Shell) {
+    let Some(Prompt::OutsideChange { tab, .. }) = shell.prompt.take() else {
+        return;
+    };
+    let Some(document) = shell.tabs.get_mut(tab) else {
+        return;
+    };
+    let name = document.title();
+    match document.file.keep_local_version() {
+        Ok(()) => check_outside_changes(shell),
+        Err(_) => shell.notification = Some(format!("Could not read \"{name}\"")),
+    }
 }
 
 /// The answer to any prompt that has a `Cancel`: do nothing.

@@ -702,6 +702,17 @@ impl Document {
         self.dirty = false;
     }
 
+    /// Marks the document as differing from the file on disk without an edit
+    /// having been made to it.
+    ///
+    /// This is what answering *Keep my version* to an outside change does
+    /// (`NC-D008`): the text the user kept is not the file's anymore, so the
+    /// next save has to write it. The history and the remembered original are
+    /// left alone — nothing was undone, and nothing was read.
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
     /// Forgets the history and the remembered original, as closing and
     /// reopening a document does.
     pub fn reset(&mut self) {

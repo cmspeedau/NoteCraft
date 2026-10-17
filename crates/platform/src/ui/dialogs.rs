@@ -312,6 +312,10 @@ enum Answer {
     SaveAnyway,
     /// Go back to Save As to pick another encoding.
     ChooseEncoding,
+    /// Read the file again, discarding the editor's text.
+    Reload,
+    /// Keep the editor's text and write it over the file next time.
+    KeepMine,
     /// Do nothing.
     Cancel,
 }
@@ -365,6 +369,8 @@ fn prompt(shell: &mut Shell, ctx: &Context) {
         Some(Answer::Replace) => actions::answer_overwrite_replace(shell),
         Some(Answer::SaveAnyway) => actions::answer_unrepresentable_save(shell),
         Some(Answer::ChooseEncoding) => actions::answer_unrepresentable_choose_encoding(shell),
+        Some(Answer::Reload) => actions::answer_outside_change_reload(shell),
+        Some(Answer::KeepMine) => actions::answer_outside_change_keep(shell),
         Some(Answer::Cancel) => actions::answer_cancel(shell),
         None => {}
     }
@@ -399,6 +405,13 @@ fn prompt_title_and_body(shell: &Shell, prompt: &Prompt) -> (&'static str, Strin
                 characters.len()
             ),
         ),
+        Prompt::OutsideChange { path, .. } => {
+            let name = file_name(path);
+            (
+                "File changed on disk",
+                format!("\"{name}\" has changed on disk since it was last read."),
+            )
+        }
     }
 }
 
@@ -442,11 +455,26 @@ fn prompt_buttons(prompt: &Prompt) -> &'static [PromptButton] {
             answer: Answer::Cancel,
         },
     ];
+    const OUTSIDE_CHANGE: &[PromptButton] = &[
+        PromptButton {
+            label: "Reload",
+            answer: Answer::Reload,
+        },
+        PromptButton {
+            label: "Keep my version",
+            answer: Answer::KeepMine,
+        },
+        PromptButton {
+            label: "Cancel",
+            answer: Answer::Cancel,
+        },
+    ];
 
     match prompt {
         Prompt::UnsavedChanges { .. } => UNSAVED,
         Prompt::Overwrite { .. } => OVERWRITE,
         Prompt::Unrepresentable { .. } => UNREPRESENTABLE,
+        Prompt::OutsideChange { .. } => OUTSIDE_CHANGE,
     }
 }
 

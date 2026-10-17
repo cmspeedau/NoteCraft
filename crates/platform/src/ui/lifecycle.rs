@@ -728,6 +728,194 @@ fn a_work_session_survives_a_restart_without_losing_unsaved_work() {
     );
 }
 
+// ---- NC-D008 — outside changes: "Detects rewrite/removal; prompt (§9)" ------
+
+/// Runs one frame with the window focused or not, so a gain of focus can be
+/// driven the way the windowing layer reports one.
+fn focus_frame(shell: &mut Shell, focused: bool) {
+    let ctx = egui::Context::default();
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1180.0, 720.0),
+        )),
+        focused,
+        ..Default::default()
+    };
+    let mut output = ctx.run_ui(input, |ui| actions::pump(shell, ui.ctx()));
+    output.textures_delta.clear();
+}
+
+/// A shell showing `path`, already read, with `theirs` written over it.
+fn changed_underneath(path: &std::path::Path) -> Shell {
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(path).expect("the file opens");
+    std::fs::write(path, b"theirs").expect("an outside write");
+    shell
+}
+
+#[test]
+fn a_file_changed_on_disk_raises_the_outside_change_question() {
+    let scratch = Scratch::new("outside-asks");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = changed_underneath(&path);
+
+    actions::check_outside_changes(&mut shell);
+
+    assert_eq!(
+        shell.prompt,
+        Some(Prompt::OutsideChange {
+            tab: 0,
+            path: path.clone()
+        })
+    );
+    assert_eq!(shell.tabs[0].text(), "one", "nothing is applied by asking");
+}
+
+#[test]
+fn the_question_is_asked_when_focus_comes_back_not_every_frame() {
+    let scratch = Scratch::new("outside-focus");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(&path).expect("the file opens");
+
+    // A window that keeps the foreground does not re-read its files each frame.
+    focus_frame(&mut shell, true);
+    std::fs::write(&path, b"theirs").expect("an outside write");
+    focus_frame(&mut shell, true);
+    assert_eq!(shell.prompt, None, "no focus was gained");
+
+    // Losing focus and coming back is when another program has had its turn.
+    focus_frame(&mut shell, false);
+    focus_frame(&mut shell, true);
+    assert_eq!(
+        shell.prompt,
+        Some(Prompt::OutsideChange {
+            tab: 0,
+            path: path.clone()
+        })
+    );
+}
+
+#[test]
+fn a_question_or_dialog_already_up_is_not_talked_over() {
+    let scratch = Scratch::new("outside-quiet");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = changed_underneath(&path);
+    shell.prompt = Some(Prompt::UnsavedChanges { tab: 0 });
+
+    actions::check_outside_changes(&mut shell);
+    assert_eq!(
+        shell.prompt,
+        Some(Prompt::UnsavedChanges { tab: 0 }),
+        "the question on screen stands"
+    );
+
+    shell.prompt = None;
+    shell.file_dialog = Some(crate::ui::state::FileDialog::open());
+    actions::check_outside_changes(&mut shell);
+    assert!(shell.prompt.is_none(), "a dialog in progress is left alone");
+}
+
+#[test]
+fn reload_takes_the_bytes_on_disk_and_the_editor_follows() {
+    let scratch = Scratch::new("outside-reload");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = changed_underneath(&path);
+    actions::check_outside_changes(&mut shell);
+
+    actions::answer_outside_change_reload(&mut shell);
+
+    assert!(shell.prompt.is_none());
+    assert_eq!(shell.tabs[0].text(), "theirs");
+    assert!(!shell.tabs[0].is_dirty());
+    assert_eq!(
+        shell.tabs[0].file.external_change(),
+        nc_textproc::ExternalChange::None
+    );
+}
+
+#[test]
+fn keeping_the_version_keeps_the_text_and_makes_it_unsaved() {
+    let scratch = Scratch::new("outside-keep");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(&path).expect("the file opens");
+    append(&mut shell.tabs[0], " mine");
+    shell.tabs[0].file.save().expect("a save");
+    std::fs::write(&path, b"theirs").expect("an outside write");
+    actions::check_outside_changes(&mut shell);
+
+    actions::answer_outside_change_keep(&mut shell);
+
+    assert!(shell.prompt.is_none());
+    assert_eq!(shell.tabs[0].text(), "one mine", "the user's text stands");
+    assert!(
+        shell.tabs[0].is_dirty(),
+        "and is unsaved work against the file"
+    );
+    assert_eq!(
+        shell.tabs[0].file.external_change(),
+        nc_textproc::ExternalChange::None,
+        "the same change does not ask again"
+    );
+
+    shell.tabs[0].file.save().expect("a save");
+    assert_eq!(std::fs::read(&path).expect("the file"), b"one mine");
+}
+
+#[test]
+fn cancelling_the_outside_change_question_changes_nothing() {
+    let scratch = Scratch::new("outside-cancel");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = changed_underneath(&path);
+    actions::check_outside_changes(&mut shell);
+
+    actions::answer_cancel(&mut shell);
+
+    assert!(shell.prompt.is_none());
+    assert_eq!(shell.tabs[0].text(), "one");
+    assert!(!shell.tabs[0].is_dirty());
+    assert_eq!(
+        shell.tabs[0].file.external_change(),
+        nc_textproc::ExternalChange::Modified,
+        "the change has not been resolved, so the next focus gain asks again"
+    );
+
+    actions::check_outside_changes(&mut shell);
+    assert!(matches!(
+        shell.prompt,
+        Some(Prompt::OutsideChange { tab: 0, .. })
+    ));
+}
+
+#[test]
+fn a_restart_does_not_report_a_change_that_predates_it() {
+    let scratch = Scratch::new("outside-restart");
+    let path = scratch.file("note.txt", b"one");
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(&path).expect("the file opens");
+    append(&mut shell.tabs[0], " mine");
+    assert!(shell.tabs[0].is_dirty());
+
+    let mut restored = restart(&scratch, &shell);
+    assert_eq!(restored.tabs[0].text(), "one mine");
+
+    actions::check_outside_changes(&mut restored);
+    assert!(
+        restored.prompt.is_none(),
+        "the file is exactly as the restart found it"
+    );
+
+    // A write after the restart is another program's doing, and is asked about.
+    std::fs::write(&path, b"theirs").expect("an outside write");
+    actions::check_outside_changes(&mut restored);
+    assert!(matches!(
+        restored.prompt,
+        Some(Prompt::OutsideChange { tab: 0, .. })
+    ));
+}
+
 // One boundary worth naming: this suite drives [`save_to`] and
 // [`session::load_from`] with an explicit path rather than the shell's real
 // `save`/`restore_shell` pair, because those resolve the user's configuration

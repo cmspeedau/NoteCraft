@@ -483,6 +483,13 @@ pub enum Prompt {
         /// The characters with no representation.
         characters: Vec<char>,
     },
+    /// The file changed on disk since NoteCraft read it (`NC-D008`).
+    OutsideChange {
+        /// The tab whose file changed.
+        tab: usize,
+        /// The file that changed.
+        path: PathBuf,
+    },
 }
 
 /// A single open document: the file behind it, plus the shell-only state the
@@ -751,6 +758,13 @@ pub struct Shell {
     pub pending_replace: Option<PendingReplace>,
     /// Whether the window is closing, prompting for each dirty tab in turn.
     pub closing_window: bool,
+    /// Whether the window had focus on the previous frame.
+    ///
+    /// The outside-change check runs on a gain of focus, the moment another
+    /// program that had the foreground may have written one of the open files
+    /// (`NC-D008`), so the previous frame's answer is what a gain is measured
+    /// against.
+    pub window_focused: bool,
     /// Set when the window should close once the prompts are answered.
     pub exit_pending: bool,
     /// Set by `File ▸ New window`; the eframe application creates the window at
@@ -792,6 +806,7 @@ impl Shell {
             save_then: None,
             pending_replace: None,
             closing_window: false,
+            window_focused: true,
             exit_pending: false,
             new_window_request: false,
             new_window_documents: Vec::new(),

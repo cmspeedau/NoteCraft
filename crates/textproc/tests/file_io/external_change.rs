@@ -123,3 +123,46 @@ fn saving_over_an_outside_change_writes_the_document_and_forgets_it() {
     assert_eq!(std::fs::read(&path).expect("the file"), b"mineone");
     assert_eq!(file.external_change(), ExternalChange::None);
 }
+
+#[test]
+fn keeping_the_local_version_marks_it_dirty_without_touching_the_text() {
+    let scratch = Scratch::new("external-keep");
+    let path = scratch.file("note.txt", b"one");
+    let mut file = TextFile::open(&path).expect("the file opens");
+    assert!(file.insert_str("mine"));
+    file.save().expect("a save");
+    assert!(!file.is_dirty());
+
+    std::fs::write(&path, b"theirs").expect("an outside write");
+    assert_eq!(file.external_change(), ExternalChange::Modified);
+
+    file.keep_local_version().expect("keeping the local text");
+
+    // The user's text stands, and it is now their unsaved work against the file.
+    assert_eq!(file.text(), "mineone");
+    assert!(file.is_dirty());
+    assert_eq!(file.external_change(), ExternalChange::None);
+
+    file.save().expect("a save");
+    assert_eq!(std::fs::read(&path).expect("the file"), b"mineone");
+    assert_eq!(file.external_change(), ExternalChange::None);
+}
+
+#[test]
+fn keeping_the_local_version_of_a_removed_file_lets_a_save_recreate_it() {
+    let scratch = Scratch::new("external-keep-removed");
+    let path = scratch.file("note.txt", b"one");
+
+    let mut file = TextFile::open(&path).expect("the file opens");
+    std::fs::remove_file(&path).expect("an outside delete");
+    assert_eq!(file.external_change(), ExternalChange::Removed);
+
+    file.keep_local_version().expect("keeping the local text");
+
+    assert_eq!(file.text(), "one");
+    assert!(file.is_dirty());
+    assert_eq!(file.external_change(), ExternalChange::None);
+
+    file.save().expect("a save recreates the file");
+    assert_eq!(std::fs::read(&path).expect("the file"), b"one");
+}
