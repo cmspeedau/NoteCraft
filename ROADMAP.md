@@ -485,6 +485,18 @@ correctness regressions.
 - Run randomized editing sequences.
 - Update `docs/feature-matrix.md` with results.
 
+Status: IN_PROGRESS — the headless half of validation is in place. Every row the shell can
+reach is backed by an acceptance test behind its `VERIFIED` status in
+`docs/feature-matrix.md`; Unicode and every supported encoding and line-ending are
+exercised by the M3–M4 suites; and the editing engine is now driven by a randomized
+editing-sequence property (`crates/core/tests/properties.rs`) that applies arbitrary
+mixtures of typing, newline, backspace, forward delete, deleting and replacing a
+selection, click/drag selection, and an overwrite, and asserts after *each* step that the
+caret and the selection stay on character boundaries and inside the text, and that the
+whole sequence unwinds back to where it started through undo and redoes forward to the
+final state again. What validation still needs is the comparison only a person can make —
+the running UI, screen by screen, against `docs/ui-reference.md` — plus the IME input path.
+
 Exit criteria: Every mandatory feature passes its acceptance tests, and any
 remaining differences are documented and reproducible.
 
