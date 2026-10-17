@@ -710,6 +710,51 @@ fn save_as_writes_the_document_in_the_chosen_encoding() {
     let _ = scratch;
 }
 
+#[test]
+fn a_new_document_is_written_as_utf8_without_a_mark_and_with_crlf() {
+    // NC-F001: "UTF-8 (no BOM), CRLF, empty, in a new tab." Nothing had driven a
+    // brand-new document to disk — the new-tab tests stop at the shell — so the
+    // format a new document *defaults to* was never asserted. It opens empty in a
+    // new tab, and what it writes is UTF-8 with no byte order mark and CRLF
+    // endings, exactly as the row claims a fresh document should be.
+    let scratch = Scratch::new("new-doc");
+    let path = scratch.path("fresh.txt");
+
+    let mut shell = Shell::new();
+    actions::run(
+        &mut shell,
+        &egui::Context::default(),
+        nc_commands::CommandId("cmd.file.new_tab"),
+    );
+    assert_eq!(shell.tabs.len(), 2, "the new document is in a new tab");
+    assert_eq!(shell.active, 1);
+    assert!(shell.tabs[1].text().is_empty(), "and it starts empty");
+
+    // A blank document has nothing to write; the format shows only once there is a
+    // line break to give an encoding and an ending to.
+    type_into_active(&mut shell, "first\nsecond"); // the buffer keeps LF internally
+    open_dialog_via_command(&mut shell, "cmd.file.save_as");
+    if let Some(dialog) = shell.file_dialog.as_mut() {
+        dialog.file_name = path.display().to_string();
+    }
+    actions::confirm_file_dialog(&mut shell);
+
+    let written = std::fs::read(&path).expect("the file was written");
+    assert_eq!(written, b"first\r\nsecond", "UTF-8 text with CRLF endings");
+    assert_ne!(&written[..2], &[0xFFu8, 0xFE], "no UTF-16 mark");
+    assert_ne!(
+        &written[..3],
+        &[0xEF, 0xBB, 0xBF],
+        "no UTF-8 byte order mark"
+    );
+    assert!(
+        std::str::from_utf8(&written).is_ok(),
+        "and it is valid UTF-8"
+    );
+
+    let _ = scratch;
+}
+
 // ---- NC-T005 / NC-F009 — close all and exit: "Prompt per dirty doc" ---------
 
 #[test]

@@ -62,7 +62,7 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | UTF-8 (no BOM), CRLF, empty, in a new tab | `tests/editing/new_document.rs` |
+| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED | UTF-8 (no BOM), CRLF, empty, in a new tab | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F002 | New tab (Ctrl+N) | MANDATORY | M6 | SPECIFIED | VERIFIED | Adds a tab without disturbing others | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F003 | New window (Ctrl+Shift+N) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Independent top-level window | `crates/platform/src/ui/windows.rs` |
 | NC-F004 | Open file (Ctrl+O) | MANDATORY | M4 | SPECIFIED | VERIFIED | Open dialog (§7); new tab; encoding/EOL detected | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs` |
@@ -179,7 +179,7 @@ library exposes no local time zone and the project carries no time-zone database
 | VERIFIED | 26 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Twenty-nine rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Thirty rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -226,9 +226,13 @@ gains exactly the typed bytes and keeps the file's CRLF, and a document saved as
 comes back from disk with that encoding. Each was mutation-checked — forcing the open to
 stop detecting, blanking the save dispatch, and forcing Save As to ignore the chosen
 encoding each fail their test — so they are not asserting a code path that would pass
-either way. These three rows need no window and so, unlike the three `IMPLEMENTED` rows
-above, they can be settled here: the dialog is a `egui` surface the shell draws itself,
-not the operating system's picker.
+either way. `NC-F001` moved with them: a brand-new document — Ctrl+N's tab, typed into
+and named — had never been driven to disk, so its default format (UTF-8, no byte order
+mark, CRLF, empty to begin with) was only asserted in the core's arithmetic, not as an
+outcome a user reaches; flipping the new-document line ending to LF fails the test. These
+rows need no window and so, unlike the three `IMPLEMENTED` rows above, they can be settled
+here: the dialog is a `egui` surface the shell draws itself, not the operating system's
+picker.
 
 **How M7's rows are verified.** `nc-markdown`'s own suite
 (`crates/markdown/tests/markdown/…`) asserts the byte-level criteria: exact
