@@ -1,0 +1,118 @@
+# NoteCraft's embedded spelling dictionary.
+#
+# A curated list of common English words, lowercase, whitespace-separated. The
+# engine accepts regular inflections (plurals, -ed, -ing, -ly, comparatives) of
+# a word listed here, so only base forms are written out. It is deliberately
+# small and its limits are recorded in docs/ui-reference.md (spell check).
+
+a able about above across act active add address adventure advantage afraid
+after again against age ago agree air all allow almost alone along already
+also always am among an and angry animal another answer anxious any anybody
+anything apart appear apple april area arm around arrive art article as ask
+at august aunt autumn avoid away awake baby back bad bag ball banana bank
+base basket bath be bean bear beautiful became because become bed been
+before began begin behave behind being believe bell belong below beside best
+better between big bird birthday bit black block blood blue board boat body
+boil bone book born bottle bottom bowl box boy bread break bright bring broad
+brother brought brown brush build burn business busy but buy by cake calendar
+call camera can candle cannot capital car card care carry case cast cat catch
+cause chain chair chance change cheap beach cheese check cheer child children
+choose church circle city class clean clear clock close cloth cloud coat cold
+collect college color come common company complete computer condition
+consider contain continue control cook cool copy corn corner correct cost
+could count country course cover cow create crop crowd cry cup cut dad daily
+dance danger dark date daughter day dead deal dear decide deep degree
+describe design desk detail develop die dictionary different difficult dinner
+direct discover dish divide do doctor does dog dollar done door double down
+draw dream dress drink drive drop dry duck during each ear early earth easy
+eat edge education effect egg eight either electric elephant else empty end
+enemy enough enter equal especially evening ever every everybody
+everyone everything excellent except exercise expect explain eye face fact
+fair fall family famous far farm fast fat father favor fear feed feel feet
+fell felt field fifteen fifty figure fill film final find fine finger finish
+fire first fish five fix floor flow flower fly fog follow food foot for force
+forest fork form forty forward found four fraction free fresh friend from
+front fruit full fun funny furniture further future game garden gas gave general
+get gift girl give glad glass go goat god gold gone good got government
+graduate grass gray great green ground group grow guess guide gun had hair
+half hall hammer hand happen happy hard has hat hate have he head hear heard
+heart heat heavy held hello help her here herself hide high hill him himself
+history hit hold hole home hope horse hospital hot hour house how however
+hundred hunt husband i ice idea if ill imagine important impossible improve
+in inch include increase indeed industry information inside instead interest
+international into iron island it its itself job join journey joy judge jump
+just keep kept key kid kill kind king kitchen knee knew know knowledge lack
+lady lake land language large last late laugh law lazy lead learn least
+leather leave led left leg length less let letter level lie life light like
+line lion lip list listen little live lock long look lose lost lot love low
+machine made mail main major make man many map mark market marry match matter
+may maybe me meal mean meat meet member memory mention method middle might
+mile milk mind mine minute miss mistake mix modern moment money monkey month
+mood moon morning most mother mountain mouse mouth move movie much music must
+my name narrow nation nature near necessary neck need neighbor neither nest
+never new news next nice night nine no noise none nor north nose not note
+nothing notice noun now number numeral nurse ocean of off offer office often
+oil old on once one only open opposite or orange order other our out outside
+over own page paint pair paper paragraph parent park part particular party
+pass past pattern pay peace pen people percent perfect perhaps period person
+pet pick picture piece place plain plane plant play please point poison
+police pond poor position possible post pour power practice prepare present
+pretty prevent price print prison private probable problem produce program
+promise proper protect proud provide public pull purple purpose push put
+quality quarter question quick quiet quite race radio rain raise ran rather
+reach read ready real reason receive record red regard remember repeat
+replace reply report rest result return rich ride right ring rise river road
+roar rock roll room rope rose round row rule run sad safe said sail salt same
+sand save saw say school science sea season seat second secret section see
+seem seen self sell send sense sentence separate serve service set seven
+several shall shape share sharp sheep sheet shell shine ship shoe shone shop
+short shoulder shout show shy sick side sight sign silver simple since sing
+single sister sit six size skin sky sleep slow small smell smile smoke snake
+snow so soft soil soldier solve some somebody someone something sometimes
+son song soon sorry sort sound soup south space speak special speed spell
+spend spent spoon sport spread spring square stand star start state station
+stay steam steel step stick still stone stood stop store storm story straight
+strange street strong student study subject such sudden sugar suggest summer
+sun supply support suppose sure surprise sweet swim system table tail take
+talk tall teach team tear telephone tell temperature ten tennis term test than
+thank that the their them then there these they thick thin thing think third
+this those though thought thousand three through throw thumb thus tie tiny
+tire today to together told tomorrow tone tonight too tool tooth top toward
+town trade train travel tree trip trouble trousers truck true try turn twelve
+twenty two type ugly under understand unit until upon us use useful usual
+valley value various very view village visit voice vowel wait walk wall want
+war warm warn was wash watch water wave way we weak wear weather week weight
+welcome well went were west what wheel when where whether which while white
+who whole whom whose wide wife wild will win wind window wine wing winter wire
+wise wish with within without woman women wonder wood word work world would
+write wrong wrote yard year yellow yes yesterday yet you young your youth
+
+# Frequently misspelled words: the correct spelling is what the near-miss check
+# compares a suspect word against, so these are the ones most worth carrying.
+accept acknowledge achieve acquire address admirable advantageous audience
+calendar category cemetery colonel conscience conscious convenience
+definitely discipline embarrass environment existence experience familiar
+February foreign graduate guarantee height hierarchy independent intelligence
+jewelry judgment knowledge leisure library liaison maintenance medieval
+miniature misspell necessary noticeable occasion occurrence parallel
+particular perceive permanent perseverance personnel physical possession
+precede preferred prejudice privilege probably procedure pronunciation
+publicly questionnaire receive recommend reference relevant restaurant rhythm
+rhythm schedule secretary separate sincerely similar
+successful surprise temperature threshold tomorrow tongue truly until
+vacuum vehicle weird whether writing
+
+# Common irregular forms the suffix rules cannot build from a base (sit becomes
+# sat, go becomes went), gathered so everyday prose is not mistaken for a slip:
+# each of these sits within one edit of some listed word, so left out they would
+# be underlined in error.
+be been being am are was were do does did done have has had
+will would shall should can could may might must
+go went gone come came give gave given get got made know knew known
+say said see saw seen take took taken tell told think thought
+write wrote written read bring brought buy bought catch chose drew drink drove
+eat fell feel felt fight flew follow forgot froze grew hurt keep heard held
+hide hit hold keep knew leave led lend let light lost lose meet met pay paid
+put quit ran rid rose rung sang sat shook shot shown shut sings sleep slept
+spoke spent spin split stole stuck stung struck swept swam swim swung taught
+threw told tore threw woke wore won wrote

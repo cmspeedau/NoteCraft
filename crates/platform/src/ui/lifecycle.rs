@@ -916,6 +916,140 @@ fn a_restart_does_not_report_a_change_that_predates_it() {
     ));
 }
 
+// ---- NC-P004 — spell check: "Squiggle, suggestions" ------------------------
+
+/// Points the caret inside `needle` in `shell`'s active document, the way a click
+/// would, so a spelling command runs against the word the user is on.
+fn caret_on(shell: &mut Shell, needle: &str) {
+    let byte = shell.tabs[shell.active]
+        .text()
+        .find(needle)
+        .expect("the word is in the document");
+    shell.caret = shell.tabs[shell.active].text()[..byte + 1].chars().count();
+}
+
+#[test]
+fn spell_check_offers_and_applies_a_correction_for_the_word_at_the_caret() {
+    let mut shell = Shell::new();
+    shell.spell_check = true;
+    append(&mut shell.tabs[0], "say teh now");
+    caret_on(&mut shell, "teh");
+
+    actions::open_spelling(&mut shell);
+
+    assert!(shell.spelling.open, "a slip opens the dialog");
+    assert_eq!(shell.spelling.word, "teh");
+    let the = shell
+        .spelling
+        .suggestions
+        .iter()
+        .position(|s| s == "the")
+        .expect("\"the\" is offered");
+    actions::apply_spelling(&mut shell, the);
+
+    assert_eq!(shell.tabs[0].text(), "say the now");
+    assert!(!shell.spelling.open, "a pick closes the dialog");
+    assert!(shell.tabs[0].is_dirty(), "the document is now unsaved work");
+}
+
+#[test]
+fn a_correction_keeps_a_capital_the_original_had() {
+    // Fixing "Teh" at the start of a sentence gives "The", not "the".
+    let mut shell = Shell::new();
+    shell.spell_check = true;
+    append(&mut shell.tabs[0], "Teh cat");
+    caret_on(&mut shell, "Teh");
+
+    actions::open_spelling(&mut shell);
+    assert_eq!(shell.spelling.word, "Teh");
+    let the = shell
+        .spelling
+        .suggestions
+        .iter()
+        .position(|s| s == "the")
+        .expect("\"the\" is offered");
+    actions::apply_spelling(&mut shell, the);
+
+    assert_eq!(shell.tabs[0].text(), "The cat");
+}
+
+#[test]
+fn a_correction_after_the_word_moved_under_the_dialog_rewrites_nothing() {
+    // The dialog is not modal, so the document can change while it is open. A pick
+    // must not write over bytes that are no longer the word it was offered for.
+    let mut shell = Shell::new();
+    shell.spell_check = true;
+    append(&mut shell.tabs[0], "say teh now");
+    caret_on(&mut shell, "teh");
+    actions::open_spelling(&mut shell);
+    assert!(shell.spelling.open);
+
+    // The user retypes the word entirely before choosing anything.
+    shell.tabs[0].document_mut().replace_range(4..7, "thing");
+    let before = shell.tabs[0].text().to_owned();
+
+    actions::apply_spelling(&mut shell, 0);
+
+    assert_eq!(
+        shell.tabs[0].text(),
+        before,
+        "no bytes were rewritten behind the user"
+    );
+    assert!(!shell.spelling.open, "and the dialog steps aside");
+}
+
+#[test]
+fn the_spelling_command_says_so_when_there_is_nothing_to_correct() {
+    // Spell check off: the command names the setting, it does not silently do
+    // nothing.
+    let mut shell = Shell::new();
+    append(&mut shell.tabs[0], "say teh now");
+    caret_on(&mut shell, "teh");
+    actions::open_spelling(&mut shell);
+    assert!(!shell.spelling.open);
+    assert!(
+        shell
+            .notification
+            .as_deref()
+            .is_some_and(|n| n.contains("Spell check")),
+        "tells the user why nothing happened: {:?}",
+        shell.notification
+    );
+
+    // Spell check on, but the caret is on a correct word.
+    let mut shell = Shell::new();
+    shell.spell_check = true;
+    append(&mut shell.tabs[0], "say the now");
+    caret_on(&mut shell, "the");
+    actions::open_spelling(&mut shell);
+    assert!(!shell.spelling.open);
+    assert!(
+        shell
+            .notification
+            .as_deref()
+            .is_some_and(|n| n.contains("No misspelled")),
+        "says there is no slip here: {:?}",
+        shell.notification
+    );
+}
+
+#[test]
+fn refreshing_a_document_marks_every_slip_for_underlining() {
+    // The scan itself is on demand; what decides whether it runs each frame is the
+    // setting, which the editor checks. Two one-edit slips in one line are both
+    // marked, and the ranges are byte offsets into the document the paint uses.
+    let mut shell = Shell::new();
+    append(&mut shell.tabs[0], "teh wrod");
+    shell.tabs[0].refresh_spellings();
+
+    let flagged: Vec<&str> = shell.tabs[0]
+        .spellings
+        .iter()
+        .map(|range| &shell.tabs[0].text()[range.clone()])
+        .collect();
+    assert_eq!(flagged, vec!["teh", "wrod"]);
+}
+
 // One boundary worth naming: this suite drives [`save_to`] and
 // [`session::load_from`] with an explicit path rather than the shell's real
 // `save`/`restore_shell` pair, because those resolve the user's configuration

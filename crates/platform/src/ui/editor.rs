@@ -24,7 +24,7 @@
 use std::ops::Range;
 
 use egui::text::{CCursor, CCursorRange, CharIndex};
-use egui::{FontId, Margin, WidgetType};
+use egui::{Color32, FontId, Galley, Margin, Shape, WidgetType};
 use nc_core::Document;
 
 use crate::ui::a11y;
@@ -34,6 +34,11 @@ use crate::ui::state::{Shell, Tab};
 /// The editor widget's id. Fixed so a queued selection can be stored under it
 /// and tests can read the caret back.
 pub const EDITOR_ID: &str = "notecraft_editor";
+
+/// The colour a misspelled word is underlined in (`NC-P004`). Chosen distinct
+/// from the accent so a squiggle is never read as the active-tab or selection
+/// colour; the appearance suite looks for exactly this ink.
+pub(crate) const SPELL_INK: Color32 = Color32::from_rgb(200, 60, 60);
 
 /// The editor's font size in points at 100% zoom. The formatted view scales from
 /// the same number, so a normal line measures the same in either view.
@@ -125,6 +130,7 @@ fn source_view(
     pending: Option<(usize, usize)>,
 ) -> usize {
     let wrap = shell.word_wrap;
+    let spell_check = shell.spell_check;
     let zoom = shell.zoom as f32 / 100.0;
     let font = FontId::monospace(EDIT_FONT_SIZE * zoom);
     // Measured before the document is borrowed for the widget below, and only when it
@@ -220,6 +226,15 @@ fn source_view(
                 scroll_caret_into_view(ui, &output, caret);
             }
             ui.ctx().data_mut(|data| data.insert_temp(key, metrics));
+
+            // The squiggle under a likely misspelling (`NC-P004`). It is painted
+            // from the word ranges the tab cached and the galley the text edit has
+            // just laid out, so it follows wrapping and scrolling for free — the
+            // same coordinate arithmetic the caret uses above.
+            if spell_check {
+                tab.refresh_spellings();
+                paint_misspellings(ui, &output, tab);
+            }
             caret
         })
         .inner
@@ -236,6 +251,79 @@ fn resolved_face(ctx: &egui::Context) -> String {
             .and_then(|names| names.first().cloned())
             .unwrap_or_default()
     })
+}
+
+/// Paints a red squiggle under every misspelled word the tab cached
+/// (`NC-P004`). Each byte range is turned into the character indices the galley
+/// speaks and mapped to screen with the same translation the caret uses, so the
+/// underline sits where the word does whether or not it wrapped to a second row.
+fn paint_misspellings(ui: &egui::Ui, output: &egui::text_edit::TextEditOutput, tab: &Tab) {
+    if tab.spellings.is_empty() {
+        return;
+    }
+    let text = tab.text();
+    let shift = output.galley_pos.to_vec2() - egui::vec2(output.galley.rect.left(), 0.0);
+    let painter = ui.painter();
+    for range in &tab.spellings {
+        let from = char_index(text, range.start);
+        let to = char_index(text, range.end);
+        for band in word_bands(&output.galley, from, to) {
+            draw_squiggle(painter, band.translate(shift));
+        }
+    }
+}
+
+/// The rectangle to underline for the characters `from..to` of the galley, split
+/// per row so a word that wrapped is underlined on each row it occupies. The
+/// rectangles are in the galley's own coordinates.
+fn word_bands(galley: &Galley, from: usize, to: usize) -> Vec<egui::Rect> {
+    let start = galley.layout_from_cursor(CCursor::new(from));
+    let end = galley.layout_from_cursor(CCursor::new(to));
+    let mut bands = Vec::new();
+    for row in start.row..=end.row {
+        let Some(placed) = galley.rows.get(row) else {
+            break;
+        };
+        let full = placed.char_count_excluding_newline();
+        let first = if row == start.row {
+            start.column
+        } else {
+            CharIndex::ZERO
+        };
+        let last = if row == end.row { end.column } else { full };
+        if !(first < last) {
+            continue;
+        }
+        let x0 = placed.pos.x + placed.x_offset(first);
+        let x1 = placed.pos.x + placed.x_offset(last);
+        if x1 <= x0 {
+            continue;
+        }
+        // One point above the row's bottom, so the wave sits under the glyphs.
+        let y = placed.max_y() - 1.0;
+        bands.push(egui::Rect::from_min_max(
+            egui::pos2(x0, y),
+            egui::pos2(x1, y),
+        ));
+    }
+    bands
+}
+
+/// The little wave drawn under one row's span of a misspelled word.
+fn draw_squiggle(painter: &egui::Painter, band: egui::Rect) {
+    const AMPLITUDE: f32 = 1.2;
+    const WAVELENGTH: f32 = 5.0;
+    let step = WAVELENGTH / 4.0;
+    let x0 = band.min.x;
+    let y0 = band.min.y;
+    let mut points = vec![egui::pos2(x0, y0)];
+    let mut x = x0;
+    while x < band.max.x {
+        x = (x + step).min(band.max.x);
+        let t = (x - x0) / WAVELENGTH * std::f32::consts::TAU;
+        points.push(egui::pos2(x, y0 + AMPLITUDE * t.sin()));
+    }
+    painter.add(Shape::line(points, egui::Stroke::new(1.0, SPELL_INK)));
 }
 
 /// Scrolls enough of the frame to bring a caret the shell just moved to back on

@@ -25,8 +25,10 @@
 //! time cannot show a caret being followed.
 
 use super::{draw, theme};
+use crate::ui::editor::SPELL_INK;
 use crate::ui::state::{AppTheme, DocKind, Shell};
 use crate::ui::theme::Palette;
+use egui::epaint::ColorMode;
 use egui::{Color32, Rect, Shape, Theme};
 
 /// The tab strip's height, as `title_bar` sizes each tab.
@@ -1110,11 +1112,22 @@ fn switch_shown(output: &egui::FullOutput, title: &str) -> String {
 fn each_switch_on_the_settings_page_shows_its_own_setting() {
     // Every combination, because the bug was one row reading the other's field: turning
     // word wrap off made the formatting switch report off as well, and the two states
-    // agreed often enough to look untouched in a screenshot.
-    for (wrap, formatting) in [(true, true), (false, true), (true, false), (false, false)] {
+    // agreed often enough to look untouched in a screenshot. Three switches now, so the
+    // third row is proved against the two it sits beside rather than assumed safe.
+    for (wrap, formatting, spell) in [
+        (true, true, true),
+        (false, true, true),
+        (true, false, true),
+        (true, true, false),
+        (false, false, true),
+        (false, true, false),
+        (true, false, false),
+        (false, false, false),
+    ] {
         let mut shell = Shell::new();
         shell.word_wrap = wrap;
         shell.formatting = formatting;
+        shell.spell_check = spell;
         shell.show_settings = true;
         let output = paint(&mut shell);
 
@@ -1129,5 +1142,66 @@ fn each_switch_on_the_settings_page_shows_its_own_setting() {
             if formatting { "On" } else { "Off" },
             "the formatting row reports the wrong thing with formatting = {formatting}"
         );
+        assert_eq!(
+            switch_shown(&output, "Spell check"),
+            if spell { "On" } else { "Off" },
+            "the spell check row reports the wrong thing with spell_check = {spell}"
+        );
     }
+}
+
+/// The misspelled words actually underlined this frame: a squiggle is a path stroked
+/// in [`SPELL_INK`], so its bounding box is where a word was flagged and drawn.
+fn spell_squiggles(output: &egui::FullOutput) -> Vec<Rect> {
+    output
+        .shapes
+        .iter()
+        .filter_map(|clipped| match &clipped.shape {
+            Shape::Path(path) if path.stroke.color == ColorMode::Solid(SPELL_INK) => {
+                let bounds = path.points.iter().fold(Rect::NOTHING, |acc, point| {
+                    acc.union(Rect::from_min_max(*point, *point))
+                });
+                Some(bounds)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A source-view shell showing `text`, spell check on or off.
+fn proofread(text: &str, spell_check: bool) -> Shell {
+    let mut shell = Shell::new();
+    shell.spell_check = spell_check;
+    shell.tabs[0].document_mut().insert_str(text);
+    shell
+}
+
+#[test]
+fn spell_check_underlines_a_slip_and_leaves_a_correct_word_alone() {
+    // On, with a one-edit slip: the word is underlined. The squiggle's box has to
+    // sit where the text is, on the first line under the title bar, so a stray path
+    // of the same colour elsewhere could not satisfy it.
+    let output = paint(&mut proofread("teh cat sat", true));
+    let squiggles = spell_squiggles(&output);
+    assert_eq!(squiggles.len(), 1, "one slip, one underline");
+    assert!(
+        squiggles[0].width() > 4.0 && squiggles[0].min.y > super::title_bar::HEIGHT,
+        "the underline spans the word below the title bar: {:?}",
+        squiggles[0]
+    );
+
+    // The very same document with the setting off paints no squiggle at all: the
+    // setting, not the mere presence of a slip, is what puts the mark on screen.
+    let output = paint(&mut proofread("teh cat sat", false));
+    assert!(
+        spell_squiggles(&output).is_empty(),
+        "spell check off underlined something anyway"
+    );
+
+    // On, but every word is one the dictionary knows: nothing is underlined.
+    let output = paint(&mut proofread("the cat sat", true));
+    assert!(
+        spell_squiggles(&output).is_empty(),
+        "a correct word was flagged"
+    );
 }

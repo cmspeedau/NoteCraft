@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn an_unbound_key_names_nothing() {
         assert_eq!(named(Key::Q, ctrl_alt()), None);
-        assert_eq!(named(Key::F7, Modifiers::NONE), None);
+        assert_eq!(named(Key::F6, Modifiers::NONE), None);
     }
 
     #[test]

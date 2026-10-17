@@ -24,6 +24,9 @@ pub fn show(shell: &mut Shell, ctx: &Context) {
     if shell.go_to.open {
         go_to(shell, ctx);
     }
+    if shell.spelling.open {
+        spelling(shell, ctx);
+    }
     if shell.file_dialog.is_some() {
         file_dialog(shell, ctx);
     }
@@ -164,6 +167,53 @@ fn go_to(shell: &mut Shell, ctx: &Context) {
 
     if !open || ctx.input(|input| input.key_pressed(Key::Escape)) {
         shell.go_to.open = false;
+    }
+}
+
+/// The spelling dialog (`NC-P004`): the corrections offered for one misspelled
+/// word. Picking one replaces the word; `Esc` or Dismiss leaves it. It belongs to
+/// the tab it was opened from, and closes if that tab stops being the shown one.
+fn spelling(shell: &mut Shell, ctx: &Context) {
+    if shell.spelling.tab != shell.active {
+        actions::close_spelling(shell);
+        return;
+    }
+    let mut open = shell.spelling.open;
+    let word = shell.spelling.word.clone();
+    let suggestions = shell.spelling.suggestions.clone();
+    let mut chosen: Option<usize> = None;
+
+    egui::Window::new("Spelling")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.set_min_width(240.0);
+            ui.label(RichText::new(format!("\"{word}\" is misspelled.")));
+            ui.separator();
+            ui.label("Suggestions");
+            egui::ScrollArea::vertical()
+                .max_height(160.0)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (index, suggestion) in suggestions.iter().enumerate() {
+                        if ui.button(RichText::new(suggestion)).clicked() {
+                            chosen = Some(index);
+                        }
+                    }
+                });
+            ui.separator();
+            if ui.button("Dismiss").clicked() {
+                actions::close_spelling(shell);
+            }
+        });
+
+    if let Some(index) = chosen {
+        actions::apply_spelling(shell, index);
+    }
+    if !open || ctx.input(|input| input.key_pressed(Key::Escape)) {
+        actions::close_spelling(shell);
     }
 }
 

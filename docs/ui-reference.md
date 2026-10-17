@@ -141,6 +141,7 @@ left, "About this app" on the right.
 - Font — dropdown
 - Word wrap — "Fit text within window by default" — switch (On)
 - Formatting — switch (On)
+- Spell check — "Underline likely misspelled words" — switch (Off)
 
 **Opening NoteCraft**
 - Opening files — dropdown (Open in a new tab / Open in a new window / Replace the current tab)
@@ -159,6 +160,7 @@ show what a setting changes, and it was taken in one theme on one machine.*
 | Font and extra windows (§11) | A face belongs to the shared `egui` context, so each window installs the one it wants at the start of its own drawing, the way the palette does. A face is coarser than a colour: installing a different one rebuilds the glyph atlas, so two windows that disagree about the font cost one re-rasterization each time both are drawn. The alternative — one face for the whole run, chosen by the main window — would make a secondary window's dropdown change nothing, which §11's "its own view options" rules out. |
 | Word wrap | Wrapping is how a document is *shown*, never a change to it: no byte moves and the tab does not become unsaved. Off means a line stays one line and the editor grows wider than the window, with a horizontal bar to reach the rest of it. The same control is on the View menu (§2); the two are one setting. |
 | Formatting | Off takes the formatting half of the top bar away — the paragraph-style and list dropdowns, `B` `I` `S`, link, table, clear-formatting — and the divider that separated them from the menus goes with them, because a divider to nothing is a border around an absence. The menus and the right-hand controls (AI, feedback, account, settings gear) are untouched: they share the bar but not the setting. **What it does not do:** the formatting accelerators (Ctrl+B and the rest) keep formatting text, and the Markdown commands stay available. The capture was taken with this switch in one state and shows no state of the accelerators, so the row's own wording — "toolbar hides when off" — is the whole of the behaviour, and nothing further was invented. The row used to be built from `shell.word_wrap`, so it showed the other setting's value; that is fixed, and the page is now asserted to show each switch its own. |
+| Spell check | On draws a red squiggle under each word the editor judges a slip, and `Edit ▸ Spelling suggestions` (F7) opens the corrections for the word at the caret; a pick replaces the word, keeping a capital the original had. Off draws nothing and the command says so in the status bar rather than falling silent. It is **off by default** and starts that way on a fresh run — the reference capture has no spell checker at all, so this whole row is an addition (`docs/ui-reference.md` §14), and a feature the picture cannot confirm begins quiet until it is asked for. Like Word wrap it is a matter of showing, not of the bytes: squiggling a word does not touch the document or make the tab dirty; only applying a suggestion does. |
 | Opening files | Where a file goes when it is opened. *Open in a new tab* adds a tab at the end and shows it; *Open in a new window* leaves this window's documents alone and opens the file in a new window, which the application creates at the end of the frame (`NC-F003`'s own mechanism) with the setting inherited by the window that asked; *Replace the current tab* puts the file where the active tab is, so the strip keeps its length and order. **Two rules come before the choice.** A file that is already open — in any spelling of its path — is focused rather than opened again (`NC-F012`), whatever the setting says: a file is never open twice, so there is nothing for the three choices to decide. And a file is read in the window the user opened it in, so a file that cannot be read is reported there and no window opens for it. **Replacing asks when the tab has unsaved work:** the document that would be replaced is read first and held while the unsaved-changes prompt is answered (`NC-D005`'s rule, which this row does not get to skip) — `Save` writes it and then hands the tab over, `Don't save` hands it over as it is, `Cancel` keeps the edits and opens nothing. Section G of the matrix carries **no acceptance row for this control** — the capture shows the dropdown, so the missing thing is the acceptance row, not the screen; the behaviour is pinned instead by the M8 section of `crates/platform/src/ui/lifecycle.rs`. Files named on the command line are the tabs the run starts with, before any of this applies (§4's startup order): the setting governs opening *within* a run. |
 | What is remembered, and when | A setting is written a frame after it changes, not on exit, so a crash does not undo what the user chose; nothing is written until something *does* change, so an unconfigured run leaves no file behind. The file is `settings` beside the session file, `key value` lines with a version header: a key this build does not know is kept and written back untouched, a value it cannot honour falls back to that key's default, and a header it does not recognise means no settings at all. The main window owns the file — the same policy the session follows — so an extra window changing a setting cannot fight it. |
 
@@ -414,10 +416,11 @@ the avatar, and every button whose whole visible text is a glyph.
 | `⚙` / avatar / `💬` | `Settings` / `Account` / `Send feedback` |
 | The editor | Named after the document it is editing; the text itself is the field's value |
 | Find, Go to, Open and Save As | `Find what`, `Replace with`, `Line number`, `File name`, `Encoding` — each field named by what it is *for*, so a screen reader does not read an empty field whose name is empty |
-| The settings page's switches | Role *switch*, named `Word wrap` or `Formatting`, with its on/off state. The word beside the pill is the state, so it cannot be the name. |
+| The settings page's switches | Role *switch*, named `Word wrap`, `Formatting` or `Spell check`, with its on/off state. The word beside the pill is the state, so it cannot be the name. |
 | The settings page's dropdowns | Named `App theme`, `Font`, `Opening files`, with the value read separately — "App theme, Dark", not a control called "Dark" |
 | The status bar's document kind | A label whose value is `Plain text` or `Markdown`: painted text has no widget behind it, so it gets a node where it is painted |
 | The formatted view | The document's own text, as one *document* node named after the file. The view paints the text instead of editing it, so without this the body of the window reads as empty. |
+| The spelling dialog | Each suggestion is a button named by the word it offers, so a reader hears the corrections; the misspelled word above them is painted text, not a control. |
 
 **Focus order** is `egui`'s: Tab moves through the widgets in the order a frame
 creates them, and the tests hold the window to the order it produces rather than
@@ -443,3 +446,63 @@ What is **not** exposed: the formatted view's structure. Its text is reachable a
 one value, but which line is a heading, which a list item and which a table is
 painted and not said. That is a limit of exposing a rendering as a document, and
 it is recorded here rather than left as an assumption.
+
+## 14. Spell check
+
+*Decision — the reference capture has no spell checker.* There is no squiggle in
+any screenshot, no `Spelling` menu item, no registry command to copy. `NC-P004` is
+therefore **invented UI**, authorized for this build by the person directing the
+work, and everything below is a design choice being recorded, not a reference being
+transcribed. It is deliberately small, and its smallness is the point of writing it
+down.
+
+**What it is.** `Settings ▸ Spell check` (a switch, off by default) underlines
+likely misspellings with a red squiggle; `Edit ▸ Spelling suggestions` (F7) opens
+the corrections for the misspelled word at the caret, and choosing one replaces the
+word. The engine lives in `nc-textproc::spell`; the shell only draws and replaces.
+
+**The dictionary.** A few hundred common English base words, embedded at build time
+in `crates/textproc/assets/words.txt` (whitespace-separated, licence-clean, hand
+authored — see the note at the top of that file). Only base forms are listed: the
+engine also knows regular inflections by stripping the ending back to a listed base
+(`words`, `worded`, `making`, `running`, `babies`), and a hand-written tail carries
+the irregular forms the stripping cannot reach (`sat`, `went`, `said`, `wrote`).
+
+**What counts as a misspelling — the important limit.** A word is flagged only when
+it is **not** a known word *and* is within **one edit** (insertion, deletion,
+substitution, or a transposition of two neighbours — Damerau-Levenshtein 1) of a
+known word. It is *not* flagged merely for being unknown. A general checker flags
+everything outside its dictionary, which needs tens of thousands of forms and an
+affix engine to avoid squiggling correct-but-uncommon prose; with a list this small,
+"unknown" would underline `zebra` and `quokka` in error. Requiring a near neighbour
+narrows a flag to what a slip of the fingers actually looks like (`teh`, `recieve`,
+`wrod`) and leaves an unusual correct word alone. The cost of that choice is honest
+and worth stating: **a misspelling that happens to be more than one edit from every
+listed word is missed entirely**, and a correct word the list has never met that sits
+one edit from some other word can still be underlined in error. Suggestions widen the
+radius to two edits, so a slip whose true spelling is two edits off still gets a
+correction once something closer has drawn the eye.
+
+**The squiggle.** Painted from the tab's cached misspelling ranges and the galley the
+text edit has just laid out, so it follows wrapping and scrolling with no work of its
+own; the tab re-scans only when its text hash changes. Drawing a squiggle never
+touches the document or makes the tab dirty — it is how the text is shown, like Word
+wrap.
+
+**The suggestions dialog.** A small centred window listing the corrections as buttons
+(best first) and a `Dismiss` button; `Esc` or a pick closes it. A correction keeps the
+original's leading capital, so fixing `Teh` at a sentence's start gives `The`, not
+`the`. It belongs to the tab it was opened from and closes if that tab stops being the
+one shown. The box is not modal — a keystroke can still reach the document under it — so a
+pick replaces only the exact word it was offered for: if that word has since moved, nothing
+is rewritten and the dialog steps aside. With Spell check off, or the caret on a clean
+word, or a slip the list has no near neighbour for, the command reports why in the status
+bar instead of opening an empty box.
+
+**What is *not* built (yet).** Autocorrect — the second half of `NC-P004`'s name — is
+not implemented and there is no switch for it: nothing is ever silently rewritten. The
+matrix's acceptance criterion for `NC-P004` is "Squiggle, suggestions", which is what
+is here. Spell check has **no acceptance row of its own in the reference** either (the
+capture predates it), so, like the `Opening files` dropdown, its behaviour is pinned by
+the M8 tests in `crates/platform/src/ui/lifecycle.rs` and `appearance.rs` rather than by
+a captured acceptance criterion.

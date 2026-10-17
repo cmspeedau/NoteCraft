@@ -76,6 +76,17 @@ fn settings_column(shell: &mut Shell, ui: &mut egui::Ui, palette: Palette) {
             switch_with_label(ui, palette, "Formatting", &mut shell.formatting);
         });
     });
+    card(ui, palette, |ui| {
+        row(
+            ui,
+            palette,
+            "Spell check",
+            Some("Underline likely misspelled words"),
+            |ui| {
+                switch_with_label(ui, palette, "Spell check", &mut shell.spell_check);
+            },
+        );
+    });
 
     ui.add_space(10.0);
     section(ui, "Opening NoteCraft");
@@ -281,6 +292,9 @@ pub(crate) struct Settings {
     status_bar_visible: bool,
     /// `Settings ▸ Opening files`.
     opening: OpenBehavior,
+    /// `Settings ▸ Spell check`: whether likely misspellings are underlined
+    /// (`NC-P004`). Stored and restored like the switches beside it.
+    spell_check: bool,
 }
 
 impl Settings {
@@ -294,6 +308,7 @@ impl Settings {
             formatting: shell.formatting,
             status_bar_visible: shell.status_bar_visible,
             opening: shell.opening,
+            spell_check: shell.spell_check,
         }
     }
 
@@ -311,6 +326,7 @@ impl Settings {
         shell.formatting = self.formatting;
         shell.status_bar_visible = self.status_bar_visible;
         shell.opening = self.opening;
+        shell.spell_check = self.spell_check;
     }
 
     /// The file's text, with any keys this build does not know kept as they were.
@@ -328,6 +344,7 @@ impl Settings {
             u8::from(self.status_bar_visible)
         ));
         out.push_str(&format!("opening {}\n", opening_token(self.opening)));
+        out.push_str(&format!("spell_check {}\n", u8::from(self.spell_check)));
         for line in foreign {
             out.push_str(line);
             out.push('\n');
@@ -368,6 +385,8 @@ impl Settings {
                     parse_bool(value).unwrap_or(DEFAULT.status_bar_visible);
             } else if let Some(value) = line.strip_prefix("opening ") {
                 settings.opening = opening_from(value);
+            } else if let Some(value) = line.strip_prefix("spell_check ") {
+                settings.spell_check = parse_bool(value).unwrap_or(DEFAULT.spell_check);
             } else {
                 // Not corruption — a key from a newer build. Kept, and written back.
                 foreign.push(line.to_owned());
@@ -389,6 +408,7 @@ const DEFAULT: Settings = Settings {
     formatting: true,
     status_bar_visible: true,
     opening: OpenBehavior::NewTab,
+    spell_check: false,
 };
 
 /// The settings file, and what it holds right now.
@@ -598,6 +618,7 @@ mod tests {
             formatting: false,
             status_bar_visible: false,
             opening: OpenBehavior::ReplaceTab,
+            spell_check: true,
         };
         assert_eq!(
             settings.encode(&[]),
@@ -608,7 +629,8 @@ mod tests {
              word_wrap 0\n\
              formatting 0\n\
              status_bar 0\n\
-             opening replace_tab\n"
+             opening replace_tab\n\
+             spell_check 1\n"
         );
     }
 
@@ -622,6 +644,7 @@ mod tests {
             formatting: true,
             status_bar_visible: true,
             opening: OpenBehavior::NewWindow,
+            spell_check: true,
         };
         let (decoded, foreign) = Settings::decode(&settings.encode(&[])).expect("it decodes");
         assert_eq!(decoded, settings);
@@ -637,7 +660,7 @@ mod tests {
         // itself rather than hiding behind the five that work.
         /// One setting, moved, with the label to name in a failure.
         type Change = (&'static str, fn(&mut Shell));
-        let changes: [Change; 7] = [
+        let changes: [Change; 8] = [
             ("theme", |shell| shell.theme = AppTheme::Light),
             ("font", |shell| shell.font_family = "Fira Mono"),
             ("zoom", |shell| shell.zoom = 130),
@@ -647,6 +670,7 @@ mod tests {
             ("opening files", |shell| {
                 shell.opening = OpenBehavior::NewWindow
             }),
+            ("spell check", |shell| shell.spell_check = true),
         ];
 
         let scratch = Scratch::new("round-trip");
@@ -753,7 +777,7 @@ mod tests {
                 .expect("the change was written")
                 .lines()
                 .count(),
-            8,
+            9,
             "the header and one line per setting"
         );
 
@@ -856,7 +880,7 @@ mod tests {
         let scratch = Scratch::new("foreign-key");
         write_raw(
             &scratch,
-            "notecraft-settings 1\ntheme light\nspell_check 1\nautocorrect 0\n",
+            "notecraft-settings 1\ntheme light\nhyphenation 1\nautocorrect 0\n",
         );
 
         let mut shell = Shell::new();
@@ -869,7 +893,7 @@ mod tests {
 
         let text = scratch.text().expect("the file was rewritten");
         assert!(
-            text.contains("spell_check 1\nautocorrect 0\n"),
+            text.contains("hyphenation 1\nautocorrect 0\n"),
             "the keys this build does not implement were not dropped: {text:?}"
         );
         assert_eq!(

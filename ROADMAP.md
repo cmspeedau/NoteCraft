@@ -395,8 +395,23 @@ area had become a Tab stop by sensing clicks, and now senses drags only; and nes
 left-to-right group inside a right-to-left one puts it at the bar's left edge, so the
 visual order and the registration order cannot both be had and the capture's layout wins.
 
-What remains is the rest of the settings the capture shows: spell check, file associations
-and printing, with page setup (§8) the captured screen that printing needs first.
+*And a word the shell thinks is a slip is underlined* (`NC-P004`, built as invented UI). The
+capture has no spell checker at all — no squiggle, no `Spelling` menu, no command — so
+the row was written from a design (`docs/ui-reference.md` §14) rather than read off a
+picture. `Settings ▸ Spell check` (off by default, persisted like its neighbours) draws a
+red squiggle under a likely misspelling, and `Edit ▸ Spelling suggestions` (F7) opens the
+corrections for the word at the caret, which replace it when picked, keeping a capital the
+original had. The engine — a small embedded list of common base words in
+`crates/textproc::spell`, inflections understood by stripping back to a base — flags a word
+only when it is unknown *and* one edit from a known word, so a few hundred words squiggle a
+typo without squiggling correct prose. That one-edit rule is the whole of its limitation and
+is stated in §14. It stays `IMPLEMENTED`, not `VERIFIED`: with no captured control there is
+no acceptance row to verify against, so it is pinned by tests in `spell.rs`, `appearance.rs`
+(the squiggle paints, and only when the setting is on) and `lifecycle.rs`. Autocorrect, the
+row's second half, is not built — nothing is silently rewritten.
+
+What remains is the rest of the settings the capture shows: file associations and printing,
+with page setup (§8) the captured screen that printing needs first.
 
 - Font family and size.
 - Word wrap and view preferences.

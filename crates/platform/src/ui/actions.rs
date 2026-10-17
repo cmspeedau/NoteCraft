@@ -22,7 +22,7 @@ use crate::clock;
 use crate::ui::editor;
 use crate::ui::state::{
     DocKind, FileDialog, FileDialogMode, OpenBehavior, ParagraphStyle, PendingReplace, Prompt,
-    SaveThen, Shell, Tab,
+    SaveThen, Shell, SpellDialog, Tab,
 };
 use nc_commands::CommandId;
 use nc_core::Clipboard;
@@ -75,6 +75,7 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
         "cmd.edit.find_next" => search_step(shell, Direction::Forward),
         "cmd.edit.find_prev" => search_step(shell, Direction::Backward),
         "cmd.edit.go_to" => open_go_to(shell),
+        "cmd.edit.spell_suggest" => open_spelling(shell),
         // --- Markdown formatting (M7) -----------------------------------
         // The engine decides the bytes; `apply_format` writes them.
         "cmd.md.bold" => format_inline(shell, Inline::Bold),
@@ -150,6 +151,7 @@ pub fn handles(id: CommandId) -> bool {
             | "cmd.edit.find_prev"
             | "cmd.edit.replace"
             | "cmd.edit.go_to"
+            | "cmd.edit.spell_suggest"
             | "cmd.view.status_bar"
             | "cmd.view.word_wrap"
             | "cmd.view.zoom_in"
@@ -307,6 +309,102 @@ pub fn open_go_to(shell: &mut Shell) {
     shell.go_to.line = shell.line.to_string();
     shell.go_to.open = true;
     shell.go_to.focus = true;
+}
+
+/// Opens the spelling dialog for the misspelled word at the caret
+/// (`Edit ▸ Spelling suggestions`, F7, `NC-P004`).
+///
+/// It is a report as often as a correction: with Spell check off, or the caret on
+/// a clean word, or a slip the small dictionary has no near neighbour for, the
+/// command says so in the status bar rather than opening an empty box.
+pub fn open_spelling(shell: &mut Shell) {
+    let index = shell.active;
+    if !shell.spell_check {
+        shell.notification = Some("Turn on Settings ▸ Spell check first".to_owned());
+        return;
+    }
+    let Some(tab) = shell.tabs.get(index) else {
+        return;
+    };
+    let text = tab.text();
+    let caret_byte = char_to_byte(text, shell.caret);
+    let Some(range) = nc_textproc::spell::misspelled_word(text, caret_byte) else {
+        shell.notification = Some("No misspelled word at the caret".to_owned());
+        return;
+    };
+    let word = text[range.clone()].to_owned();
+    let suggestions = nc_textproc::spell::suggestions(&word, 8);
+    if suggestions.is_empty() {
+        shell.notification = Some(format!("No suggestions for \"{word}\""));
+        return;
+    }
+    shell.spelling = SpellDialog {
+        open: true,
+        tab: index,
+        word,
+        range,
+        suggestions,
+    };
+}
+
+/// Replaces the misspelled word with the `chosen` suggestion and closes the
+/// dialog (`NC-P004`). The correction keeps the original's capitalisation, so
+/// fixing `Teh` at a sentence's start does not quietly make it `the`.
+pub fn apply_spelling(shell: &mut Shell, chosen: usize) {
+    let tab = shell.spelling.tab;
+    let Some(replacement) = shell.spelling.suggestions.get(chosen).cloned() else {
+        return;
+    };
+    let original = shell.spelling.word.clone();
+    let range = shell.spelling.range.clone();
+    // The document may have moved while the dialog was open — it is not modal, so a
+    // keystroke can reach it. Replace only while the bytes at the remembered range
+    // are still the very word the dialog was about, so a stale range overwrites
+    // nothing and the dialog simply steps aside.
+    let still_the_same_word = shell
+        .tabs
+        .get(tab)
+        .is_some_and(|tab| tab.text().get(range.clone()) == Some(original.as_str()));
+    if !still_the_same_word {
+        shell.spelling = SpellDialog::new();
+        return;
+    }
+    let replacement = match_capitalisation(&original, &replacement);
+    if let Some(tab) = shell.tabs.get_mut(tab) {
+        tab.document_mut().replace_range(range, &replacement);
+        if shell.active == shell.spelling.tab {
+            sync_caret_to_document(shell);
+        }
+    }
+    shell.spelling = SpellDialog::new();
+}
+
+/// Closes the spelling dialog without changing the document (`Esc`, the close box).
+pub fn close_spelling(shell: &mut Shell) {
+    shell.spelling = SpellDialog::new();
+}
+
+/// Gives `replacement` the leading capitalisation of `original`: an all-caps
+/// original gets an all-caps replacement, a leading-capital original gets a
+/// leading-capital replacement, and anything else is taken as written.
+fn match_capitalisation(original: &str, replacement: &str) -> String {
+    let mut letters = original.chars().filter(|c| c.is_alphabetic());
+    let first_upper = letters.next().is_some_and(char::is_uppercase);
+    let all_upper = original
+        .chars()
+        .filter(|c| c.is_alphabetic())
+        .all(char::is_uppercase);
+    if all_upper && !replacement.is_empty() {
+        replacement.to_uppercase()
+    } else if first_upper {
+        let mut chars = replacement.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => replacement.to_owned(),
+        }
+    } else {
+        replacement.to_owned()
+    }
 }
 
 /// Opens the Open dialog (`File ▸ Open`, `Ctrl+O`).

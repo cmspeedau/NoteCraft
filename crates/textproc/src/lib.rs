@@ -21,6 +21,9 @@
 //!   and Replace All — and [`time_date`] writes the time and date F5 inserts.
 //!   Both work on a document's own bytes and offsets, so a search can be tested
 //!   without a window and a replacement without a dialog.
+//! * **Spelling.** [`spell`] marks the words that are a slip away from a word it
+//!   knows and offers corrections — behind the squiggle under a misspelled word
+//!   and the list of suggestions it opens.
 //!
 //! # Invariants
 //!
@@ -58,6 +61,7 @@ pub mod encoding;
 pub mod error;
 pub mod prompt;
 pub mod search;
+pub mod spell;
 mod textfile;
 pub mod time_date;
 
@@ -67,6 +71,7 @@ pub use search::{
     Direction, Match, SearchOptions, SearchResult, find_all, find_next, find_previous, go_to_line,
     parse_line_number,
 };
+pub use spell::{is_known, misspelled_word, misspellings, suggestions};
 pub use textfile::{ExternalChange, Saved, TextFile};
 pub use time_date::{Meridiem, TimeDate};
 

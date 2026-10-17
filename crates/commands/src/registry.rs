@@ -382,6 +382,15 @@ pub const REGISTRY: &[CommandSpec] = &[
         Availability::Edited,
         5,
     ),
+    cmd(
+        "cmd.edit.spell_suggest",
+        216,
+        "Spelling suggestions",
+        None,
+        Some(F7),
+        Availability::Edited,
+        8,
+    ),
     // --- View -----------------------------------------------------------
     cmd_placed(
         "cmd.view.zoom_in",
@@ -771,6 +780,7 @@ const CTRL_E: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Letter('E'));
 const F3: Shortcut = Shortcut::new(Modifiers::NONE, Key::Function(3));
 const SHIFT_F3: Shortcut = Shortcut::new(Modifiers::SHIFT, Key::Function(3));
 const F5: Shortcut = Shortcut::new(Modifiers::NONE, Key::Function(5));
+const F7: Shortcut = Shortcut::new(Modifiers::NONE, Key::Function(7));
 const CTRL_PLUS: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Plus);
 const CTRL_MINUS: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Minus);
 const CTRL_ZERO: Shortcut = Shortcut::new(Modifiers::CTRL, Key::Digit(0));
@@ -1025,6 +1035,7 @@ mod tests {
             (Modifiers::CTRL, Key::Plus, "cmd.view.zoom_in"),
             (Modifiers::CTRL, Key::Minus, "cmd.view.zoom_out"),
             (Modifiers::CTRL, Key::Digit(0), "cmd.view.zoom_reset"),
+            (Modifiers::NONE, Key::Function(7), "cmd.edit.spell_suggest"),
         ];
         for (modifiers, key, id) in cases {
             let found = by_shortcut(modifiers, key)

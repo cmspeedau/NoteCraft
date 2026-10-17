@@ -148,7 +148,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-P001 | App theme (system/light/dark) | MANDATORY | M8 | SPECIFIED | VERIFIED | Dropdown shown; applies the theme | `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/theme.rs` |
 | NC-P002 | Font family & size | MANDATORY | M8 | SPECIFIED | VERIFIED | Dropdown shown; applies to the editor | `crates/platform/src/ui/fonts.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P003 | Word-wrap preference persistence | MANDATORY | M8 | SPECIFIED | VERIFIED | Survives restart | `crates/platform/src/ui/settings.rs` |
-| NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Squiggle, suggestions | `tests/settings/spell.rs` |
+| NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED (invented UI) | IMPLEMENTED | Squiggle, suggestions | `crates/textproc/src/spell.rs`, `crates/platform/src/ui/editor.rs`, `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/settings.rs` |
 | NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | VERIFIED | Toolbar hides when off | `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P006 | High-DPI scaling | MANDATORY | M2/M8 | SPECIFIED | IMPLEMENTED | Layout follows the display scale | egui runtime |
 | NC-P007 | Accessibility / screen-reader support | MANDATORY | M8 | SPECIFIED | VERIFIED | Names, focus order | `crates/platform/src/ui/a11y.rs`, `crates/platform/src/ui/title_bar.rs`, `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/editor.rs`, `crates/platform/src/ui/status_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/dialogs.rs` |
@@ -361,6 +361,25 @@ whichever path finishes the write — and a test closes such a tab through the e
 question to hold that down. Section G of the matrix carries no acceptance row for this
 control, so nothing was promoted: the behaviour is pinned by the M8 section of
 `crates/platform/src/ui/lifecycle.rs` and recorded in `docs/ui-reference.md` §4 instead.
+
+**`NC-P004` is the matrix's one row built as invented UI, and it is `IMPLEMENTED`, not
+`VERIFIED`, for that reason.** The capture has no spell checker — no squiggle, no
+`Spelling` menu, no command to copy — so the row was built against a written-up design
+(`docs/ui-reference.md` §14), authorized for this build, rather than transcribed. Its
+acceptance text, "Squiggle, suggestions", is met: a red squiggle is painted under a
+likely misspelling and `F7` offers corrections that replace the word (keeping a capital
+it started with, and closing over the tab that owned them). The engine is what the tests
+weigh most: a word is flagged only when it is unknown *and* one edit from a known word,
+so the small embedded list squiggles `teh` and `wrod` without error, and leaves `zebra`
+alone. That one-edit rule is the row's whole limit and is stated plainly in §14 — a slip
+more than one edit from every listed word is missed, and a correct rare word near some
+other word can still be marked. It is `IMPLEMENTED` because there is no captured
+acceptance row to verify against, exactly as `Opening files` above rests on its M8 tests
+rather than a screenshot; the tests live in `crates/textproc/src/spell.rs` (the engine),
+`appearance.rs` (the squiggle is painted, and only when the setting is on), and
+`lifecycle.rs` (the command, the correction, and the "nothing to correct" reports).
+Autocorrect — the second half of the row's name — is deliberately not built: nothing is
+ever silently rewritten.
 
 **A gap no row covers — the editor could not scroll — is closed.** Measured while
 proving word wrap, from a painted frame: a document longer than the window kept its first

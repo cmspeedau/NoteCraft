@@ -125,7 +125,9 @@ mod tests {
     use super::*;
     use crate::ui::actions;
     use crate::ui::fonts::FAMILIES;
-    use crate::ui::state::{AppTheme, DocKind, FileDialog, OpenBehavior, Prompt, Shell};
+    use crate::ui::state::{
+        AppTheme, DocKind, FileDialog, OpenBehavior, Prompt, Shell, SpellDialog,
+    };
     use crate::ui::{draw, theme};
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -280,6 +282,16 @@ mod tests {
                 shell.find.replace = true;
             }),
             ("Go to line", |shell| shell.go_to.open = true),
+            ("a spelling dialog", |shell| {
+                shell.spell_check = true;
+                shell.spelling = SpellDialog {
+                    open: true,
+                    tab: 0,
+                    word: "teh".to_owned(),
+                    range: 4..7,
+                    suggestions: vec!["the".to_owned(), "ten".to_owned()],
+                };
+            }),
             ("the Open dialog", |shell| {
                 shell.file_dialog = Some(FileDialog::open());
             }),
@@ -388,11 +400,16 @@ mod tests {
         assert_eq!(wrap.toggled, Some(true), "the switch is on and says so");
         let formatting = named(&mut shell, "Formatting");
         assert_eq!(formatting.toggled, Some(true));
+        // Spell check is the one switch that starts off, so this also pins the
+        // default the reference-captured page could not show.
+        assert_eq!(named(&mut shell, "Spell check").toggled, Some(false));
 
         shell.word_wrap = false;
         shell.formatting = false;
+        shell.spell_check = true;
         assert_eq!(named(&mut shell, "Word wrap").toggled, Some(false));
         assert_eq!(named(&mut shell, "Formatting").toggled, Some(false));
+        assert_eq!(named(&mut shell, "Spell check").toggled, Some(true));
 
         // A dropdown is named by what it sets, and its value is read separately:
         // "Dark" and "JetBrains Mono" do not say which setting they belong to.

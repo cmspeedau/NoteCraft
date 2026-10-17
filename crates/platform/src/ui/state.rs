@@ -1,6 +1,8 @@
 //! The shell's observable state: open tabs, the active document, and the view
 //! options the chrome reflects.
 
+use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use nc_commands::{AvailabilityContext, CommandId};
@@ -204,6 +206,44 @@ impl GoToDialog {
 }
 
 impl Default for GoToDialog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The spelling dialog: the suggestions offered for one misspelled word
+/// (`NC-P004`, `docs/ui-reference.md` spell check).
+///
+/// It is opened on the word the caret is on, lists the words the engine thinks
+/// were meant, and closes on a pick, on `Esc`, or when the tab it belongs to
+/// stops being the one shown.
+pub struct SpellDialog {
+    /// Whether the dialog is on screen.
+    pub open: bool,
+    /// The tab whose document is being corrected.
+    pub tab: usize,
+    /// The misspelled word, as it stands in the document.
+    pub word: String,
+    /// The word's byte range in the document — what a chosen suggestion replaces.
+    pub range: Range<usize>,
+    /// The corrections to offer, best first.
+    pub suggestions: Vec<String>,
+}
+
+impl SpellDialog {
+    /// A dialog that is not open.
+    pub fn new() -> Self {
+        Self {
+            open: false,
+            tab: 0,
+            word: String::new(),
+            range: 0..0,
+            suggestions: Vec::new(),
+        }
+    }
+}
+
+impl Default for SpellDialog {
     fn default() -> Self {
         Self::new()
     }
@@ -511,6 +551,13 @@ pub struct Tab {
     /// ways at once. Only a Markdown tab can be in it: the rendered view is derived
     /// from Markdown syntax, and a plain document has none to derive it from.
     pub formatted: bool,
+    /// The byte ranges of likely misspellings in the current text, refreshed by
+    /// [`Tab::refresh_spellings`] and drawn as a squiggle while Spell check is on
+    /// (`NC-P004`).
+    pub spellings: Vec<Range<usize>>,
+    /// The hash of the text `spellings` was computed from, so a text that has not
+    /// moved is not re-scanned against the dictionary every frame.
+    spellings_source: u64,
 }
 
 impl Tab {
@@ -521,6 +568,8 @@ impl Tab {
             kind: DocKind::Plain,
             paragraph: ParagraphStyle::Body,
             formatted: false,
+            spellings: Vec::new(),
+            spellings_source: 0,
         }
     }
 
@@ -535,6 +584,8 @@ impl Tab {
             kind: DocKind::Markdown,
             paragraph: ParagraphStyle::Body,
             formatted: false,
+            spellings: Vec::new(),
+            spellings_source: 0,
         }
     }
 
@@ -551,6 +602,8 @@ impl Tab {
             },
             paragraph: ParagraphStyle::Body,
             formatted: false,
+            spellings: Vec::new(),
+            spellings_source: 0,
         })
     }
 
@@ -572,6 +625,8 @@ impl Tab {
             },
             paragraph: ParagraphStyle::Body,
             formatted: false,
+            spellings: Vec::new(),
+            spellings_source: 0,
         })
     }
 
@@ -584,6 +639,8 @@ impl Tab {
             kind,
             paragraph: ParagraphStyle::Body,
             formatted: false,
+            spellings: Vec::new(),
+            spellings_source: 0,
         }
     }
 
@@ -643,6 +700,28 @@ impl Tab {
     pub fn matches_path(&self, path: &Path) -> bool {
         self.file.has_path() && canonical_path(self.file.path()) == canonical_path(path)
     }
+
+    /// Re-scans the document for likely misspellings if its text has moved since
+    /// the last scan (`NC-P004`). The result is left in [`Tab::spellings`]; the
+    /// hash means a document nobody has typed into is not handed to the
+    /// dictionary again every frame.
+    pub fn refresh_spellings(&mut self) {
+        let hash = text_hash(self.text());
+        if self.spellings_source != hash {
+            self.spellings = nc_textproc::spell::misspellings(self.text());
+            self.spellings_source = hash;
+        }
+    }
+}
+
+/// A cheap fingerprint of a document's text, so a scan for misspellings can be
+/// skipped when the text has not changed. Only equality matters, and only within
+/// one tab, so a fast hasher rather than a cryptographic one is the honest choice.
+fn text_hash(text: &str) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    let mut hasher = DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// A path in canonical form, or the path itself when it cannot be resolved yet
@@ -727,6 +806,13 @@ pub struct Shell {
     pub font_family: &'static str,
     /// Where opened files go.
     pub opening: OpenBehavior,
+    /// Whether likely misspellings are underlined and can be corrected
+    /// (`Settings ▸ Spell check`, `NC-P004`). Off by default: the reference
+    /// capture has no spell checker, so this is an addition and starts silent
+    /// until it is asked for (`docs/ui-reference.md` spell check).
+    pub spell_check: bool,
+    /// The spelling dialog, when one is on screen.
+    pub spelling: SpellDialog,
     /// Whether the AI service is available (enables the sparkle menu items).
     pub ai_enabled: bool,
     /// The 1-based caret line, for the status bar.
@@ -793,6 +879,8 @@ impl Shell {
             palette: Palette::DARK,
             font_family: crate::ui::fonts::DEFAULT,
             opening: OpenBehavior::NewTab,
+            spell_check: false,
+            spelling: SpellDialog::new(),
             ai_enabled: false,
             line: 1,
             column: 1,
