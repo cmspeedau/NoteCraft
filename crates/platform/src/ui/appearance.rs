@@ -629,6 +629,39 @@ fn on_screen(point: egui::Pos2) -> bool {
     Rect::from_min_size(egui::Pos2::ZERO, SCREEN).contains(point)
 }
 
+/// A Page Up / Page Down press, as the windowing layer reports one.
+fn page_key(key: egui::Key) -> egui::Event {
+    egui::Event::Key {
+        key,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    }
+}
+
+/// The 1-based line a caret character index sits on, counted from the document text.
+fn caret_line(text: &str, caret: usize) -> usize {
+    text.chars().take(caret).filter(|&c| c == '\n').count() + 1
+}
+
+/// Where the caret ends up on a fresh 400-line document, focused and parked at the top,
+/// after one key press is delivered.
+fn caret_after_a_key(event: egui::Event) -> usize {
+    let mut shell = long_document(400);
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    // A queued selection parks the caret at 0 and hands the editor the keyboard:
+    // `apply_selection` asks for focus as it moves the caret.
+    shell.pending_selection = Some((0, 0));
+    frames(&ctx, &mut shell, 2);
+    assert_eq!(shell.caret, 0, "the caret is parked at the top");
+    interact(&ctx, &mut shell, vec![event]);
+    frames(&ctx, &mut shell, 1);
+    shell.caret
+}
+
 #[test]
 fn a_command_that_moves_the_caret_to_the_document_end_brings_it_on_screen() {
     // The queued-selection half, which is what Find and Go to line use: the command
@@ -710,6 +743,158 @@ fn typing_past_the_bottom_of_the_window_keeps_the_caret_in_view() {
         on_screen(at),
         "after {caret} characters of arrow keys the caret is off screen at y={}",
         at.y
+    );
+}
+
+// ---- The Page keys move the caret a screenful -------------------------------
+//
+// `egui`'s text edit moves the caret on the arrow keys and, in this version, on nothing
+// else — `Page Up`/`Page Down` reach it and are ignored, so in a document taller than the
+// window they were dead. The shell answers them itself (see `editor::page_navigation`);
+// these tests drive the real painted shell the way a person does, one press per frame as
+// a held key repeats, and read the caret back. This pins the shell's half only — the page
+// keys — not the word/line navigation that stays the widget's own (`NC-E004`).
+
+#[test]
+fn a_page_down_pages_the_caret_far_further_than_a_single_arrow() {
+    // The claim a "page" has to earn: it is a screenful of rows, not one row. Two fresh
+    // shells, one arrow against one page, compared — robust because a screenful is a
+    // couple of dozen of these short rows however tall the window renders.
+    let arrow = egui::Event::Key {
+        key: egui::Key::ArrowDown,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let one_row = caret_after_a_key(arrow);
+    let one_page = caret_after_a_key(page_key(egui::Key::PageDown));
+    assert!(
+        one_row > 0,
+        "one arrow moved the caret down a row: {one_row}"
+    );
+    assert!(
+        one_page >= one_row * 5,
+        "a Page Down should be many rows, but page={one_page} vs arrow={one_row}"
+    );
+}
+
+#[test]
+fn a_page_down_lands_the_caret_inside_the_window() {
+    // Paging is only useful if the caret it moved is then on screen; the same follow
+    // request every outside-the-widget caret move makes is what brings it back.
+    let mut shell = long_document(400);
+    let text: String = shell.active_tab().expect("a tab").text().to_owned();
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    shell.pending_selection = Some((0, 0));
+    frames(&ctx, &mut shell, 2);
+
+    interact(&ctx, &mut shell, vec![page_key(egui::Key::PageDown)]);
+    let output = frames(&ctx, &mut shell, 2);
+    let caret = shell.caret;
+    assert!(caret > 0, "Page Down left the caret at the top");
+    assert!(
+        caret_line(&text, caret) >= 5,
+        "one Page Down moved the caret to line {}",
+        caret_line(&text, caret)
+    );
+    let at = caret_on_screen(&output, "line 120", caret);
+    assert!(
+        on_screen(at),
+        "after one Page Down the caret is off screen at y={}",
+        at.y
+    );
+}
+
+#[test]
+fn repeated_page_downs_stop_at_the_bottom_of_the_document() {
+    // The ends clamp the way an arrow clamps: a page with nowhere to go stops rather than
+    // overshoots, and stays stopped, because it is stepped with the arrow's own primitive.
+    let mut shell = long_document(400);
+    let end = shell.active_tab().expect("a tab").text().chars().count();
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    shell.pending_selection = Some((0, 0));
+    frames(&ctx, &mut shell, 2);
+
+    // Far more pages than the document has screens.
+    for _ in 0..30 {
+        interact(&ctx, &mut shell, vec![page_key(egui::Key::PageDown)]);
+    }
+    let output = frames(&ctx, &mut shell, 2);
+    assert_eq!(shell.caret, end, "the pages overshot the end");
+
+    // And a further page cannot push past it.
+    interact(&ctx, &mut shell, vec![page_key(egui::Key::PageDown)]);
+    frames(&ctx, &mut shell, 1);
+    assert_eq!(shell.caret, end, "the caret crept past the end");
+    let at = caret_on_screen(&output, "line 380", end);
+    assert!(
+        on_screen(at),
+        "the caret parked at the end is off screen at y={}",
+        at.y
+    );
+}
+
+#[test]
+fn repeated_page_ups_stop_at_the_top_of_the_document() {
+    // The same clamp above: climbing from the bottom returns to line one and no page
+    // carries the caret above the top.
+    let mut shell = long_document(400);
+    let end = shell.active_tab().expect("a tab").text().chars().count();
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    shell.pending_selection = Some((end, end));
+    frames(&ctx, &mut shell, 2);
+    assert_eq!(shell.caret, end, "the caret starts at the bottom");
+
+    for _ in 0..30 {
+        interact(&ctx, &mut shell, vec![page_key(egui::Key::PageUp)]);
+    }
+    frames(&ctx, &mut shell, 2);
+    assert_eq!(shell.caret, 0, "the pages did not return to the top");
+
+    interact(&ctx, &mut shell, vec![page_key(egui::Key::PageUp)]);
+    frames(&ctx, &mut shell, 1);
+    assert_eq!(shell.caret, 0, "the caret crept above the top");
+}
+
+#[test]
+fn shift_page_down_moves_the_caret_and_holds_the_selection() {
+    // Holding Shift moves the caret and leaves the far end as an anchor, extending the
+    // selection exactly as Shift+arrow does — the same rule, applied to a page.
+    let mut shell = long_document(400);
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    shell.pending_selection = Some((0, 0));
+    frames(&ctx, &mut shell, 2);
+
+    let shift_page = egui::Event::Key {
+        key: egui::Key::PageDown,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        },
+    };
+    interact(&ctx, &mut shell, vec![shift_page]);
+    frames(&ctx, &mut shell, 2);
+
+    let document = shell.active_tab().expect("a tab").document();
+    assert!(
+        document.caret() > 0,
+        "Shift+Page did not move the caret down"
+    );
+    assert!(
+        !document.selection().is_empty(),
+        "Shift+Page moved the caret but dropped the selection"
     );
 }
 

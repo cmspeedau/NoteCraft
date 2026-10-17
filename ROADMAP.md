@@ -148,7 +148,12 @@ click/drag/double/triple-click and focus **natively** — the `nc-core` rule
 functions are called nowhere in that path, and the two models disagree (an
 `nc-core` triple-click takes the line terminator, egui's does not). Wiring the
 editor to the engine's rules, so those tests describe the running program, is an
-open decision, not a gap a test can close. Outstanding: IME input, and rendering
+open decision, not a gap a test can close. `Page Up` and `Page Down` are the one
+pair of caret keys `egui` does not act on at all, so the shell pages the caret a
+screenful for them in `page_navigation` (`editor.rs`), stepped one row at a time
+with the arrow keys' own primitive so the column is kept and the ends clamp; five
+tests in `appearance.rs` pin it. That fills a dead key, not the word/line
+navigation those rows wait on. Outstanding: IME input, and rendering
 of control characters and whitespace (which belong with the viewport).
 
 ### M4 — File I/O and data integrity

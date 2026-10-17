@@ -270,6 +270,17 @@ tests that live function directly. `NC-E008` moves because the buffer adapter ed
 document at character indices across multi-byte text (`the_buffer_edits_the_document_at_character_indices`)
 and the edit path keeps grapheme clusters whole under undo/redo.
 
+One exception keeps this note from being read too broadly. `egui` moves the caret on the
+arrow keys, but in the version shipped here it does nothing at all on `Page Up` / `Page
+Down`, so those two keys were dead in a document taller than the window. The shell answers
+them in `page_navigation` (`editor.rs`): a screenful of rows, stepped one at a time with the
+arrow keys' own one-row primitive so the caret keeps its column and the ends clamp, Shift
+extending the selection as it does for Shift+arrow. Five tests in `appearance.rs` pin it —
+that a page is many rows and not one, that the caret lands on screen, that repeated pages
+stop at the bottom and at the top without overshooting, and that Shift holds the anchor.
+This does *not* move `NC-E004`: filling a key `egui` never handled is not the word/line/
+paragraph navigation that row is written against, which still stays the widget's own.
+
 **How the encoding and data-integrity rows are verified.** `NC-D001`–`NC-D007` are the
 byte contract `nc-textproc` exists to hold, so their acceptance is asserted where the bytes
 are decided — its `tests/file_io/` suites check the round-trip of every encoding, the

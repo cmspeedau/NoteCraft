@@ -24,7 +24,7 @@
 use std::ops::Range;
 
 use egui::text::{CCursor, CCursorRange, CharIndex};
-use egui::{Color32, FontId, Galley, Margin, Shape, WidgetType};
+use egui::{Color32, Event, FontId, Galley, Key, Margin, Shape, WidgetType};
 use nc_core::Document;
 
 use crate::ui::a11y;
@@ -150,6 +150,11 @@ fn source_view(
     // `auto_shrink` off so the area fills the panel: shrinking to the content would
     // leave the space under a short document outside the widget, so a click there would
     // reach nothing.
+    //
+    // The height the area is about to fill is how far the eye moves on a Page key; read
+    // it now, before the area claims the space, so paging knows how many rows a screenful
+    // is here ([`page_navigation`]).
+    let viewport = ui.available_height();
     egui::ScrollArea::both()
         .id_salt("editor_scroll")
         .auto_shrink([false; 2])
@@ -206,6 +211,10 @@ fn source_view(
                 },
             };
 
+            // Page Up / Page Down: the widget moves the caret on the arrow keys but
+            // does nothing on the page keys, so the shell steps it a screenful here.
+            let caret = page_navigation(ui, &output, tab, caret, viewport);
+
             // The other case that puts the caret outside the window without asking: the
             // document changed size underneath it. A new face or a new zoom reflows every
             // line, so the row the caret is on moves — and the caret itself did not change,
@@ -238,6 +247,107 @@ fn source_view(
             caret
         })
         .inner
+}
+
+/// Pages the caret up or down a screenful, for the two keys `egui` leaves dead.
+///
+/// A `TextEdit` moves the caret on the arrows — and, in this version, on nothing
+/// else: `Page Up` and `Page Down` reach it and are ignored, so in a document taller
+/// than the window they did nothing at all. The shell answers them by stepping the
+/// caret as many rows as fit in the window the document is laid out in, one row at a
+/// time with the very primitive the arrows use ([`egui::Galley::cursor_down_one_row`]),
+/// so the column the caret sat in is kept and the ends clamp the way an arrow clamps —
+/// repeated pages stop at the top and bottom instead of overshooting. The caret is then
+/// brought back on screen with the same request every other outside-the-widget move
+/// makes. Holding Shift moves the caret and leaves the anchor where it was, extending the
+/// selection exactly as Shift+arrow does; a Ctrl or Alt chord is left in the queue for
+/// anything that wants it. Only the page movement is the shell's — word and line
+/// navigation stay the widget's own (`NC-E004`).
+fn page_navigation(
+    ui: &egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    tab: &mut Tab,
+    caret: usize,
+    viewport: f32,
+) -> usize {
+    // The keys belong to the editor and to nothing else: a focused dialog keeps its
+    // own Page keys.
+    if !output.response.has_focus() {
+        return caret;
+    }
+
+    // Which page key the frame carries, as `(down, extend)` — at most one, and only a
+    // bare or Shift one. Consumed here so it is not seen again further down the frame.
+    let mut page: Option<(bool, bool)> = None;
+    ui.ctx().input_mut(|input| {
+        input.events.retain(|event| {
+            let Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } = event
+            else {
+                return true;
+            };
+            if !matches!(key, Key::PageDown | Key::PageUp) {
+                return true;
+            }
+            if modifiers.ctrl || modifiers.command || modifiers.alt || page.is_some() {
+                return true;
+            }
+            page = Some((matches!(key, Key::PageDown), modifiers.shift));
+            false
+        });
+    });
+    let Some((down, extend)) = page else {
+        return caret;
+    };
+
+    // A page is the window's height in rows. The rows are uniform, so the first one's
+    // height stands for all; without a laid-out document (heights not yet known, or a
+    // single row that cannot be paged through) there is nowhere to go.
+    let galley = &output.galley;
+    let Some(row_height) = galley.rows.first().map(|row| row.height()) else {
+        return caret;
+    };
+    if row_height <= 0.0 || galley.rows.len() < 2 {
+        return caret;
+    }
+    let page_rows = ((viewport / row_height).floor() as usize).max(1);
+
+    // Walk the page one row at a time, handing the horizontal position from each step to
+    // the next so the caret keeps its column across the whole jump.
+    let mut cursor = CCursor::new(caret);
+    let mut column: Option<f32> = None;
+    for _ in 0..page_rows {
+        let (next, kept) = if down {
+            galley.cursor_down_one_row(&cursor, column)
+        } else {
+            galley.cursor_up_one_row(&cursor, column)
+        };
+        cursor = next;
+        column = kept;
+    }
+    let primary = usize::from(cursor.index);
+    if primary == caret {
+        return caret;
+    }
+
+    // Shift keeps the far end of the selection as the anchor; otherwise the caret
+    // collapses onto where it landed. Then the frame's own bring-it-into-view request.
+    let secondary = if extend {
+        output
+            .cursor_range
+            .map(|range| usize::from(range.secondary.index))
+            .unwrap_or(caret)
+    } else {
+        primary
+    };
+    apply_selection(ui.ctx(), output, primary, secondary);
+    set_document_selection(tab, primary, secondary);
+    scroll_caret_into_view(ui, output, primary);
+    primary
 }
 
 /// The face the context resolves the document's family slot to right now, which is the
