@@ -65,9 +65,9 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | UTF-8 (no BOM), CRLF, empty, in a new tab | `tests/editing/new_document.rs` |
 | NC-F002 | New tab (Ctrl+N) | MANDATORY | M6 | SPECIFIED | VERIFIED | Adds a tab without disturbing others | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F003 | New window (Ctrl+Shift+N) | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Independent top-level window | `crates/platform/src/ui/windows.rs` |
-| NC-F004 | Open file (Ctrl+O) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Open dialog (§7); new tab; encoding/EOL detected | `crates/platform/src/ui/actions.rs` |
-| NC-F005 | Save (Ctrl+S) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Byte-correct in-place save; no data loss | `crates/platform/src/ui/actions.rs` |
-| NC-F006 | Save As + encoding (Ctrl+Shift+S) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Save-as dialog (§7); overwrite prompt (§9); chosen encoding applied | `crates/platform/src/ui/actions.rs` |
+| NC-F004 | Open file (Ctrl+O) | MANDATORY | M4 | SPECIFIED | VERIFIED | Open dialog (§7); new tab; encoding/EOL detected | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-F005 | Save (Ctrl+S) | MANDATORY | M4 | SPECIFIED | VERIFIED | Byte-correct in-place save; no data loss | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs`, `crates/textproc/src/textfile.rs` |
+| NC-F006 | Save As + encoding (Ctrl+Shift+S) | MANDATORY | M4 | SPECIFIED | VERIFIED | Save-as dialog (§7); overwrite prompt (§9); chosen encoding applied | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs` |
 | NC-F007 | Print / Page setup (Ctrl+P) | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Page-setup dialog (§8); print pipeline | `tests/file_io/print.rs` |
 | NC-F008 | Close tab (Ctrl+W) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the active tab; last tab resets to untitled | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the window | `crates/platform/src/ui/lifecycle.rs` |
@@ -179,7 +179,7 @@ library exposes no local time zone and the project carries no time-zone database
 | VERIFIED | 26 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Twenty-six rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Twenty-nine rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -209,6 +209,26 @@ not earn `VERIFIED` on that. Whether the shell *looks* like the screenshot still
 needs a person looking at a running window. `NC-F003` needs a second real
 top-level window, and `NC-F010`'s Recent submenu needs its drawing observed — its
 list, ordering and capping are tested, the rendering is not.
+
+**How the File rows are verified.** `NC-F004`, `NC-F005` and `NC-F006` were
+`IMPLEMENTED` with the file dialog's *mechanics* settled in `actions.rs` — a name typed
+into the dialog becomes a tab, Save As raises the overwrite and unrepresentable prompts
+(which need no display, so a test can raise and answer them). What was missing was the
+half the acceptance text actually names, proven by a user's own key: that Open
+*detects* the encoding and line endings off the bytes rather than assuming UTF-8, that
+Ctrl+S rewrites a file *in place* and leaves a clean document's bytes untouched, and that
+Save As writes in the *chosen* encoding. `crates/platform/src/ui/lifecycle.rs` now drives
+each through [`actions::run`](../crates/platform/src/ui/actions.rs) — the same call a menu
+click and an accelerator reach, the accelerator bindings themselves pinned by the
+registry's own lookup test — and reads the result off disk: a UTF-16LE-with-mark CRLF file
+opens as a new tab carrying `Utf16Le` and `CrLf`, an edit saved with `cmd.file.save`
+gains exactly the typed bytes and keeps the file's CRLF, and a document saved as UTF-16
+comes back from disk with that encoding. Each was mutation-checked — forcing the open to
+stop detecting, blanking the save dispatch, and forcing Save As to ignore the chosen
+encoding each fail their test — so they are not asserting a code path that would pass
+either way. These three rows need no window and so, unlike the three `IMPLEMENTED` rows
+above, they can be settled here: the dialog is a `egui` surface the shell draws itself,
+not the operating system's picker.
 
 **How M7's rows are verified.** `nc-markdown`'s own suite
 (`crates/markdown/tests/markdown/…`) asserts the byte-level criteria: exact

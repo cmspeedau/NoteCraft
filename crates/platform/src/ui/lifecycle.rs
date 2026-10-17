@@ -554,6 +554,162 @@ fn a_file_already_open_is_focused_whatever_the_setting_says() {
     );
 }
 
+// ---- NC-F004 / NC-F005 / NC-F006 — open, save, and save-as at the shell ------
+//
+// These three rows already had their dialog *mechanics* tested in `actions.rs`
+// (the file dialog reads a chosen name, Save As raises the overwrite and
+// unrepresentable prompts). What was missing — and what makes them `VERIFIED`
+// rather than `IMPLEMENTED` here — is each acceptance clause proven by a user's
+// own command, driven through [`actions::run`] the way a menu click or a key
+// chord arrives, all the way to the bytes on disk: that Open *detects* the
+// encoding and line endings it read, that Save rewrites a file in place without
+// changing how it is written, and that Save As honours the *chosen* encoding.
+
+/// Brings `shell` up in the Open or Save As dialog by running the command a user
+/// presses (`Ctrl+O`, `Ctrl+Shift+S`), so the dialog under test is the one the
+/// accelerator opens rather than one a test assembled by hand.
+fn open_dialog_via_command(shell: &mut Shell, command: &'static str) {
+    actions::run(
+        shell,
+        &egui::Context::default(),
+        nc_commands::CommandId(command),
+    );
+    assert!(shell.file_dialog.is_some(), "{command} opens the dialog");
+}
+
+/// Types `text` at the end of the active document, the way the editor would.
+fn type_into_active(shell: &mut Shell, text: &str) {
+    let index = shell.active;
+    append(&mut shell.tabs[index], text);
+}
+
+#[test]
+fn opening_a_file_detects_its_encoding_and_line_endings() {
+    // NC-F004: "Open dialog (§7); new tab; encoding/EOL detected". The earlier
+    // coverage proved a name in the dialog becomes a tab; the detecting half was
+    // never asserted, so it is what this pins. UTF-16LE with a mark, CRLF endings.
+    let scratch = Scratch::new("open-detect");
+    let path = scratch.path("wide.txt");
+    let mut bytes = vec![0xFF, 0xFE]; // UTF-16LE byte order mark
+    for unit in "ab\r\ncd".encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    std::fs::write(&path, &bytes).expect("a file");
+
+    let mut shell = Shell::new();
+    open_dialog_via_command(&mut shell, "cmd.file.open");
+    if let Some(dialog) = shell.file_dialog.as_mut() {
+        dialog.file_name = path.display().to_string(); // left on "detect automatically"
+    }
+    actions::confirm_file_dialog(&mut shell);
+
+    assert!(shell.file_dialog.is_none(), "the dialog closes");
+    assert_eq!(shell.tabs.len(), 2, "the file opened in a new tab");
+    assert_eq!(shell.active, 1, "and that tab is the one shown");
+    assert_eq!(shell.tabs[1].text(), "ab\ncd", "CRLF reads as line breaks");
+    assert_eq!(shell.tabs[1].title(), "wide.txt");
+    assert_eq!(
+        shell.tabs[1].file.encoding(),
+        nc_textproc::Encoding::Utf16Le,
+        "the encoding is read from the bytes, not assumed UTF-8"
+    );
+    assert_eq!(
+        shell.tabs[1].file.line_ending(),
+        nc_core::LineEnding::CrLf,
+        "and so are the line endings"
+    );
+    assert!(!shell.tabs[1].is_dirty(), "opening is not an edit");
+
+    let _ = scratch;
+}
+
+#[test]
+fn saving_rewrites_a_file_in_place_unchanged_in_how_it_is_written() {
+    // NC-F005: "Byte-correct in-place save; no data loss". A file read as CRLF is
+    // typed into and saved with Ctrl+S; it must keep its CRLF and its path, gain
+    // exactly the typed text and nothing else, and come back clean — and saving it
+    // again with no further edits must not breathe on a single byte.
+    let scratch = Scratch::new("save-in-place");
+    let path = scratch.file("note.txt", b"one\r\ntwo\r\n");
+
+    let mut shell = Shell::new();
+    shell.tabs[0] = Tab::open(&path).expect("the file opens");
+    type_into_active(&mut shell, " and three");
+    assert!(shell.tabs[0].is_dirty(), "typing is unsaved work");
+
+    actions::run(
+        &mut shell,
+        &egui::Context::default(),
+        nc_commands::CommandId("cmd.file.save"),
+    );
+
+    assert_eq!(
+        std::fs::read(&path).expect("the file"),
+        b"one\r\ntwo\r\n and three",
+        "the text is typed in, the file's own CRLF endings kept, nothing else changed"
+    );
+    assert!(!shell.tabs[0].is_dirty(), "and the document is saved");
+    assert_eq!(
+        shell.tabs[0].title(),
+        "note.txt",
+        "saved in place, not elsewhere"
+    );
+    assert_eq!(shell.tabs[0].file.line_ending(), nc_core::LineEnding::CrLf);
+
+    // A second save of the same, now-clean document is a no-op on the bytes.
+    let after = std::fs::read(&path).expect("the file");
+    actions::run(
+        &mut shell,
+        &egui::Context::default(),
+        nc_commands::CommandId("cmd.file.save"),
+    );
+    assert_eq!(std::fs::read(&path).expect("the file"), after, "no churn");
+
+    let _ = scratch;
+}
+
+#[test]
+fn save_as_writes_the_document_in_the_chosen_encoding() {
+    // NC-F006's still-unproven clause: "chosen encoding applied". The dialog's
+    // overwrite and unrepresentable prompts are settled in `actions.rs`; the
+    // positive half — pick UTF-16 and the bytes come back UTF-16 — is settled here,
+    // reached through `Ctrl+Shift+S` and named the way the field names it.
+    let scratch = Scratch::new("save-as-encoding");
+    let path = scratch.path("wide.txt");
+
+    let mut shell = Shell::new();
+    type_into_active(&mut shell, "hello"); // an untitled document with some text
+    open_dialog_via_command(&mut shell, "cmd.file.save_as");
+    if let Some(dialog) = shell.file_dialog.as_mut() {
+        dialog.file_name = path.display().to_string();
+        dialog.encoding = crate::ui::state::EncodingChoice::Chosen {
+            encoding: nc_textproc::Encoding::Utf16Le,
+            bom: true,
+        };
+    }
+    actions::confirm_file_dialog(&mut shell);
+
+    assert!(shell.file_dialog.is_none(), "the dialog closes on success");
+    let written = std::fs::read(&path).expect("the file was written");
+    assert_eq!(&written[..2], &[0xFF, 0xFE], "UTF-16LE with its mark");
+    assert_ne!(
+        std::str::from_utf8(&written).ok(),
+        Some("hello"),
+        "the bytes are not plain UTF-8 — the chosen encoding was honoured"
+    );
+
+    // Read back the way a reopen would, the choice survives as bytes, not just a flag.
+    let reopened = Tab::open(&path).expect("it reads back");
+    assert_eq!(reopened.text(), "hello");
+    assert_eq!(
+        reopened.file.encoding(),
+        nc_textproc::Encoding::Utf16Le,
+        "the file on disk really is UTF-16"
+    );
+
+    let _ = scratch;
+}
+
 // ---- NC-T005 / NC-F009 — close all and exit: "Prompt per dirty doc" ---------
 
 #[test]
