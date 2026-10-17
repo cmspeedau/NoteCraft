@@ -224,10 +224,17 @@ else), and it settles `NC-M011` at file level: a `.md` holding a footnote, raw
 HTML, a fence and `==highlight==` opens and saves back byte for byte, CRLF
 included.
 
-One M7 row is not there, and its reason is a missing feature rather than a missing
-test. `NC-M008` is `IMPLEMENTED`: inserting a table works and is tested at both
+One M7 row is not there, and its remaining half is blocked on a decision rather than
+on effort. `NC-M008` is `IMPLEMENTED`: inserting a table works and is tested at both
 levels, but the criterion also asks for expand semantics — growing a table that is
-already there — and that is not implemented.
+already there. Nothing can be built for that half without inventing a control: the
+registry carries one table command (`cmd.md.table`, labelled *Table*, `Ctrl+Shift+T`)
+and the capture shows no table dialog and no add-row or add-column item, so there is no
+bound thing to hang the behaviour on. `Tab` in a table's last cell is what other
+editors do, but it is not in the capture and `Tab` inserts a tabulator in this editor,
+which makes it a ruling to obtain rather than a convention to follow. It waits for the
+same kind of decision `NC-T003` waits for, and §12 records the question beside the
+glyph it belongs to.
 
 `NC-M002` is verified now, and why it could not be before is worth keeping.
 `cmd.view.md_source` and `cmd.view.md_formatted` used to set a flag that nothing read:
