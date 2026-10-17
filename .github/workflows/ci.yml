@@ -9,6 +9,20 @@ name: CI
 # avoided). CI resolves the same channel rather than pinning its own version,
 # and each job prints `rustc -vV` so a "passes locally, fails on CI" report can
 # say which stable actually ran.
+#
+# Image: the runner is named (`ubuntu-24.04`) rather than floated on
+# `ubuntu-latest`, because a label that changes underneath a green run makes the
+# green run mean something different every two or three years — and it is
+# changing now: `ubuntu-latest` moves to Ubuntu 26 on 2026-10-19
+# (actions/runner-images#14748). Moving up is then a change to make on purpose,
+# with a run that proves the egui/eframe/wgpu tree still builds there, not
+# something that happens to the next commit.
+#
+# `actions/checkout` is at v7: v4 runs on Node.js 20, which GitHub now
+# deprecates and forces onto Node 24 (the warning the v4 runs printed). v7's one
+# behavioural change is refusing to check out fork pull requests under
+# `pull_request_target` / `workflow_run`, and this workflow triggers on neither —
+# it checks out the commit that triggered it, nothing else.
 
 on:
   push:
@@ -34,12 +48,12 @@ env:
 jobs:
   lint:
     name: fmt + clippy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A cold build of the egui/eframe/wgpu tree is minutes, not hours; 20 is
     # roomy headroom while still bounding a hang, against the 6-hour default.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -50,10 +64,10 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: rustc -vV
       - uses: Swatinem/rust-cache@v2
@@ -61,10 +75,10 @@ jobs:
 
   dependency-boundaries:
     name: crate boundary check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: rustc -vV
       - uses: Swatinem/rust-cache@v2
