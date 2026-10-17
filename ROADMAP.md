@@ -183,7 +183,13 @@ indicator on the tab. The unsaved-changes, overwrite, and unrepresentable prompt
 are built on `nc-textproc::prompt`, and so is the outside-change prompt: a file
 written by another program while the window was in the background raises it when
 focus returns, with Reload, Keep my version and Cancel, each tested end to end
-(`NC-D008`). Outstanding: end-to-end verification of the remaining prompts.
+(`NC-D008`). The data-integrity rows are now verified: the encoding and line-ending
+round-trips and the atomic write are asserted byte-for-byte in `nc-textproc`'s
+`tests/file_io/`, and the shell is shown to reach them — reading a marked UTF-16 file and
+saving it back, preserving a file's own CRLF in place, raising the overwrite and
+unrepresentable prompts, refusing a write that cannot happen without touching the original,
+and opening empty, non-UTF-8 and large files through the ordinary open (see *How the
+encoding and data-integrity rows are verified* in `docs/feature-matrix.md`).
 
 ### M5 — Editing commands and search
 

@@ -1795,6 +1795,97 @@ mod tests {
     }
 
     #[test]
+    fn a_save_as_that_cannot_be_written_is_reported_and_the_original_survives() {
+        // NC-D006's shell half: a write that cannot happen must not touch the file
+        // the document came from, and the shell has to say so. A Save As whose path
+        // sits under a regular file cannot create its sibling temporary, so the
+        // atomic write is refused before anything moves. errors.rs proves the byte
+        // guarantee; this proves the user is told and the tab keeps its edits.
+        let scratch = Scratch::new("save-as-fails");
+        let note = scratch.0.join("note.txt");
+        std::fs::write(&note, b"one").expect("a file");
+        let blocker = scratch.0.join("blocker.txt");
+        std::fs::write(&blocker, b"not a directory").expect("a regular file");
+
+        let mut shell = Shell::new();
+        shell.tabs[0] = Tab::open(&note).expect("the file opens");
+        shell.tabs[0].file.insert_str(" more");
+        save_as_dialog(&mut shell);
+        if let Some(dialog) = shell.file_dialog.as_mut() {
+            // "blocker.txt" is a file, so this path has no directory to write into.
+            dialog.file_name = blocker.join("nested.txt").display().to_string();
+        }
+
+        confirm_file_dialog(&mut shell);
+
+        let dialog = shell
+            .file_dialog
+            .as_ref()
+            .expect("the dialog stays open on failure");
+        assert!(dialog.error.is_some(), "the write failure is reported");
+        assert!(shell.tabs[0].is_dirty(), "the document is still unsaved");
+        assert_eq!(
+            std::fs::read(&note).expect("the file is still there"),
+            b"one",
+            "the atomic write never started, so the original is untouched"
+        );
+    }
+
+    #[test]
+    fn the_shell_opens_empty_malformed_and_large_files_without_failing() {
+        // NC-D007's shell half: the reading rules hold at the edges, through the
+        // same open the Open dialog and Recent use. An empty file is an empty
+        // document; a byte string that is not UTF-8 is read as ANSI rather than
+        // crashing or substituting; a large file comes in whole. stress.rs and the
+        // encoding suites prove the engine; this proves nothing falls over on the
+        // way in.
+        let scratch = Scratch::new("stress-open");
+
+        let empty = scratch.0.join("empty.txt");
+        std::fs::write(&empty, b"").expect("an empty file");
+
+        let malformed = scratch.0.join("bytes.txt");
+        // Not valid UTF-8 and carrying no UTF-16 mark, so it is read as ANSI.
+        std::fs::write(&malformed, [0xE9, 0x80, 0xFF]).expect("a non-UTF-8 file");
+
+        let large = scratch.0.join("large.txt");
+        std::fs::write(&large, "line\n".repeat(5_000).as_bytes()).expect("a large file");
+
+        let mut shell = Shell::new();
+
+        open_path(&mut shell, &empty, None);
+        assert_eq!(shell.tabs.len(), 2, "a tab opened for the empty file");
+        assert_eq!(
+            shell.tabs[1].text(),
+            "",
+            "an empty file is an empty document"
+        );
+        assert!(!shell.tabs[1].is_dirty());
+
+        open_path(&mut shell, &malformed, None);
+        assert_eq!(shell.tabs.len(), 3, "a tab opened for the malformed file");
+        assert_eq!(
+            shell.tabs[2].file.encoding(),
+            Encoding::Ansi,
+            "not UTF-8 and no wide mark, so the ANSI fallback reads it"
+        );
+        assert_eq!(
+            shell.tabs[2].text().chars().count(),
+            3,
+            "one character per byte"
+        );
+
+        open_path(&mut shell, &large, None);
+        assert_eq!(shell.tabs.len(), 4, "a tab opened for the large file");
+        assert_eq!(
+            shell.tabs[3].text().lines().count(),
+            5_000,
+            "every line came in"
+        );
+        assert!(!shell.tabs[3].is_dirty());
+    }
+
+    #[test]
     fn closing_the_window_walks_the_dirty_documents() {
         let mut shell = shell_edited("one");
         shell.open_tab(DocKind::Plain);

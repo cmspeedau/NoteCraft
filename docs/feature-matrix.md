@@ -106,13 +106,13 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-D001 | UTF-8 with & without BOM read/write | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Byte-preserving round-trip | `crates/textproc/tests/file_io/encoding_utf8.rs` |
-| NC-D002 | UTF-16 LE/BE (+ UTF-32) read/write | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | BOM-correct round-trip | `crates/textproc/tests/file_io/encoding_utf16.rs` |
-| NC-D003 | ANSI (Windows-1252) read/write | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Unrepresentable chars reported; prompt (§9) | `crates/textproc/tests/file_io/encoding_ansi.rs` |
-| NC-D004 | EOL detect/preserve CRLF/LF/CR (incl. mixed) | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Bytes on save preserved | `crates/textproc/tests/file_io/eol.rs` |
-| NC-D005 | Dirty-state tracking + unsaved prompts | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Unsaved-changes prompt states surfaced (§9) | `crates/textproc/tests/file_io/dirty.rs` |
-| NC-D006 | Failed-write / read-only / permission errors | MANDATORY | M4 | SPECIFIED | IMPLEMENTED | Original file preserved (atomic write); error prompt (§9) | `crates/textproc/tests/file_io/errors.rs` |
-| NC-D007 | Empty / malformed / very large files | MANDATORY | M4/M10 | SPECIFIED | IMPLEMENTED | No crash | `crates/textproc/tests/file_io/stress.rs` |
+| NC-D001 | UTF-8 with & without BOM read/write | MANDATORY | M4 | SPECIFIED | VERIFIED | Byte-preserving round-trip | `crates/textproc/tests/file_io/encoding_utf8.rs`, `crates/platform/src/ui/lifecycle.rs` |
+| NC-D002 | UTF-16 LE/BE (+ UTF-32) read/write | MANDATORY | M4 | SPECIFIED | VERIFIED | BOM-correct round-trip | `crates/textproc/tests/file_io/encoding_utf16.rs`, `crates/platform/src/ui/lifecycle.rs` |
+| NC-D003 | ANSI (Windows-1252) read/write | MANDATORY | M4 | SPECIFIED | VERIFIED | Unrepresentable chars reported; prompt (§9) | `crates/textproc/tests/file_io/encoding_ansi.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-D004 | EOL detect/preserve CRLF/LF/CR (incl. mixed) | MANDATORY | M4 | SPECIFIED | VERIFIED | Bytes on save preserved | `crates/textproc/tests/file_io/eol.rs`, `crates/platform/src/ui/lifecycle.rs` |
+| NC-D005 | Dirty-state tracking + unsaved prompts | MANDATORY | M4 | SPECIFIED | VERIFIED | Unsaved-changes prompt states surfaced (§9) | `crates/textproc/tests/file_io/dirty.rs`, `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-D006 | Failed-write / read-only / permission errors | MANDATORY | M4 | SPECIFIED | VERIFIED | Original file preserved (atomic write); error prompt (§9) | `crates/textproc/tests/file_io/errors.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-D007 | Empty / malformed / very large files | MANDATORY | M4/M10 | SPECIFIED | VERIFIED | No crash | `crates/textproc/tests/file_io/stress.rs`, `crates/platform/src/ui/actions.rs` |
 | NC-D008 | External file-change detection | OPTIONAL | M4 | SPECIFIED | VERIFIED | Detects rewrite/removal; outside-change prompt (§9) | `crates/textproc/tests/file_io/external_change.rs`, `crates/platform/src/ui/lifecycle.rs` |
 
 ## E. Tabs, session, lifecycle
@@ -179,7 +179,7 @@ library exposes no local time zone and the project carries no time-zone database
 | VERIFIED | 26 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Forty-two rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Forty-nine rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -268,6 +268,24 @@ shell is made to use the engine's rules, which is a feature decision, not a test
 tests that live function directly. `NC-E008` moves because the buffer adapter edits the
 document at character indices across multi-byte text (`the_buffer_edits_the_document_at_character_indices`)
 and the edit path keeps grapheme clusters whole under undo/redo.
+
+**How the encoding and data-integrity rows are verified.** `NC-D001`–`NC-D007` are the
+byte contract `nc-textproc` exists to hold, so their acceptance is asserted where the bytes
+are decided — its `tests/file_io/` suites check the round-trip of every encoding, the
+detection that reads a non-UTF-8 file as ANSI rather than substituting, the preservation of
+a file's own line endings (mixed included), the atomic write that leaves the original
+untouched, and a mebibyte round-tripping. That is the right home for those clauses, the
+same way the Markdown rows are settled byte-for-byte in `nc-markdown`. What had not been
+shown was that the running shell reaches those rules and surfaces what they decide. Most
+of it already was: the File-flow tests read UTF-16 off a mark and save it back
+(`NC-F004`/`NC-F006`), save a file's own CRLF in place (`NC-F005`), and the file-dialog
+tests raise the overwrite and unrepresentable prompts (`actions.rs`). Two clauses still
+needed a shell test: `a_save_as_that_cannot_be_written_is_reported_and_the_original_survives`
+(a write that cannot happen is refused, the original is byte-for-byte intact, the tab keeps
+its edits, and the failure is shown), and
+`the_shell_opens_empty_malformed_and_large_files_without_failing` (empty, non-UTF-8, and
+5,000-line files each come in through the ordinary open). Both mutation-checked — reading
+a non-UTF-8 file as UTF-8, and swallowing the write error, each fail their test.
 
 **How M7's rows are verified.** `nc-markdown`'s own suite
 (`crates/markdown/tests/markdown/…`) asserts the byte-level criteria: exact
