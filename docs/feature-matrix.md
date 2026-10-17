@@ -153,7 +153,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-P006 | High-DPI scaling | MANDATORY | M2/M8 | SPECIFIED | IMPLEMENTED | Layout follows the display scale | egui runtime |
 | NC-P007 | Accessibility / screen-reader support | MANDATORY | M8 | SPECIFIED | VERIFIED | Names, focus order | `crates/platform/src/ui/a11y.rs`, `crates/platform/src/ui/title_bar.rs`, `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/editor.rs`, `crates/platform/src/ui/status_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/dialogs.rs` |
 | NC-P008 | File association & shell integration | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Open-with, default app | `tests/file_io/assoc.rs` |
-| NC-P009 | Command-line file args | MANDATORY | M1/M6 | SPECIFIED | IMPLEMENTED | Opens the named files | `crates/app/tests/cli.rs` |
+| NC-P009 | Command-line file args | MANDATORY | M1/M6 | SPECIFIED | VERIFIED | Opens the named files | `crates/app/src/cli.rs`, `crates/app/src/lifecycle.rs`, `crates/platform/src/ui/mod.rs` |
 | NC-P010 | Localization / keyboard-layout correctness | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Layouts correct | `tests/keyboard/layouts.rs` |
 
 ## H. AI / service-dependent (M9)
@@ -179,7 +179,7 @@ library exposes no local time zone and the project carries no time-zone database
 | VERIFIED | 26 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Forty-nine rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Fifty rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -254,15 +254,16 @@ clipboard — the one a `Ctrl+C` actually reaches — does the same. Each new te
 mutation-checked: ignoring the options, always wrapping, replacing one match per step, and
 stopping the clipboard's CRLF conversion each fail their test.
 
-`NC-E004`, `NC-E005` and `NC-E007` deliberately stay `IMPLEMENTED`. Their `nc-core`
-caret, mouse and tab models are complete and tested in isolation, but the running editor
-is an `egui::TextEdit` fed by the `DocBuffer` adapter in `editor.rs`, and egui handles
-arrow keys, click/drag/double/triple-click and focus *natively*; the `nc-core` rule
-functions are called nowhere in the live path, and the two models even disagree (a
-`nc-core` triple-click selects the line *with* its terminator, egui's does not). Promoting
-those rows on their engine tests would read the specification off a model the program does
-not run — the exact inflation this note exists to prevent — so they wait for the day the
-shell is made to use the engine's rules, which is a feature decision, not a test.
+`NC-E004`, `NC-E005`, `NC-E007` and `NC-E009` deliberately stay `IMPLEMENTED`. Their
+`nc-core` caret, mouse, tab and drag-and-drop models are complete and tested in isolation,
+but the running editor is an `egui::TextEdit` fed by the `DocBuffer` adapter in `editor.rs`,
+and egui handles arrow keys, click/drag/double/triple-click and focus *natively*; the
+`nc-core` rule functions are called nowhere in the live path, and the two models even
+disagree (a `nc-core` triple-click selects the line *with* its terminator, egui's does
+not). Promoting those rows on their engine tests would read the specification off a model
+the program does not run — the exact inflation this note exists to prevent — so they wait
+for the day the shell is made to use the engine's rules, which is a feature decision, not a
+test.
 `NC-E010` does move: its line/column is computed by the shell's own `line_column` in
 `editor.rs`, not by `nc-core`'s unused `status_position`, and `caret_position_is_one_based`
 tests that live function directly. `NC-E008` moves because the buffer adapter edits the
@@ -286,6 +287,12 @@ its edits, and the failure is shown), and
 `the_shell_opens_empty_malformed_and_large_files_without_failing` (empty, non-UTF-8, and
 5,000-line files each come in through the ordinary open). Both mutation-checked — reading
 a non-UTF-8 file as UTF-8, and swallowing the write error, each fail their test.
+`NC-P009` (command-line file args) settles the same way: `cli::parse` collects the named
+paths in order (`crates/app/src/cli.rs`), the app hands them to the shell as
+`open_paths` (`crates/app/src/lifecycle.rs`), and `seed_documents` opens each into its own
+tab first-then-shown, never the same file twice (`crates/platform/src/ui/mod.rs`) — the
+thin `eframe` launch that hands those tabs to a real window is the same display-gated seam
+as the other window rows.
 
 **How M7's rows are verified.** `nc-markdown`'s own suite
 (`crates/markdown/tests/markdown/…`) asserts the byte-level criteria: exact

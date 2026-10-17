@@ -468,6 +468,36 @@ mod tests {
     }
 
     #[test]
+    fn the_command_line_opens_each_named_file_in_order() {
+        // NC-P009: files named on the command line open in the order given, one
+        // tab each, first one shown — the argument order the CLI parse preserves
+        // (cli.rs) carried through to the tab strip the user sees.
+        let directory =
+            std::env::temp_dir().join(format!("notecraft-seed-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        let first = directory.join("a.txt");
+        let second = directory.join("b.txt");
+        std::fs::write(&first, b"first").expect("the first file");
+        std::fs::write(&second, b"second").expect("the second file");
+
+        let mut shell = Shell::new();
+        seed_documents(&mut shell, &[first.clone(), second.clone()]);
+
+        assert_eq!(shell.tabs.len(), 2, "one tab per named file");
+        assert_eq!(shell.tabs[0].text(), "first");
+        assert_eq!(shell.tabs[1].text(), "second");
+        assert_eq!(shell.active, 0, "the first named file is the one shown");
+        assert_eq!(
+            shell.tabs[0].title(),
+            "a.txt",
+            "a command-line file is a saved document, not untitled"
+        );
+
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
     fn ctrl_shift_n_asks_for_a_window_without_opening_a_tab() {
         let mut shell = Shell::new();
 
