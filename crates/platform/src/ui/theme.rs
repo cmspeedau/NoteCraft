@@ -222,6 +222,13 @@ fn style_mut(style: &mut egui::Style, palette: Palette) {
     style.spacing.button_padding = Vec2::new(8.0, 4.0);
     style.spacing.menu_margin = Margin::symmetric(4, 6);
     style.spacing.interact_size.y = 24.0;
+
+    // A caret the shell moves — Find, Go to line, Select all — is *asked* to be brought
+    // on screen, and `egui` glides that request over a tenth of a second by default. In
+    // a text editor the glide misreports the command: the match was found the moment the
+    // key went down, and while the view travels the caret is somewhere in between, which
+    // reads as a command that did nothing. So the scroll snaps.
+    style.scroll_animation = egui::style::ScrollAnimation::none();
 }
 
 #[cfg(test)]

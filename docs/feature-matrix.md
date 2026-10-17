@@ -299,14 +299,28 @@ breaks into rows inside the window; unwrapped, it stays one row and runs past it
 is also `NC-E006`'s shell half, which is why its row moved: its suite had always
 settled the layout arithmetic and never the toggle.
 
-**A gap no row covers: the editor cannot scroll.** Measured while proving word wrap,
-from a painted frame: a document longer than the window keeps its first line at the top
-and its caret off screen, because the text edit sits directly in the panel with nothing
-scrolling it. Every section of the matrix assumes a reachable document, and none of them
-names scrolling — the capture cannot show a scrollbar either, so there is nothing to
-write an acceptance row *from*. It is recorded here rather than invented as a row, and
-the horizontal half of it is now in place (`View ▸ Word wrap` off gives a bar); the
-vertical half and keeping the caret in view are unbuilt.
+**A gap no row covers — the editor could not scroll — is closed.** Measured while
+proving word wrap, from a painted frame: a document longer than the window kept its first
+line at the top and its caret off screen, because the text edit sat directly in the panel
+with nothing scrolling it. Every section of the matrix assumes a reachable document, and
+none of them names scrolling — the capture cannot show a scrollbar either, so there is
+nothing to write an acceptance row *from*. It stays recorded here rather than invented as
+a row. The source view now sits in one scroll area enabled on both axes with the caret
+kept inside it: `egui` already asks to keep a caret in view whenever the caret moves
+*inside* the text edit and needed only an area willing to hear the request, and a caret
+moved from *outside* — Find, Go to line and Select all write the widget's state between
+frames, so within its own frame the cursor never changed — is scrolled by the shell asking
+for the same rectangle the widget would have used. Three painted tests hold it: one per
+mechanism, checked separately by disabling each in turn, and one that naming a caret
+already on screen does not shift the text the user is reading.
+
+Making those tests mean anything needed the harness to report a clock. `egui` applies a
+scroll request from the *timestamp* of a later frame, and `RawInput::time` unset — what
+these frames were passing — never applies it: measured both ways on one request, with a
+timestamp the view jumps to its target and without one it does not move. So a frame here
+now carries a time, as every real frame does, and `theme.rs` sets the scroll to snap
+rather than glide, because a Find that slides the caret towards its match over a third of
+a second misreports a command that has already run.
 
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no

@@ -135,9 +135,10 @@ Status: IN_PROGRESS — `crates/core` (`nc-core`) is the text engine:
 `TextBuffer`, `Selection`, `UndoStack`, `CaretMovement`, `LineEnding`,
 `TabStop`, grapheme-aware soft wrap, a `Clipboard` trait with an in-memory
 implementation, mouse selection rules, drag and drop, and overwrite mode, tied
-together by `Document`. Outstanding: horizontal scrolling for unwrapped long
-lines, IME input, and rendering of control characters and whitespace (which
-belong with the viewport).
+together by `Document`. Scrolling is no longer outstanding — the shell scrolls
+on both axes and keeps the caret in view, which landed with M8 and is recorded
+there. Outstanding: IME input, and rendering of control characters and
+whitespace (which belong with the viewport).
 
 ### M4 — File I/O and data integrity
 
@@ -338,6 +339,14 @@ never restored fails as itself.
 *Word wrap was a check mark over an editor that wrapped either way* — the flag is now
 honoured in both directions and proven from the painted layout, which also settles the
 shell half of `NC-E006`.
+
+*And the editor could not scroll*, found while proving the above: no matrix row asks for
+scrolling, because a screenshot cannot show a scrollbar, so the gap is recorded in the
+matrix's verification summary rather than invented as a row. The text edit now sits in one
+scroll area enabled on both axes, so a tall document reaches its last line and the caret
+stays on screen whether it moved under a key, a click, or a command naming a position.
+The painted harness had to start reporting a clock: `egui` applies a scroll request from
+the timestamp of a later frame, and without one no request is ever applied.
 
 What remains is the rest of the settings the capture shows, and the honest list starts
 with the font: `NC-P002`'s dropdown still does not reach the editor, and the four

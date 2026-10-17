@@ -16,6 +16,13 @@
 //! reference's own dimensions where it states them. Whether the result *looks*
 //! like the captured screenshot is a judgement a shape list cannot make; that
 //! comparison still needs a person looking at a running window.
+//!
+//! A frame here reports a timestamp, which it did not always do, and the difference is
+//! not cosmetic: `egui` decides when a programmatic scroll has *arrived* from the clock of
+//! a frame later than the one that asked, so a `RawInput` with no `time` leaves every
+//! scroll request unapplied forever. Measured both ways on one request — with a timestamp
+//! the view jumps to its target, without one it never moves. A frame that lies about the
+//! time cannot show a caret being followed.
 
 use super::{draw, theme};
 use crate::ui::state::{AppTheme, DocKind, Shell};
@@ -27,6 +34,9 @@ const TAB_HEIGHT: f32 = 34.0;
 /// The unsaved-changes dot's radius, as `title_bar` paints it.
 const DOT_RADIUS: f32 = 3.0;
 
+/// The window the reference was captured at, which is what every frame here paints.
+const SCREEN: egui::Vec2 = egui::vec2(1180.0, 720.0);
+
 /// Paints one frame of the whole shell at the reference's window size.
 fn paint(shell: &mut Shell) -> egui::FullOutput {
     let ctx = egui::Context::default();
@@ -37,18 +47,66 @@ fn paint(shell: &mut Shell) -> egui::FullOutput {
 /// One frame on a context already brought up with a palette installed.
 fn frame(ctx: &egui::Context, shell: &mut Shell, system: Option<Theme>) -> egui::FullOutput {
     let input = egui::RawInput {
-        screen_rect: Some(Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1180.0, 720.0),
-        )),
+        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
         // What the operating system reports, which is all a shell set to follow it
         // has to go on — `egui` learns it from the platform the same way.
         system_theme: system,
         ..Default::default()
     };
+    render(ctx, input, shell)
+}
+
+/// One frame on a live context with `events` delivered first: what a click or a key
+/// press does to the painted surface, as opposed to what a field assignment does.
+fn interact(ctx: &egui::Context, shell: &mut Shell, events: Vec<egui::Event>) -> egui::FullOutput {
+    let input = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
+        events,
+        ..Default::default()
+    };
+    render(ctx, input, shell)
+}
+
+fn render(ctx: &egui::Context, mut input: egui::RawInput, shell: &mut Shell) -> egui::FullOutput {
+    // Every real frame carries a timestamp, and `egui` needs one to decide when an
+    // animated scroll has *arrived*: a request made in one frame is applied from the
+    // clock of the next, so a harness that reports no time at all leaves every
+    // scroll-to-caret request stuck unapplied — measured, not guessed, because the same
+    // request with a clock jumps to its target and without one never moves. Step this
+    // context's own clock forward one frame at 60fps.
+    if input.time.is_none() {
+        input.time = Some(ctx.input(|input| input.time) + 1.0 / 60.0);
+    }
     let mut output = ctx.run_ui(input, |ui| draw(shell, ui));
     output.textures_delta.clear();
     output
+}
+
+/// Paints `count` frames on a live context and returns the last one.
+///
+/// A scroll request is consumed at the *end* of the frame that makes it and applied at
+/// the start of the one after, so the moved view is on screen on the frame after that —
+/// two frames, a third of a second at 60fps, which is why nobody sees it as a delay.
+/// Tests that assert a caret came into view paint that many.
+fn frames(ctx: &egui::Context, shell: &mut Shell, count: usize) -> egui::FullOutput {
+    let mut last = frame(ctx, shell, None);
+    for _ in 1..count {
+        last = frame(ctx, shell, None);
+    }
+    last
+}
+
+/// A click, as the windowing layer reports one: press then release, same point.
+fn click_at(point: egui::Pos2) -> Vec<egui::Event> {
+    [true, false]
+        .iter()
+        .map(|pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed: *pressed,
+            modifiers: egui::Modifiers::NONE,
+        })
+        .collect()
 }
 
 /// The palette one shell ends each of two frames on, with the system reporting
@@ -515,6 +573,135 @@ fn word_wrap_breaks_a_long_line_inside_the_window_and_turning_it_off_does_not() 
     assert!(
         width > 1180.0,
         "and it runs past the window, which is what turning wrapping off is for: {width}"
+    );
+}
+
+// ---- The caret is kept where the user can see it ----------------------------
+//
+// No acceptance row asks for scrolling, and none can: the capture is a screenshot and
+// cannot show a scrollbar. But every row that puts a caret somewhere — Find, Go to line,
+// Select all — silently depends on the shell being able to *show* it, and for the whole
+// of M2 to M8 that was not true: the text edit sat in the panel with nothing scrolling
+// it, so a caret moved below the fold was painted outside the window. These tests are
+// the gap's replacement, in the shape the other painted tests use.
+
+/// A shell holding `lines` numbered lines — numbered so a painted galley can be
+/// identified by a line that only ever appears once in it.
+fn long_document(lines: usize) -> Shell {
+    let mut shell = Shell::new();
+    let text: String = (0..lines).map(|n| format!("line {n}\n")).collect();
+    shell
+        .active_tab_mut()
+        .expect("a tab")
+        .document_mut()
+        .insert_str(&text);
+    shell
+}
+
+/// Where the caret is on screen in a painted frame.
+///
+/// `egui` paints the editor's galley at the text shape's position and reports a caret's
+/// rect in the galley's own coordinates, so the sum is where the caret actually is in
+/// the window. `needle` names the document to look at, which matters once more than one
+/// text is painted in the frame.
+fn caret_on_screen(output: &egui::FullOutput, needle: &str, caret: usize) -> egui::Pos2 {
+    output
+        .shapes
+        .iter()
+        .find_map(|clipped| match &clipped.shape {
+            Shape::Text(shape) if shape.galley.text().contains(needle) => Some(
+                shape.pos
+                    + shape
+                        .galley
+                        .pos_from_cursor(egui::text::CCursor::new(caret))
+                        .min
+                        .to_vec2(),
+            ),
+            _ => None,
+        })
+        .expect("the document is painted")
+}
+
+/// Whether a point is inside the painted window.
+fn on_screen(point: egui::Pos2) -> bool {
+    Rect::from_min_size(egui::Pos2::ZERO, SCREEN).contains(point)
+}
+
+#[test]
+fn a_command_that_moves_the_caret_to_the_document_end_brings_it_on_screen() {
+    // The queued-selection half, which is what Find and Go to line use: the command
+    // writes the editor's caret between frames, so the widget sees no change inside its
+    // own frame and the shell asks for the scroll on its behalf.
+    let mut shell = long_document(200);
+    let end = shell.active_tab().expect("a tab").text().chars().count();
+    shell.pending_selection = Some((end, end));
+    assert!(
+        end > 1500,
+        "the test needs a document taller than the window"
+    );
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    let output = frames(&ctx, &mut shell, 3);
+
+    let caret = caret_on_screen(&output, "line 120", end);
+    assert!(
+        on_screen(caret),
+        "the caret the command moved to is outside the window at y={}",
+        caret.y
+    );
+}
+
+#[test]
+fn a_caret_that_is_already_visible_leaves_the_view_alone() {
+    // The follow-scroll has to bring a caret *into* view, not centre it: a view that
+    // shifted whenever a command named a visible caret would jitter on every Find, and
+    // on a short document it would move the text the user is reading for no reason.
+    let mut shell = long_document(200);
+    shell.pending_selection = Some((0, 0));
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    let before = caret_on_screen(&frame(&ctx, &mut shell, None), "line 120", 0);
+    let after = caret_on_screen(&frames(&ctx, &mut shell, 3), "line 120", 0);
+
+    assert_eq!(
+        after, before,
+        "naming a caret that was already on screen moved the document"
+    );
+}
+
+#[test]
+fn typing_past_the_bottom_of_the_window_keeps_the_caret_in_view() {
+    // This half is `egui`'s own work: a text edit asks for its caret to be kept in view
+    // whenever the caret moves *inside* it, by calling `Ui::scroll_to_rect`. What was
+    // missing was not the request but anything hearing it, so the test exists to keep
+    // the enclosing scroll area from going missing again — driven through keys and a
+    // click, the way a person moves a caret down a document.
+    let mut shell = long_document(400);
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    interact(&ctx, &mut shell, click_at(egui::pos2(400.0, 300.0)));
+
+    let down = egui::Event::Key {
+        key: egui::Key::ArrowDown,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    };
+    interact(&ctx, &mut shell, vec![down; 200]);
+    let output = frames(&ctx, &mut shell, 2);
+
+    let caret = shell.caret;
+    assert!(caret > 1000, "the keys moved the caret down: {caret}");
+    let at = caret_on_screen(&output, "line 120", caret);
+    assert!(
+        on_screen(at),
+        "after {caret} characters of arrow keys the caret is off screen at y={}",
+        at.y
     );
 }
 

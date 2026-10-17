@@ -42,6 +42,14 @@ where the reference capture does not reach.
 The window is drawn without OS decorations: the app draws its own title bar and
 window controls.
 
+*Decision — the capture cannot show this.* A screenshot has no scrollbar in it, so
+nothing in §1 asks for the editor to scroll, and no acceptance row covers it. A document
+longer than the window is unreadable without one, though, so the editor scrolls on both
+axes: vertically for a tall document, horizontally for a line too wide for the window when
+`View ▸ Word wrap` is off (§4). The caret is kept on screen as it moves, whether it moves
+under a key, a click, or a command that names a position in the document (Find, Go to
+line, Select all). The rendered Markdown view scrolls vertically the same way.
+
 ---
 
 ## 2. Menus

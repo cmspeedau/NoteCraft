@@ -1,13 +1,20 @@
 //! The editor surface: a monospaced, zoomable text area over the document.
 //!
-//! A known limit, worth stating where it would be fixed: nothing here scrolls. The text
-//! edit sits in the panel at its natural height, so a document taller than the window
-//! has rows below the fold that cannot be reached, and a caret moved past them is
-//! painted off screen. (`View ▸ Word wrap` off is the one case that does scroll, since
-//! a wide line needs a horizontal bar to be read at all — see [`widest_line_width`].)
-//! Fixing it means putting the editor in a scroll area for both axes and following the
-//! caret's rect each frame; no acceptance row asks for it, because the capture cannot
-//! show a scrollbar, and `docs/feature-matrix.md`'s verification summary records it.
+//! The text edit lives inside a scroll area enabled on **both** axes, and that
+//! enclosure is doing more than drawing bars. A `TextEdit` whose caret moves inside it
+//! — a click, an arrow key, typing — asks `egui` to keep that caret in view by calling
+//! `Ui::scroll_to_rect`; with no scroll area enclosing it, as here once, the request
+//! went nowhere and a caret moved past the bottom of the window was simply painted off
+//! screen, unreachable. A document taller than the window now scrolls, and so does a
+//! line too wide for it when [`Shell::word_wrap`] is off (see [`widest_line_width`]).
+//!
+//! What the widget cannot see for itself is a caret moved *from outside* it. Find, Go to
+//! line, Select all and the rest queue a selection which is written into the widget's
+//! saved state between frames, so within its own frame the cursor never changed and it
+//! does not scroll; [`scroll_caret_into_view`] is the shell making the same request on
+//! those commands' behalf.
+//!
+//! [`Shell::word_wrap`]: crate::ui::state::Shell::word_wrap
 //!
 //! The text is not a `String` the shell owns: it is the `nc-core` [`Document`]
 //! inside the tab's [`TextFile`](nc_textproc::TextFile), edited through a thin
@@ -78,73 +85,91 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
                 return;
             }
             let palette = shell.palette;
-            let wrap = shell.word_wrap;
             let zoom = shell.zoom as f32 / 100.0;
-            // Measured before the document is borrowed for the widget below, and only
-            // when it is needed: the longest line alone, not a second layout of the
-            // whole document.
-            let natural = if wrap {
-                0.0
-            } else {
-                widest_line_width(
-                    shell.tabs[index].text(),
-                    &FontId::monospace(EDIT_FONT_SIZE * zoom),
-                    ui,
-                )
-            };
 
             // The formatted view is derived from the source and read-only, so it
             // claims no caret: the document keeps the selection it already holds for
             // the whole time it is shown, which is why the switch cannot lose one.
             // All the view has to keep honest is the status bar's line and column.
-            if shell.formatted_view() {
+            let caret = if shell.formatted_view() {
                 let tab = &shell.tabs[index];
                 markdown_view::show(tab, ui, EDIT_FONT_SIZE * zoom, palette);
-                let caret = char_index(tab.text(), tab.document().caret());
-                let (line, column) = line_column(tab.text(), caret);
-                shell.caret = caret;
-                shell.line = line;
-                shell.column = column;
-                return;
-            }
+                char_index(tab.text(), tab.document().caret())
+            } else {
+                source_view(shell, index, ui, pending)
+            };
 
+            shell.caret = caret;
+            let (line, column) = line_column(shell.tabs[index].text(), caret);
+            shell.line = line;
+            shell.column = column;
+        });
+}
+
+/// Draws the source view and returns the caret the editor ends the frame on.
+fn source_view(
+    shell: &mut Shell,
+    index: usize,
+    ui: &mut egui::Ui,
+    pending: Option<(usize, usize)>,
+) -> usize {
+    let wrap = shell.word_wrap;
+    let zoom = shell.zoom as f32 / 100.0;
+    let font = FontId::monospace(EDIT_FONT_SIZE * zoom);
+    // Measured before the document is borrowed for the widget below, and only when it
+    // is needed: the longest line alone, not a second layout of the whole document.
+    let natural = if wrap {
+        0.0
+    } else {
+        widest_line_width(shell.tabs[index].text(), &font, ui)
+    };
+
+    // One area, both axes. Vertical, because a document is usually taller than the
+    // window and the rows below the fold have to be reachable — and because the text
+    // edit's own keep-the-caret-in-view request needs an area to hear it. Horizontal,
+    // because with wrapping off a long line is wider than any window and is the text
+    // edit's real content width, not an overflow to be clipped away.
+    //
+    // `auto_shrink` off so the area fills the panel: shrinking to the content would
+    // leave the space under a short document outside the widget, so a click there would
+    // reach nothing.
+    egui::ScrollArea::both()
+        .id_salt("editor_scroll")
+        .auto_shrink([false; 2])
+        .show(ui, |ui| {
             let tab = &mut shell.tabs[index];
             let output = {
                 let mut buffer = DocBuffer(tab.document_mut());
                 let edit = egui::TextEdit::multiline(&mut buffer)
                     .id(egui::Id::new(EDITOR_ID))
-                    .font(FontId::monospace(EDIT_FONT_SIZE * zoom))
+                    .font(font.clone())
                     .frame(egui::Frame::NONE);
                 if wrap {
                     edit.desired_width(ui.available_width()).show(ui)
                 } else {
                     // Unwrapped, the editor has to be as wide as its widest line, and
                     // `egui` will not work that out for you: a `TextEdit` clamps its
-                    // desired width to the space it is given before laying text out,
-                    // so `desired_width(f32::INFINITY)` measures the document at the
-                    // panel's width and wraps it anyway. A scroll area does not help
-                    // either — 0.36 tells the area's inner UI to prefer wrapping to a
-                    // horizontal bar, on purpose. So the width of the widest line is
-                    // measured and handed to the widget as a floor, which is the one
-                    // input that outranks the clamp, and the scroll area around it is
-                    // what turns that width into a bar the user can drag.
-                    egui::ScrollArea::horizontal()
-                        .auto_shrink([false; 2])
-                        .show(ui, |ui| {
-                            edit.min_size(egui::vec2(natural, 0.0))
-                                .desired_width(natural)
-                                .show(ui)
-                        })
-                        .inner
+                    // desired width to the space it is given before laying text out, so
+                    // `desired_width(f32::INFINITY)` measures the document at the
+                    // panel's width and wraps it anyway — and a scroll area does not
+                    // rescue it either, because 0.36 tells the area's inner UI to prefer
+                    // wrapping to a horizontal bar, on purpose. The measured width is
+                    // therefore handed to the widget as `min_size`, the one input that
+                    // outranks the clamp, and the area it sits in turns that width into
+                    // a bar the user can drag.
+                    edit.min_size(egui::vec2(natural, 0.0))
+                        .desired_width(natural)
+                        .show(ui)
                 }
             };
 
             // The caret a queued selection moves to, or the one the user left
             // the editor with.
-            let caret = match pending {
+            match pending {
                 Some((primary, secondary)) => {
                     apply_selection(ui.ctx(), &output, primary, secondary);
                     set_document_selection(tab, primary, secondary);
+                    scroll_caret_into_view(ui, &output, primary);
                     primary
                 }
                 None => match output.cursor_range {
@@ -156,13 +181,24 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
                     }
                     None => shell.caret,
                 },
-            };
+            }
+        })
+        .inner
+}
 
-            shell.caret = caret;
-            let (line, column) = line_column(tab.text(), caret);
-            shell.line = line;
-            shell.column = column;
-        });
+/// Scrolls enough of the frame to bring a caret the shell just moved to back on
+/// screen.
+///
+/// The rectangle is the one the text edit would have used for itself: `egui` positions
+/// a caret with [`egui::Galley::pos_from_cursor`], in the galley's own coordinates, and
+/// paints that galley shifted left by the galley's left edge — so the translation here
+/// matches its `cursor_rect` arithmetic rather than approximating it.
+fn scroll_caret_into_view(ui: &egui::Ui, output: &egui::text_edit::TextEditOutput, primary: usize) {
+    let rect = output
+        .galley
+        .pos_from_cursor(CCursor::new(primary))
+        .translate(output.galley_pos.to_vec2() - egui::vec2(output.galley.rect.left(), 0.0));
+    ui.scroll_to_rect(rect, None);
 }
 
 /// Moves the editor's caret and selection to the given character indices.
