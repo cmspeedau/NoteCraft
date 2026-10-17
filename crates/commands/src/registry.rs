@@ -182,18 +182,17 @@ pub const REGISTRY: &[CommandSpec] = &[
         Availability::MultipleTabs,
         6,
     ),
-    // `File ▸ Page setup` and `File ▸ Print` belong to the print pipeline (`NC-F007`),
-    // which does not land until M8. Both stay visible but greyed — `AGENT.md` §2
-    // forbids a present-but-unwired control reading as live and then doing nothing.
-    // When M8 wires them, these return to `Edited` (print with the current settings;
-    // Page setup opens the §8 dialog).
+    // `File ▸ Page setup` opens the §8 dialog; `File ▸ Print` (Ctrl+P) prints with the
+    // current settings without opening it (`NC-F007`). Both are enabled whenever a
+    // document is on screen — there is always one — because both have a real effect:
+    // Page setup edits the page, Print hands a job to the system print pipeline.
     cmd(
         "cmd.file.page_setup",
         109,
         "Page setup",
         menu(TopMenu::File),
         None,
-        Availability::Never,
+        Availability::Edited,
         8,
     ),
     cmd(
@@ -202,7 +201,7 @@ pub const REGISTRY: &[CommandSpec] = &[
         "Print",
         menu(TopMenu::File),
         Some(CTRL_P),
-        Availability::Never,
+        Availability::Edited,
         8,
     ),
     cmd(

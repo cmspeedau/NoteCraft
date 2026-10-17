@@ -63,6 +63,10 @@ name = "save_as"
 path = "tests/file_io/save_as.rs"
 
 [[test]]
+name = "print"
+path = "tests/file_io/print.rs"
+
+[[test]]
 name = "new_document"
 path = "tests/editing/new_document.rs"
 

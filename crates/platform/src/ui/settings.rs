@@ -261,6 +261,8 @@ fn switch_with_label(ui: &mut egui::Ui, palette: Palette, name: &str, on: &mut b
 
 use std::path::PathBuf;
 
+use nc_textproc::{Orientation, PaperSize};
+
 use super::config;
 use super::session::{SessionError, escape, parse_bool, unescape};
 
@@ -276,7 +278,7 @@ const FILE: &str = "settings";
 /// frame compares the shell's settings with what is on the file, so a control added
 /// later is persisted by the same rule without having to remember to mark anything
 /// dirty.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Settings {
     /// `Settings ▸ App theme`.
     theme: AppTheme,
@@ -295,6 +297,9 @@ pub(crate) struct Settings {
     /// `Settings ▸ Spell check`: whether likely misspellings are underlined
     /// (`NC-P004`). Stored and restored like the switches beside it.
     spell_check: bool,
+    /// `File ▸ Page setup` (`NC-F007`, §8): the sheet, its frame, and the header/footer
+    /// line. It is a setting like any other, so it too survives a restart.
+    page_setup: nc_textproc::PageSetup,
 }
 
 impl Settings {
@@ -309,6 +314,7 @@ impl Settings {
             status_bar_visible: shell.status_bar_visible,
             opening: shell.opening,
             spell_check: shell.spell_check,
+            page_setup: shell.page_setup.clone(),
         }
     }
 
@@ -327,6 +333,7 @@ impl Settings {
         shell.status_bar_visible = self.status_bar_visible;
         shell.opening = self.opening;
         shell.spell_check = self.spell_check;
+        shell.page_setup = self.page_setup;
     }
 
     /// The file's text, with any keys this build does not know kept as they were.
@@ -345,6 +352,20 @@ impl Settings {
         ));
         out.push_str(&format!("opening {}\n", opening_token(self.opening)));
         out.push_str(&format!("spell_check {}\n", u8::from(self.spell_check)));
+        out.push_str(&format!("paper {}\n", self.page_setup.paper.label()));
+        out.push_str(&format!(
+            "orientation {}\n",
+            self.page_setup.orientation.label()
+        ));
+        out.push_str(&format!("margin_left {}\n", self.page_setup.margins.left));
+        out.push_str(&format!("margin_right {}\n", self.page_setup.margins.right));
+        out.push_str(&format!("margin_top {}\n", self.page_setup.margins.top));
+        out.push_str(&format!(
+            "margin_bottom {}\n",
+            self.page_setup.margins.bottom
+        ));
+        out.push_str(&format!("header {}\n", escape(&self.page_setup.header)));
+        out.push_str(&format!("footer {}\n", escape(&self.page_setup.footer)));
         for line in foreign {
             out.push_str(line);
             out.push('\n');
@@ -367,7 +388,7 @@ impl Settings {
         // A half-read file is worse than an absent one only when the *structure* is
         // wrong; a value that names an option this build has never heard of is just
         // a value that cannot be honoured, and the key's default is the honest answer.
-        let mut settings = DEFAULT;
+        let mut settings = defaults();
         let mut foreign = Vec::new();
         for line in lines.filter(|line| !line.is_empty()) {
             if let Some(value) = line.strip_prefix("theme ") {
@@ -375,18 +396,42 @@ impl Settings {
             } else if let Some(value) = line.strip_prefix("font ") {
                 settings.font_family = font_from(&unescape(value)?);
             } else if let Some(value) = line.strip_prefix("zoom ") {
-                settings.zoom = value.parse().unwrap_or(DEFAULT.zoom);
+                settings.zoom = value.parse().unwrap_or(defaults().zoom);
             } else if let Some(value) = line.strip_prefix("word_wrap ") {
-                settings.word_wrap = parse_bool(value).unwrap_or(DEFAULT.word_wrap);
+                settings.word_wrap = parse_bool(value).unwrap_or(defaults().word_wrap);
             } else if let Some(value) = line.strip_prefix("formatting ") {
-                settings.formatting = parse_bool(value).unwrap_or(DEFAULT.formatting);
+                settings.formatting = parse_bool(value).unwrap_or(defaults().formatting);
             } else if let Some(value) = line.strip_prefix("status_bar ") {
                 settings.status_bar_visible =
-                    parse_bool(value).unwrap_or(DEFAULT.status_bar_visible);
+                    parse_bool(value).unwrap_or(defaults().status_bar_visible);
             } else if let Some(value) = line.strip_prefix("opening ") {
                 settings.opening = opening_from(value);
             } else if let Some(value) = line.strip_prefix("spell_check ") {
-                settings.spell_check = parse_bool(value).unwrap_or(DEFAULT.spell_check);
+                settings.spell_check = parse_bool(value).unwrap_or(defaults().spell_check);
+            } else if let Some(value) = line.strip_prefix("paper ") {
+                if let Some(paper) = PaperSize::from_label(value) {
+                    settings.page_setup.paper = paper;
+                }
+            } else if let Some(value) = line.strip_prefix("orientation ") {
+                if let Some(orientation) = Orientation::from_label(value) {
+                    settings.page_setup.orientation = orientation;
+                }
+            } else if let Some(value) = line.strip_prefix("margin_left ") {
+                settings.page_setup.margins.left =
+                    value.parse().unwrap_or(settings.page_setup.margins.left);
+            } else if let Some(value) = line.strip_prefix("margin_right ") {
+                settings.page_setup.margins.right =
+                    value.parse().unwrap_or(settings.page_setup.margins.right);
+            } else if let Some(value) = line.strip_prefix("margin_top ") {
+                settings.page_setup.margins.top =
+                    value.parse().unwrap_or(settings.page_setup.margins.top);
+            } else if let Some(value) = line.strip_prefix("margin_bottom ") {
+                settings.page_setup.margins.bottom =
+                    value.parse().unwrap_or(settings.page_setup.margins.bottom);
+            } else if let Some(value) = line.strip_prefix("header ") {
+                settings.page_setup.header = unescape(value)?;
+            } else if let Some(value) = line.strip_prefix("footer ") {
+                settings.page_setup.footer = unescape(value)?;
             } else {
                 // Not corruption — a key from a newer build. Kept, and written back.
                 foreign.push(line.to_owned());
@@ -398,18 +443,22 @@ impl Settings {
 
 /// The settings as they ship, and the fallback for any value that cannot be read.
 ///
-/// One constant rather than a list of per-key defaults, so the shell's starting state
-/// and the fallback for a broken file cannot drift apart.
-const DEFAULT: Settings = Settings {
-    theme: AppTheme::Dark,
-    font_family: crate::ui::fonts::DEFAULT,
-    zoom: 100,
-    word_wrap: true,
-    formatting: true,
-    status_bar_visible: true,
-    opening: OpenBehavior::NewTab,
-    spell_check: false,
-};
+/// One function rather than a list of per-key defaults, so the shell's starting state
+/// and the fallback for a broken file cannot drift apart. It is a function, not a
+/// constant, only because the page setup holds the header/footer text.
+fn defaults() -> Settings {
+    Settings {
+        theme: AppTheme::Dark,
+        font_family: crate::ui::fonts::DEFAULT,
+        zoom: 100,
+        word_wrap: true,
+        formatting: true,
+        status_bar_visible: true,
+        opening: OpenBehavior::NewTab,
+        spell_check: false,
+        page_setup: nc_textproc::PageSetup::default(),
+    }
+}
 
 /// The settings file, and what it holds right now.
 ///
@@ -449,7 +498,7 @@ impl Store {
             },
             None => Self {
                 path,
-                stored: DEFAULT,
+                stored: defaults(),
                 foreign: Vec::new(),
             },
         }
@@ -457,7 +506,7 @@ impl Store {
 
     /// Puts the stored settings into a shell — the one the window starts with.
     pub(crate) fn apply_to(&self, shell: &mut Shell) {
-        self.stored.apply_to(shell);
+        self.stored.clone().apply_to(shell);
     }
 
     /// Writes the settings if — and only if — the shell's differ from the file's.
@@ -506,7 +555,7 @@ fn theme_from(value: &str) -> AppTheme {
         "system" => AppTheme::System,
         "light" => AppTheme::Light,
         "dark" => AppTheme::Dark,
-        _ => DEFAULT.theme,
+        _ => defaults().theme,
     }
 }
 
@@ -525,7 +574,7 @@ fn opening_from(value: &str) -> OpenBehavior {
         "new_tab" => OpenBehavior::NewTab,
         "new_window" => OpenBehavior::NewWindow,
         "replace_tab" => OpenBehavior::ReplaceTab,
-        _ => DEFAULT.opening,
+        _ => defaults().opening,
     }
 }
 
@@ -538,7 +587,7 @@ fn font_from(value: &str) -> &'static str {
     FAMILIES
         .into_iter()
         .find(|family| *family == value)
-        .unwrap_or(DEFAULT.font_family)
+        .unwrap_or(defaults().font_family)
 }
 
 /// Reads the settings at a path, for the tests that assert on the file itself.
@@ -619,6 +668,7 @@ mod tests {
             status_bar_visible: false,
             opening: OpenBehavior::ReplaceTab,
             spell_check: true,
+            page_setup: nc_textproc::PageSetup::default(),
         };
         assert_eq!(
             settings.encode(&[]),
@@ -630,7 +680,15 @@ mod tests {
              formatting 0\n\
              status_bar 0\n\
              opening replace_tab\n\
-             spell_check 1\n"
+             spell_check 1\n\
+             paper A4\n\
+             orientation Portrait\n\
+             margin_left 20\n\
+             margin_right 20\n\
+             margin_top 20\n\
+             margin_bottom 20\n\
+             header \n\
+             footer \n"
         );
     }
 
@@ -645,6 +703,18 @@ mod tests {
             status_bar_visible: true,
             opening: OpenBehavior::NewWindow,
             spell_check: true,
+            page_setup: nc_textproc::PageSetup {
+                paper: nc_textproc::PaperSize::Letter,
+                orientation: nc_textproc::Orientation::Landscape,
+                margins: nc_textproc::Margins {
+                    left: 10,
+                    right: 12,
+                    top: 14,
+                    bottom: 16,
+                },
+                header: "Page &p of the run".to_string(),
+                footer: "Printed &d".to_string(),
+            },
         };
         let (decoded, foreign) = Settings::decode(&settings.encode(&[])).expect("it decodes");
         assert_eq!(decoded, settings);
@@ -660,7 +730,7 @@ mod tests {
         // itself rather than hiding behind the five that work.
         /// One setting, moved, with the label to name in a failure.
         type Change = (&'static str, fn(&mut Shell));
-        let changes: [Change; 8] = [
+        let changes: [Change; 9] = [
             ("theme", |shell| shell.theme = AppTheme::Light),
             ("font", |shell| shell.font_family = "Fira Mono"),
             ("zoom", |shell| shell.zoom = 130),
@@ -671,6 +741,13 @@ mod tests {
                 shell.opening = OpenBehavior::NewWindow
             }),
             ("spell check", |shell| shell.spell_check = true),
+            ("page setup", |shell| {
+                shell.page_setup.paper = nc_textproc::PaperSize::Legal;
+                shell.page_setup.orientation = nc_textproc::Orientation::Landscape;
+                shell.page_setup.margins.left = 15;
+                shell.page_setup.header = "Draft &p".to_string();
+                shell.page_setup.footer = "&d".to_string();
+            }),
         ];
 
         let scratch = Scratch::new("round-trip");
@@ -680,7 +757,7 @@ mod tests {
             change(&mut shell);
             assert_ne!(
                 Settings::of(&shell),
-                DEFAULT,
+                defaults(),
                 "the test itself is broken: {label} was not changed"
             );
 
@@ -777,8 +854,8 @@ mod tests {
                 .expect("the change was written")
                 .lines()
                 .count(),
-            9,
-            "the header and one line per setting"
+            17,
+            "the header, one line per setting, and the eight lines the page setup is made of"
         );
 
         let _ = std::fs::remove_file(scratch.file());
@@ -827,7 +904,7 @@ mod tests {
         let mut shell = Shell::new();
         shell.zoom = 250;
         scratch.store().apply_to(&mut shell);
-        assert_eq!(Settings::of(&shell), DEFAULT);
+        assert_eq!(Settings::of(&shell), defaults());
     }
 
     #[test]
@@ -843,7 +920,7 @@ mod tests {
 
         assert_eq!(
             Settings::of(&shell),
-            DEFAULT,
+            defaults(),
             "nothing from an unknown version is honoured"
         );
     }
@@ -866,10 +943,11 @@ mod tests {
             "the setting this build understands applied"
         );
         assert_eq!(
-            shell.theme, DEFAULT.theme,
+            shell.theme,
+            defaults().theme,
             "the theme fell back to its default"
         );
-        assert_eq!(shell.font_family, DEFAULT.font_family);
+        assert_eq!(shell.font_family, defaults().font_family);
     }
 
     #[test]
@@ -920,7 +998,7 @@ mod tests {
         // this rejects are the ones the old list offered: they were real font names on
         // Windows and nothing here.
         for value in ["", "Consolas ", "not a font", "consolas"] {
-            assert_eq!(font_from(value), DEFAULT.font_family, "{value:?}");
+            assert_eq!(font_from(value), defaults().font_family, "{value:?}");
         }
         for family in FAMILIES {
             assert_eq!(font_from(family), family);

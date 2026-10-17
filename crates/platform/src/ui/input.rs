@@ -277,6 +277,34 @@ mod tests {
     }
 
     #[test]
+    fn accelerators_bind_to_the_logical_key_so_the_layout_does_not_matter() {
+        // The keyboard half of `NC-P010`: a shortcut names the key the user presses,
+        // not the scancode beneath the finger, so `Ctrl+=` zooms on QWERTY, AZERTY, or
+        // Dvorak alike. `egui` reports the character in `key` and the hardware position
+        // in `physical_key`; `dispatch` reads the first and discards the second. Here the
+        // two deliberately disagree, and the command still fires.
+        let ctx = Context::default();
+        let mut shell = Shell::new();
+        let event = Event::Key {
+            key: Key::Equals,
+            // A physical key that names somewhere else entirely: a keyboard on which
+            // the `=` character is not where this code claims the key sits.
+            physical_key: Some(Key::K),
+            pressed: true,
+            repeat: false,
+            modifiers: CTRL,
+        };
+        ctx.input_mut(|input| input.events.push(event));
+
+        dispatch(&mut shell, &ctx);
+
+        assert_eq!(
+            shell.zoom, 110,
+            "the logical key drove the command regardless of its physical code"
+        );
+    }
+
+    #[test]
     fn command_maps_to_ctrl_so_each_platform_keeps_its_own_modifier() {
         let ctrl = nc_modifiers(Modifiers {
             ctrl: true,

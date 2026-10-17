@@ -59,6 +59,7 @@
 pub mod ansi;
 pub mod encoding;
 pub mod error;
+pub mod print;
 pub mod prompt;
 pub mod search;
 pub mod spell;
@@ -67,6 +68,10 @@ pub mod time_date;
 
 pub use encoding::{Detection, Encoding, Evidence, Interpreted, detect, interpret};
 pub use error::{DecodeError, EncodeError, Error, Result};
+pub use print::{
+    Margins, Metrics, Orientation, Page, PageSetup, PaperSize, expand_placeholders, mm_to_pt,
+    paginate, print_document, to_postscript,
+};
 pub use search::{
     Direction, Match, SearchOptions, SearchResult, find_all, find_next, find_previous, go_to_line,
     parse_line_number,

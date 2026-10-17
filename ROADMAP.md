@@ -349,10 +349,13 @@ matrix waiting on a capture.
 
 ### M8 — Settings and desktop integration
 
-Status: IN_PROGRESS — five rows are verified (theme, font, persistence, the formatting
-switch, accessibility) plus the word-wrap row it shares with the editor, and every setting
-the capture shows now produces the behaviour its row names; what remains is the rows that
-need a surface the capture alone does not settle.
+Status: DONE — every setting the capture shows persists and produces the behaviour its row
+names, and the milestone's optional boundary has been decided. Six rows are `VERIFIED`
+(theme, font, persistence, the formatting switch, accessibility, and now Print / Page
+setup), spell check is built as invented UI (`IMPLEMENTED` — there is no captured row to
+verify against), High-DPI is `IMPLEMENTED` at the egui runtime, and the two OS-only rows —
+file association and localization — are `OUT_OF_SCOPE` by recorded decisions. `LANDED_MILESTONE`
+is 8.
 
 *The theme applies* (`NC-P001`). `Settings ▸ App theme` wrote a field no code read;
 the colours are now a `Palette` value resolved per frame from the choice plus what the
@@ -436,8 +439,13 @@ no acceptance row to verify against, so it is pinned by tests in `spell.rs`, `ap
 (the squiggle paints, and only when the setting is on) and `lifecycle.rs`. Autocorrect, the
 row's second half, is not built — nothing is silently rewritten.
 
-What remains is the rest of the settings the capture shows: file associations and printing,
-with page setup (§8) the captured screen that printing needs first.
+Printing and page setup are done: `File ▸ Print` renders the document to the page §8
+describes (paper, orientation, millimetre margins, a header/footer with `&p`/`&d`) and hands
+the resulting PostScript to the system print pipeline, and the page setup is a stored setting
+like its neighbours. What the milestone chose not to build is recorded rather than left
+open: file association (OS-specific, and it mutates the desktop) and localization (no
+non-English capture to localize against) are `OUT_OF_SCOPE`; the keyboard-layout half of
+localization already holds, because accelerators bind to the logical key.
 
 - Font family and size.
 - Word wrap and view preferences.

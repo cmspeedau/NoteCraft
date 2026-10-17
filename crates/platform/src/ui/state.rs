@@ -211,6 +211,44 @@ impl Default for GoToDialog {
     }
 }
 
+/// The Page setup dialog (`NC-F007`, `docs/ui-reference.md` §8).
+///
+/// It edits a *draft* of the page setup rather than the live one: `Print` commits the
+/// draft and sends the job, `Cancel` throws it away, and closing the window with the
+/// cross does the same. Keeping the edits aside is what lets Cancel mean what it says.
+pub struct PageSetupDialog {
+    /// Whether the dialog is on screen.
+    pub open: bool,
+    /// The settings being edited, seeded from the shell's when the dialog opens.
+    pub draft: nc_textproc::PageSetup,
+    /// Set when the dialog opens, so its first field takes focus once.
+    pub focus: bool,
+}
+
+impl PageSetupDialog {
+    /// A closed dialog holding a default page setup.
+    pub fn new() -> Self {
+        Self {
+            open: false,
+            draft: nc_textproc::PageSetup::default(),
+            focus: false,
+        }
+    }
+
+    /// Opens the dialog editing a copy of `current`.
+    pub fn open(&mut self, current: &nc_textproc::PageSetup) {
+        self.open = true;
+        self.draft = current.clone();
+        self.focus = true;
+    }
+}
+
+impl Default for PageSetupDialog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The spelling dialog: the suggestions offered for one misspelled word
 /// (`NC-P004`, `docs/ui-reference.md` spell check).
 ///
@@ -831,6 +869,11 @@ pub struct Shell {
     pub find: FindDialog,
     /// The Go to line dialog.
     pub go_to: GoToDialog,
+    /// The page the printer marks (`File ▸ Page setup`, `NC-F007`, §8). Stored and
+    /// restored like the settings beside it, and read by `File ▸ Print`.
+    pub page_setup: nc_textproc::PageSetup,
+    /// The Page setup dialog, when one is on screen.
+    pub page_setup_dialog: PageSetupDialog,
     /// The Open / Save As dialog, when one is on screen.
     pub file_dialog: Option<FileDialog>,
     /// The prompt on screen, when one is waiting for an answer.
@@ -889,6 +932,8 @@ impl Shell {
             notification: None,
             find: FindDialog::new(),
             go_to: GoToDialog::new(),
+            page_setup: nc_textproc::PageSetup::default(),
+            page_setup_dialog: PageSetupDialog::new(),
             file_dialog: None,
             prompt: None,
             save_then: None,

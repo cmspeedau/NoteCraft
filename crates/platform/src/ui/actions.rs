@@ -42,6 +42,8 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
         "cmd.file.save_all" => save_all(shell),
         "cmd.file.close_tab" => close_tab(shell, shell.active),
         "cmd.file.close_window" | "cmd.file.exit" => close_window(shell),
+        "cmd.file.page_setup" => shell.page_setup_dialog.open(&shell.page_setup),
+        "cmd.file.print" => print(shell),
         "cmd.tab.next" => next_tab(shell),
         "cmd.tab.previous" => previous_tab(shell),
         "cmd.edit.undo" => undo(shell),
@@ -136,6 +138,8 @@ pub fn handles(id: CommandId) -> bool {
             | "cmd.file.close_tab"
             | "cmd.file.close_window"
             | "cmd.file.exit"
+            | "cmd.file.page_setup"
+            | "cmd.file.print"
             | "cmd.tab.next"
             | "cmd.tab.previous"
             | "cmd.edit.undo"
@@ -190,8 +194,14 @@ pub fn handles(id: CommandId) -> bool {
 /// inert one. It waits for the effect to exist. Now that [`crate::ui::markdown_view`]
 /// renders the document from its own Markdown, the toggle changes what is on screen
 /// and 7 is honest.
+///
+/// M8 raises it to 8. Its commands all have a real effect now, not just an arm:
+/// `cmd.file.print` renders the active document to the page §8 describes and hands the
+/// PostScript to `lpr`, `cmd.file.page_setup` opens that dialog, and the settings and
+/// spell-suggest commands were already live. `cmd.edit.define_bing` (M9) stays `Never`
+/// and exempt — there is no spell-*define* effect to raise a test onto yet.
 #[cfg(test)]
-pub const LANDED_MILESTONE: u8 = 7;
+pub const LANDED_MILESTONE: u8 = 8;
 
 /// Undoes the last edit in the active document (`Ctrl+Z`).
 pub fn undo(shell: &mut Shell) {
@@ -268,6 +278,60 @@ pub fn insert_time_date(shell: &mut Shell, moment: TimeDate) {
             .insert_uncoalesced(&moment.time_and_date());
     }
     sync_caret_to_document(shell);
+}
+
+/// The sheet body is printed at, in points.
+///
+/// §8 collects the *sheet* — size, orientation, margins, header — and says nothing
+/// about a type size, so the page is set at the classic typewriter ten points. The
+/// on-screen zoom is a reading aid and is deliberately not carried onto paper.
+const PRINT_POINT_SIZE: f32 = 10.0;
+
+/// `File ▸ Print`, and the Page-setup dialog's `Print`: renders the active document
+/// with the page setup as it stands and hands the job to the system print pipeline.
+///
+/// §8 has `File ▸ Print` print with the current settings *without* opening the dialog,
+/// which is what this does. The outcome — sheets sent, or the reason it could not —
+/// is reported in the status bar rather than left silent.
+pub fn print(shell: &mut Shell) {
+    let Some(tab) = shell.active_tab() else {
+        return;
+    };
+    let text = tab.text();
+    let moment = clock::now_utc();
+    let date = format!("{}-{:02}-{:02}", moment.year, moment.month, moment.day);
+    let job = nc_textproc::print_document(text, &shell.page_setup, PRINT_POINT_SIZE, &date);
+    let sheets = job.matches("showpage").count();
+
+    match send_to_printer(&job) {
+        Ok(()) => {
+            shell.notification = Some(format!(
+                "Sent {sheets} page{} to the printer",
+                if sheets == 1 { "" } else { "s" }
+            ));
+        }
+        Err(error) => {
+            shell.notification = Some(format!("Could not print: {error}"));
+        }
+    }
+}
+
+/// Hands a PostScript job to the system print pipeline, feeding it on standard input.
+///
+/// This is the single step that reaches outside the process, and the one the headless
+/// tests deliberately do not drive: a print run needs a queue and a printer, neither of
+/// which CI has. With none configured the spawn simply fails, and `print` surfaces that
+/// rather than pretending the page went out.
+fn send_to_printer(job: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("lpr").stdin(Stdio::piped()).spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(job.as_bytes())?;
+    }
+    child.wait()?;
+    Ok(())
 }
 
 /// Points the queued editor caret at the active document's own caret, after a
@@ -2141,6 +2205,25 @@ mod tests {
         // Reset returns to the plain size from wherever it ended up.
         run(&mut shell, &ctx, CommandId("cmd.view.zoom_reset"));
         assert_eq!(shell.zoom, 100);
+    }
+
+    #[test]
+    fn page_setup_opens_the_dialog_seeded_from_the_current_page() {
+        let ctx = egui::Context::default();
+        let mut shell = Shell::new();
+        shell.page_setup.paper = nc_textproc::PaperSize::Legal;
+
+        run(&mut shell, &ctx, CommandId("cmd.file.page_setup"));
+
+        assert!(
+            shell.page_setup_dialog.open,
+            "File ▸ Page setup opens the §8 dialog"
+        );
+        assert_eq!(
+            shell.page_setup_dialog.draft.paper,
+            nc_textproc::PaperSize::Legal,
+            "the dialog opens editing the page the shell is already set to"
+        );
     }
 
     #[test]

@@ -24,6 +24,9 @@ pub fn show(shell: &mut Shell, ctx: &Context) {
     if shell.go_to.open {
         go_to(shell, ctx);
     }
+    if shell.page_setup_dialog.open {
+        page_setup(shell, ctx);
+    }
     if shell.spelling.open {
         spelling(shell, ctx);
     }
@@ -168,6 +171,96 @@ fn go_to(shell: &mut Shell, ctx: &Context) {
     if !open || ctx.input(|input| input.key_pressed(Key::Escape)) {
         shell.go_to.open = false;
     }
+}
+
+/// The Page setup dialog (`NC-F007`, `docs/ui-reference.md` §8): the sheet the printer
+/// will mark. It edits a draft, so `Cancel` throws the changes away and `Print` commits
+/// them and prints with them — exactly the two buttons §8 names.
+fn page_setup(shell: &mut Shell, ctx: &Context) {
+    let mut open = shell.page_setup_dialog.open;
+    egui::Window::new("Page setup")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .show(ctx, |ui| {
+            ui.set_min_width(320.0);
+            let draft = &mut shell.page_setup_dialog.draft;
+
+            ui.horizontal(|ui| {
+                ui.label("Paper size");
+                egui::ComboBox::from_id_salt("page_paper")
+                    .selected_text(draft.paper.label())
+                    .show_ui(ui, |ui| {
+                        for paper in nc_textproc::PaperSize::ALL {
+                            ui.selectable_value(&mut draft.paper, paper, paper.label());
+                        }
+                    });
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Orientation");
+                ui.radio_value(
+                    &mut draft.orientation,
+                    nc_textproc::Orientation::Portrait,
+                    "Portrait",
+                );
+                ui.radio_value(
+                    &mut draft.orientation,
+                    nc_textproc::Orientation::Landscape,
+                    "Landscape",
+                );
+            });
+
+            ui.label("Margins (mm)");
+            let margins = &mut draft.margins;
+            ui.horizontal(|ui| {
+                margin_field(ui, "margin_left", "Left", &mut margins.left);
+                margin_field(ui, "margin_right", "Right", &mut margins.right);
+            });
+            ui.horizontal(|ui| {
+                margin_field(ui, "margin_top", "Top", &mut margins.top);
+                margin_field(ui, "margin_bottom", "Bottom", &mut margins.bottom);
+            });
+
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut draft.header)
+                    .id(egui::Id::new("page_header"))
+                    .hint_text("Header — &p page number, &d date"),
+            );
+            a11y::label(&response, WidgetType::TextEdit, "Header");
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut draft.footer)
+                    .id(egui::Id::new("page_footer"))
+                    .hint_text("Footer — &p page number, &d date"),
+            );
+            a11y::label(&response, WidgetType::TextEdit, "Footer");
+
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("Print").clicked() {
+                    shell.page_setup = shell.page_setup_dialog.draft.clone();
+                    shell.page_setup_dialog.open = false;
+                    actions::print(shell);
+                }
+                if ui.button("Cancel").clicked() {
+                    shell.page_setup_dialog.open = false;
+                }
+            });
+        });
+
+    if !open {
+        // Closed by its own cross: the draft is discarded, as Cancel would.
+        shell.page_setup_dialog.open = false;
+    }
+}
+
+/// One margin input, in millimetres, bounded to what any named sheet can hold.
+fn margin_field(ui: &mut egui::Ui, id: &str, label: &str, value: &mut u32) {
+    ui.label(label);
+    ui.push_id(id, |ui| {
+        ui.add(egui::DragValue::new(value).range(0..=100).suffix(" mm"));
+    });
 }
 
 /// The spelling dialog (`NC-P004`): the corrections offered for one misspelled

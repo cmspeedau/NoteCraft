@@ -68,7 +68,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-F004 | Open file (Ctrl+O) | MANDATORY | M4 | SPECIFIED | VERIFIED | Open dialog (§7); new tab; encoding/EOL detected | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs` |
 | NC-F005 | Save (Ctrl+S) | MANDATORY | M4 | SPECIFIED | VERIFIED | Byte-correct in-place save; no data loss | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs`, `crates/textproc/src/textfile.rs` |
 | NC-F006 | Save As + encoding (Ctrl+Shift+S) | MANDATORY | M4 | SPECIFIED | VERIFIED | Save-as dialog (§7); overwrite prompt (§9); chosen encoding applied | `crates/platform/src/ui/lifecycle.rs`, `crates/platform/src/ui/actions.rs` |
-| NC-F007 | Print / Page setup (Ctrl+P) | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Page-setup dialog (§8); print pipeline | `tests/file_io/print.rs` |
+| NC-F007 | Print / Page setup (Ctrl+P) | OPTIONAL | M8 | SPECIFIED | VERIFIED | Page-setup dialog (§8); print pipeline | `crates/textproc/tests/file_io/print.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/actions.rs`, `crates/platform/src/ui/dialogs.rs` |
 | NC-F008 | Close tab (Ctrl+W) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the active tab; last tab resets to untitled | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the window | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | IMPLEMENTED | File ▸ Recent lists prior documents | `crates/platform/src/ui/state.rs` |
@@ -152,9 +152,9 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | VERIFIED | Toolbar hides when off | `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P006 | High-DPI scaling | MANDATORY | M2/M8 | SPECIFIED | IMPLEMENTED | Layout follows the display scale | egui runtime |
 | NC-P007 | Accessibility / screen-reader support | MANDATORY | M8 | SPECIFIED | VERIFIED | Names, focus order | `crates/platform/src/ui/a11y.rs`, `crates/platform/src/ui/title_bar.rs`, `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/editor.rs`, `crates/platform/src/ui/status_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/dialogs.rs` |
-| NC-P008 | File association & shell integration | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Open-with, default app | `tests/file_io/assoc.rs` |
+| NC-P008 | File association & shell integration | OPTIONAL | M8 | SPECIFIED | OUT_OF_SCOPE | Scoped out: OS-specific, mutates the user's desktop | — |
 | NC-P009 | Command-line file args | MANDATORY | M1/M6 | SPECIFIED | VERIFIED | Opens the named files | `crates/app/src/cli.rs`, `crates/app/src/lifecycle.rs`, `crates/platform/src/ui/mod.rs` |
-| NC-P010 | Localization / keyboard-layout correctness | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Layouts correct | `tests/keyboard/layouts.rs` |
+| NC-P010 | Localization / keyboard-layout correctness | OPTIONAL | M8 | SPECIFIED | OUT_OF_SCOPE | Localization scoped out (English-only capture); keyboard-layout correctness already holds | `crates/platform/src/ui/input.rs` |
 
 ## H. AI / service-dependent (M9)
 
@@ -173,13 +173,14 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 32 |
+| IMPLEMENTED | 9 |
 | IN_PROGRESS | 0 |
-| NOT_STARTED | 9 |
-| VERIFIED | 26 |
+| NOT_STARTED | 5 |
+| OUT_OF_SCOPE | 2 |
+| VERIFIED | 51 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Fifty rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Fifty-one rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -525,6 +526,26 @@ register left to right by nesting a left-to-right one inside it — the group la
 at the bar's left edge instead — so the registration order follows the layout the
 capture fixes, and the tests record it.
 
+**`NC-F007` prints the page §8 describes, and is verified to the bytes that reach the
+printer, not to a printed sheet.** The reference capture never included the Page-setup
+dialog; §8 records it as a decision for M8 rather than a transcription, and it names the
+fields exactly — paper (Letter · A4 · Legal), orientation, four margins in millimetres,
+and a header/footer line carrying `&p` and `&d`. That whole page description became a pure,
+byte-deterministic engine (`crates/textproc/src/print.rs`): it turns text and a
+`PageSetup` into the sheets the document fills and the PostScript that carries them, and
+`tests/file_io/print.rs` proves the geometry a printer would honour — each paper's
+`/PageSize` in points and swapped for landscape, that a header steals a body row so the
+text spills a page earlier, that an over-long line wraps by character, that `&p` counts up
+and `&d` fills, and that `(`/`)`/`\` and non-Latin-1 input cannot corrupt the program. The
+page setup is a setting like any other, so `settings.rs` stores it and the one-setting-at-a-
+time restart test carries it. `File ▸ Print` (Ctrl+P) prints with the current settings
+without a dialog and `File ▸ Page setup` opens the §8 dialog to edit them, both wired so the
+`AGENT.md` §2 guard that once greyed them now lets them live because they do something.
+The one thing no headless run can check is a real sheet leaving a real printer; that hand-off
+is `lpr` fed these exact bytes, and with no queue configured it fails and is reported where
+it was asked for — the boundary is stated, not glossed, exactly as the painted rows are
+verified to the frame rather than to the pixels.
+
 **The outside-change question was the last prompt with no box.** The engine could
 already tell that the bytes on disk were no longer the ones NoteCraft read
 (`NC-D008`, `ExternalChange::Modified` / `Removed`), and `nc-textproc::prompt`
@@ -552,6 +573,20 @@ have the end §9 gives them; and the answer functions were mutation-checked by
 removing the dirty mark, the adopted baseline, the focus transition and the
 already-asked guard in turn.
 
+**Two M8 rows are `OUT_OF_SCOPE` by a recorded decision, not left unstarted.** `NC-P008`
+(file association) would make NoteCraft a desktop default for text files, which means
+writing the user's `~/.local/share/applications` and changing what double-clicking a `.txt`
+opens — a mutation of the desktop that a notes editor should not do quietly, that is
+entirely OS-specific, and that the roadmap itself hedged as "if in scope." `NC-P010` is
+half localization, half keyboard-layout correctness: there is no non-English reference
+capture to localize against, so translation is out of scope for this build; the keyboard
+half needs no work, because accelerators already bind to the *logical* key (the character
+the key produces), not the scancode under the finger — so Ctrl+S means Save on AZERTY and
+Dvorak alike — and `input.rs` pins exactly that with an event whose physical key
+deliberately disagrees with its logical one. Both are decisions the milestone makes about
+its own optional boundary, and they are written down rather than left to rot as
+`NOT_STARTED`.
+
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no
 match for "context menu" or "right-click" in the file — and §11 states outright
@@ -566,11 +601,15 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 > on them, with the unsaved-changes, overwrite, and unrepresentable prompts. M6's
 > behaviour criteria are `VERIFIED` against a dedicated acceptance suite, and so is
 > all of M7 — every Markdown command, the source/rendered view pair, and the
-> serialization the file is written with. M8 has begun: the theme applies and
+> serialization the file is written with. M8 has landed: the theme applies and
 > survives a restart, settings are stored, the font list is real — four families this
 > build actually carries, applied to the editor — the formatting switch now hides
-> the toolbar it names, every open honours the opening-files setting, and every
-> control Tab can reach says what it is, and a file changed underneath the window
-> raises the question §9 specifies. Still ahead are spell check, printing and
-> page setup. The visual
-> criteria await a display, and the tab context menu awaits a reference decision.
+> the toolbar it names, every open honours the opening-files setting, every
+> control Tab can reach says what it is, a file changed underneath the window
+> raises the question §9 specifies, and `File ▸ Print` renders the document to the
+> page §8 describes and hands it to the system print pipeline. Spell check is built
+> as invented UI (`IMPLEMENTED`, no captured row to verify against); file
+> association and localization are `OUT_OF_SCOPE` by a recorded decision — the first
+> mutates the user's desktop and is OS-specific, the second has no non-English
+> capture to localize against. Still ahead: the visual criteria await a display, and
+> the tab context menu awaits a reference decision.
