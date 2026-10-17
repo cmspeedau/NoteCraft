@@ -72,8 +72,7 @@ fn settings_column(shell: &mut Shell, ui: &mut egui::Ui, palette: Palette) {
     });
     card(ui, palette, |ui| {
         row(ui, palette, "Formatting", None, |ui| {
-            let mut formatting = shell.word_wrap;
-            switch_with_label(ui, palette, &mut formatting);
+            switch_with_label(ui, palette, &mut shell.formatting);
         });
     });
 
@@ -269,6 +268,8 @@ pub(crate) struct Settings {
     zoom: u32,
     /// `Settings ▸ Word wrap`, and `View ▸ Word wrap`.
     word_wrap: bool,
+    /// `Settings ▸ Formatting`: whether the formatting toolbar is offered at all.
+    formatting: bool,
     /// `View ▸ Status bar`.
     status_bar_visible: bool,
     /// `Settings ▸ Opening files`.
@@ -283,6 +284,7 @@ impl Settings {
             font_family: shell.font_family,
             zoom: shell.zoom,
             word_wrap: shell.word_wrap,
+            formatting: shell.formatting,
             status_bar_visible: shell.status_bar_visible,
             opening: shell.opening,
         }
@@ -299,6 +301,7 @@ impl Settings {
         shell.font_family = self.font_family;
         shell.zoom = self.zoom;
         shell.word_wrap = self.word_wrap;
+        shell.formatting = self.formatting;
         shell.status_bar_visible = self.status_bar_visible;
         shell.opening = self.opening;
     }
@@ -312,6 +315,7 @@ impl Settings {
         out.push_str(&format!("font {}\n", escape(self.font_family)));
         out.push_str(&format!("zoom {}\n", self.zoom));
         out.push_str(&format!("word_wrap {}\n", u8::from(self.word_wrap)));
+        out.push_str(&format!("formatting {}\n", u8::from(self.formatting)));
         out.push_str(&format!(
             "status_bar {}\n",
             u8::from(self.status_bar_visible)
@@ -350,6 +354,8 @@ impl Settings {
                 settings.zoom = value.parse().unwrap_or(DEFAULT.zoom);
             } else if let Some(value) = line.strip_prefix("word_wrap ") {
                 settings.word_wrap = parse_bool(value).unwrap_or(DEFAULT.word_wrap);
+            } else if let Some(value) = line.strip_prefix("formatting ") {
+                settings.formatting = parse_bool(value).unwrap_or(DEFAULT.formatting);
             } else if let Some(value) = line.strip_prefix("status_bar ") {
                 settings.status_bar_visible =
                     parse_bool(value).unwrap_or(DEFAULT.status_bar_visible);
@@ -373,6 +379,7 @@ const DEFAULT: Settings = Settings {
     font_family: crate::ui::fonts::DEFAULT,
     zoom: 100,
     word_wrap: true,
+    formatting: true,
     status_bar_visible: true,
     opening: OpenBehavior::NewTab,
 };
@@ -581,6 +588,7 @@ mod tests {
             font_family: "Fira Mono",
             zoom: 130,
             word_wrap: false,
+            formatting: false,
             status_bar_visible: false,
             opening: OpenBehavior::ReplaceTab,
         };
@@ -591,6 +599,7 @@ mod tests {
              font Fira Mono\n\
              zoom 130\n\
              word_wrap 0\n\
+             formatting 0\n\
              status_bar 0\n\
              opening replace_tab\n"
         );
@@ -603,6 +612,7 @@ mod tests {
             font_family: "IBM Plex Mono",
             zoom: 90,
             word_wrap: false,
+            formatting: true,
             status_bar_visible: true,
             opening: OpenBehavior::NewWindow,
         };
@@ -620,11 +630,12 @@ mod tests {
         // itself rather than hiding behind the five that work.
         /// One setting, moved, with the label to name in a failure.
         type Change = (&'static str, fn(&mut Shell));
-        let changes: [Change; 6] = [
+        let changes: [Change; 7] = [
             ("theme", |shell| shell.theme = AppTheme::Light),
             ("font", |shell| shell.font_family = "Fira Mono"),
             ("zoom", |shell| shell.zoom = 130),
             ("word wrap", |shell| shell.word_wrap = false),
+            ("formatting", |shell| shell.formatting = false),
             ("status bar", |shell| shell.status_bar_visible = false),
             ("opening files", |shell| {
                 shell.opening = OpenBehavior::NewWindow
@@ -735,7 +746,7 @@ mod tests {
                 .expect("the change was written")
                 .lines()
                 .count(),
-            7,
+            8,
             "the header and one line per setting"
         );
 

@@ -356,9 +356,16 @@ Mono, Fira Mono) under their own names, and a painted frame proves choosing one 
 the editor sets its text. The row's other half, size, has no control in the capture, so the
 family comes from settings and the size from zoom, recorded in §4.
 
-What remains is the rest of the settings the capture shows: spell check, the formatting
-toolbar's hide, accessibility evidence, file associations and printing, with page setup (§8)
-the captured screen that printing needs first.
+*The formatting switch switches something* (`NC-P005`). Its row was built as
+`let mut formatting = shell.word_wrap;` with a switch on top: it displayed word wrap's
+value, wrote into a local that was dropped, and the toolbar never moved. Off now takes the
+formatting half of the top bar — and the divider that introduced it — with it, and the
+settings page is asserted to show each switch its own setting, which is the assertion the
+bug survived.
+
+What remains is the rest of the settings the capture shows: spell check, accessibility
+evidence, file associations and printing, with page setup (§8) the captured screen that
+printing needs first.
 
 - Font family and size.
 - Word wrap and view preferences.

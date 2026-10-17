@@ -1002,3 +1002,132 @@ fn an_explicit_choice_holds_still_while_the_system_moves() {
         );
     }
 }
+
+// ---- NC-P005 — "Toolbar hides when off" -------------------------------------
+
+/// Whether the frame painted `needle` anywhere.
+fn paints(output: &egui::FullOutput, needle: &str) -> bool {
+    output.shapes.iter().any(|clipped| match &clipped.shape {
+        Shape::Text(shape) => shape.galley.text().contains(needle),
+        _ => false,
+    })
+}
+
+#[test]
+fn turning_formatting_off_takes_the_formatting_toolbar_with_it() {
+    // The row's criterion is what the bar looks like, so this is asserted on a painted
+    // frame rather than on the flag. Before it worked the switch was a local variable: it
+    // displayed `shell.word_wrap` and wrote to nothing, so no state of it changed any
+    // frame at all — the same shape of bug `NC-P001` and `NC-P002` arrived with.
+    assert!(
+        paints(&paint(&mut Shell::new()), "H1"),
+        "the paragraph-style dropdown has to be there to be hidden"
+    );
+
+    let mut shell = Shell::new();
+    shell.formatting = false;
+    let output = paint(&mut shell);
+
+    assert!(
+        !paints(&output, "H1"),
+        "the paragraph-style dropdown is still painted with formatting off"
+    );
+    assert!(
+        !paints(&output, "Aa"),
+        "clear-formatting is still painted with formatting off"
+    );
+    // What the setting does not name stays put: the menus, and the right-hand controls that
+    // share the bar without belonging to formatting.
+    assert!(
+        paints(&output, "File") && paints(&output, "Edit") && paints(&output, "View"),
+        "the menus went away with a toolbar they are not part of"
+    );
+    assert!(
+        paints(&output, "\u{2728}"),
+        "the service controls went away with a toolbar they are not part of"
+    );
+}
+
+#[test]
+fn turning_formatting_back_on_puts_the_toolbar_back() {
+    // Hiding it is half the row. A control the user cannot undo is a worse bug than the
+    // inert one it replaced, so the round trip is asserted in the same frame series.
+    let mut shell = Shell::new();
+
+    shell.formatting = false;
+    assert!(
+        !paints(&paint(&mut shell), "H1"),
+        "off has to hide it before on can mean anything"
+    );
+
+    shell.formatting = true;
+    let output = paint(&mut shell);
+    assert!(
+        paints(&output, "H1") && paints(&output, "Aa"),
+        "the toolbar did not come back when formatting was turned on again"
+    );
+}
+
+/// The label the switch in the settings row titled `title` shows: "On" or "Off".
+///
+/// `switch_with_label` paints the state as a word next to the switch, which makes what
+/// the page *claims* about a setting readable from a painted frame. That is the only way
+/// to catch the bug this section exists for: the Formatting switch was built from
+/// `shell.word_wrap`, so the field was fine, the toolbar was fine, and the page lied.
+fn switch_shown(output: &egui::FullOutput, title: &str) -> String {
+    let label_rows = |needle: &str| {
+        output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                Shape::Text(shape) if shape.galley.text() == needle => Some(shape.pos.y),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let title_y = *label_rows(title)
+        .first()
+        .unwrap_or_else(|| panic!("no settings row titled {title:?}"));
+
+    let mut nearest: Option<(f32, String)> = None;
+    for clipped in &output.shapes {
+        if let Shape::Text(shape) = &clipped.shape {
+            let text = shape.galley.text();
+            if text == "On" || text == "Off" {
+                let gap = (shape.pos.y - title_y).abs();
+                if nearest.as_ref().is_none_or(|(best, _)| gap < *best) {
+                    nearest = Some((gap, text.to_owned()));
+                }
+            }
+        }
+    }
+    nearest
+        .unwrap_or_else(|| panic!("no switch label near the {title:?} row"))
+        .1
+}
+
+#[test]
+fn each_switch_on_the_settings_page_shows_its_own_setting() {
+    // Every combination, because the bug was one row reading the other's field: turning
+    // word wrap off made the formatting switch report off as well, and the two states
+    // agreed often enough to look untouched in a screenshot.
+    for (wrap, formatting) in [(true, true), (false, true), (true, false), (false, false)] {
+        let mut shell = Shell::new();
+        shell.word_wrap = wrap;
+        shell.formatting = formatting;
+        shell.show_settings = true;
+        let output = paint(&mut shell);
+
+        assert_eq!(
+            switch_shown(&output, "Word wrap"),
+            if wrap { "On" } else { "Off" },
+            "the word wrap row reports {:?} with word_wrap = {wrap}",
+            shell.word_wrap
+        );
+        assert_eq!(
+            switch_shown(&output, "Formatting"),
+            if formatting { "On" } else { "Off" },
+            "the formatting row reports the wrong thing with formatting = {formatting}"
+        );
+    }
+}

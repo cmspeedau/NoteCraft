@@ -16,10 +16,18 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
     ui.horizontal_centered(|ui| {
         let palette = shell.palette;
         menus(shell, ui, ctx, palette);
-        ui.add_space(4.0);
-        ui.separator();
-        ui.add_space(4.0);
-        format_toolbar(shell, ui, ctx, palette);
+        // `Settings ▸ Formatting` off takes the formatting half of the bar away, which is
+        // the whole of what that switch's acceptance row asks for (`NC-P005`). The divider
+        // goes with it: it is the seam between the menus and this group, and a divider to
+        // nothing is a border around an absence. What the setting does *not* do is recorded
+        // in `docs/ui-reference.md` §4 — the accelerators keep formatting, because nothing
+        // in the capture shows a formatting key that has stopped.
+        if shell.formatting {
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+            format_toolbar(shell, ui, ctx, palette);
+        }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             right_toolbar(shell, ui, ctx, palette);
         });

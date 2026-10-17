@@ -149,7 +149,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-P002 | Font family & size | MANDATORY | M8 | SPECIFIED | VERIFIED | Dropdown shown; applies to the editor | `crates/platform/src/ui/fonts.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P003 | Word-wrap preference persistence | MANDATORY | M8 | SPECIFIED | VERIFIED | Survives restart | `crates/platform/src/ui/settings.rs` |
 | NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Squiggle, suggestions | `tests/settings/spell.rs` |
-| NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Toolbar hides when off | `tests/settings/formatting_toggle.rs` |
+| NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | VERIFIED | Toolbar hides when off | `crates/platform/src/ui/menu_bar.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P006 | High-DPI scaling | MANDATORY | M2/M8 | SPECIFIED | IMPLEMENTED | Layout follows the display scale | egui runtime |
 | NC-P007 | Accessibility / screen-reader support | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Names, focus order | `tests/visual/a11y.rs` |
 | NC-P008 | File association & shell integration | OPTIONAL | M8 | SPECIFIED | NOT_STARTED | Open-with, default app | `tests/file_io/assoc.rs` |
@@ -175,11 +175,11 @@ library exposes no local time zone and the project carries no time-zone database
 | Total tracked features | 68 |
 | IMPLEMENTED | 33 |
 | IN_PROGRESS | 0 |
-| NOT_STARTED | 11 |
-| VERIFIED | 23 |
+| NOT_STARTED | 10 |
+| VERIFIED | 24 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Twenty-three rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Twenty-four rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -324,6 +324,18 @@ now compares the face and size it laid the document out in and follows the caret
 moves; that is also why installing the shipped faces costs a frame and the caret tests warm
 the context up first.
 
+**`NC-P005`'s switch was a local variable seeded from another setting.** The page built
+the Formatting row as `let mut formatting = shell.word_wrap;` and put a switch on it: the
+value shown was word wrap's, the value written was dropped, and nothing read either. A user
+turning word wrap off watched the formatting switch go off with it — two rows, one setting —
+while the toolbar never moved. The field, the file's line and the toolbar's own `if` are the
+row's whole ask ("Toolbar hides when off"), and it is asserted three ways because the bug had
+three places to hide: a frame with the formatting controls in it and a frame without them; a
+round trip through off that puts them back; and the settings page read back as what it
+*claims*, matching each row's `On`/`Off` label against the shell's field for all four
+combinations of the two switches. That last one is the test the other two cannot be: a page
+that lies about a setting passes every assertion that only looks at the setting.
+
 **A gap no row covers — the editor could not scroll — is closed.** Measured while
 proving word wrap, from a painted frame: a document longer than the window kept its first
 line at the top and its caret off screen, because the text edit sat directly in the panel
@@ -363,7 +375,7 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 > all of M7 — every Markdown command, the source/rendered view pair, and the
 > serialization the file is written with. M8 has begun: the theme applies and
 > survives a restart, settings are stored, and the font list is real — four families this
-> build actually carries, applied to the editor. Still ahead are spell check, the
-> formatting toolbar's hide, accessibility
+> build actually carries, applied to the editor, and the formatting switch now hides
+> the toolbar it names. Still ahead are spell check, accessibility
 > evidence, printing and page setup, and the outside-change prompt. The visual
 > criteria await a display, and the tab context menu awaits a reference decision.

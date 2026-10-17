@@ -669,6 +669,11 @@ pub struct Shell {
     pub status_bar_visible: bool,
     /// Whether word wrap is on (`View ▸ Word wrap`).
     pub word_wrap: bool,
+    /// Whether text formatting is offered at all (`Settings ▸ Formatting`). Off, the
+    /// formatting half of the top bar is not drawn (`menu_bar`), which is what the
+    /// capture's own acceptance wording asks for; see `docs/ui-reference.md` §4 for
+    /// precisely what else it does not do.
+    pub formatting: bool,
     /// The zoom percentage.
     pub zoom: u32,
     /// The chosen app theme (`Settings ▸ App theme`).
@@ -730,6 +735,7 @@ impl Shell {
             show_settings: false,
             status_bar_visible: true,
             word_wrap: true,
+            formatting: true,
             zoom: 100,
             theme: AppTheme::Dark,
             palette: Palette::DARK,
