@@ -159,7 +159,7 @@ show what a setting changes, and it was taken in one theme on one machine.*
 | Font and extra windows (§11) | A face belongs to the shared `egui` context, so each window installs the one it wants at the start of its own drawing, the way the palette does. A face is coarser than a colour: installing a different one rebuilds the glyph atlas, so two windows that disagree about the font cost one re-rasterization each time both are drawn. The alternative — one face for the whole run, chosen by the main window — would make a secondary window's dropdown change nothing, which §11's "its own view options" rules out. |
 | Word wrap | Wrapping is how a document is *shown*, never a change to it: no byte moves and the tab does not become unsaved. Off means a line stays one line and the editor grows wider than the window, with a horizontal bar to reach the rest of it. The same control is on the View menu (§2); the two are one setting. |
 | Formatting | Off takes the formatting half of the top bar away — the paragraph-style and list dropdowns, `B` `I` `S`, link, table, clear-formatting — and the divider that separated them from the menus goes with them, because a divider to nothing is a border around an absence. The menus and the right-hand controls (AI, feedback, account, settings gear) are untouched: they share the bar but not the setting. **What it does not do:** the formatting accelerators (Ctrl+B and the rest) keep formatting text, and the Markdown commands stay available. The capture was taken with this switch in one state and shows no state of the accelerators, so the row's own wording — "toolbar hides when off" — is the whole of the behaviour, and nothing further was invented. The row used to be built from `shell.word_wrap`, so it showed the other setting's value; that is fixed, and the page is now asserted to show each switch its own. |
-| Opening files | Recorded so the row is not read as finished: the choice is remembered across runs, and nothing acts on it yet. Section G of the matrix carries **no row for this control** — the capture shows it, so the missing thing is the acceptance row, not the screen. |
+| Opening files | Where a file goes when it is opened. *Open in a new tab* adds a tab at the end and shows it; *Open in a new window* leaves this window's documents alone and opens the file in a new window, which the application creates at the end of the frame (`NC-F003`'s own mechanism) with the setting inherited by the window that asked; *Replace the current tab* puts the file where the active tab is, so the strip keeps its length and order. **Two rules come before the choice.** A file that is already open — in any spelling of its path — is focused rather than opened again (`NC-F012`), whatever the setting says: a file is never open twice, so there is nothing for the three choices to decide. And a file is read in the window the user opened it in, so a file that cannot be read is reported there and no window opens for it. **Replacing asks when the tab has unsaved work:** the document that would be replaced is read first and held while the unsaved-changes prompt is answered (`NC-D005`'s rule, which this row does not get to skip) — `Save` writes it and then hands the tab over, `Don't save` hands it over as it is, `Cancel` keeps the edits and opens nothing. Section G of the matrix carries **no acceptance row for this control** — the capture shows the dropdown, so the missing thing is the acceptance row, not the screen; the behaviour is pinned instead by the M8 section of `crates/platform/src/ui/lifecycle.rs`. Files named on the command line are the tabs the run starts with, before any of this applies (§4's startup order): the setting governs opening *within* a run. |
 | What is remembered, and when | A setting is written a frame after it changes, not on exit, so a crash does not undo what the user chose; nothing is written until something *does* change, so an unconfigured run leaves no file behind. The file is `settings` beside the session file, `key value` lines with a version header: a key this build does not know is kept and written back untouched, a value it cannot honour falls back to that key's default, and a header it does not recognise means no settings at all. The main window owns the file — the same policy the session follows — so an extra window changing a setting cannot fight it. |
 
 ### Right column — About this app
@@ -301,7 +301,7 @@ the shell's. `Esc` always cancels, and no prompt proceeds on its own.
 
 | Prompt | Shown when | Text and buttons |
 | --- | --- | --- |
-| Unsaved changes | A tab or the window is closing with a dirty document (NC-D005) | `Save changes to "<name>"?` — `Save` · `Don't save` · `Cancel` |
+| Unsaved changes | A tab or the window is closing with a dirty document (NC-D005), or a file is being opened over a dirty tab (`Settings ▸ Opening files`, `Replace the current tab`) | `Save changes to "<name>"?` — `Save` · `Don't save` · `Cancel` |
 | Overwrite | Save As names a file that already exists (NC-F006) | `"<name>" already exists. Do you want to replace it?` — `Replace` · `Cancel` |
 | Unrepresentable | Saving would lose characters the encoding cannot hold (NC-D003) | `<n> characters cannot be saved in <encoding>. Saving will replace them with "?". Save anyway?` — `Save anyway` · `Choose another encoding` · `Cancel` |
 | Outside change | The file changed on disk since NoteCraft read it (NC-D008) | `"<name>" has changed on disk since it was last read.` — `Reload` · `Keep my version` · `Cancel` |
@@ -310,6 +310,15 @@ the shell's. `Esc` always cancels, and no prompt proceeds on its own.
 leaves the editor's text as it is and marks the document dirty against the file
 now on disk. `Choose another encoding` returns to the Save As dialog (§7) with
 the encoding list focused.
+
+An answer can have a step after it, and that step survives the detours a save can
+take. A `Save` that answers a close writes the document and then closes the tab;
+one that answers an open-over-a-dirty-tab writes it and then gives the tab to the
+file that was waiting for it. Either way the step is recorded *before* the write,
+so a document with no path (Save As) or one whose text the encoding cannot hold
+(the unrepresentable prompt) still finishes the way the user asked. `Cancel` at
+any of those questions ends the whole thing: the close does not happen, and the
+waiting file is dropped rather than opened later.
 
 ---
 
@@ -327,7 +336,7 @@ recorded here because the screens do not show them:
 
 | Command | Behaviour |
 | --- | --- |
-| New window (Ctrl+Shift+N) | Opens an independent top-level window with one empty untitled document: its own tab strip, active document, and view options, separate from the window it was opened from. It closes by the same window-close path as the main window. |
+| New window (Ctrl+Shift+N) | Opens an independent top-level window with one empty untitled document: its own tab strip, active document, and view options, separate from the window it was opened from. It closes by the same window-close path as the main window. When what asks for the window is a file being opened (`Settings ▸ Opening files`, *Open in a new window*), the new window opens showing **that file** instead of an empty document: the file is read where the user asked, and the window that appears holds it. |
 | Close window (Ctrl+Shift+W) / Exit (Alt+F4) | Closes the window, raising the unsaved-changes prompt (§9) for each dirty document in turn. Cancelling any prompt stops the close. There is no separate "close all tabs" item in the captured menus; closing the window is how every document is closed (NC-T005). |
 | New tab (Ctrl+N) | Adds an empty plain-text tab and makes it active, leaving the other tabs untouched. |
 

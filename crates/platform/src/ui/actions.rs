@@ -20,7 +20,10 @@ use egui::Context;
 
 use crate::clock;
 use crate::ui::editor;
-use crate::ui::state::{DocKind, FileDialog, FileDialogMode, ParagraphStyle, Prompt, Shell, Tab};
+use crate::ui::state::{
+    DocKind, FileDialog, FileDialogMode, OpenBehavior, ParagraphStyle, PendingReplace, Prompt,
+    SaveThen, Shell, Tab,
+};
 use nc_commands::CommandId;
 use nc_core::Clipboard;
 use nc_markdown::{Heading, Inline, ListKind, Outcome};
@@ -313,7 +316,7 @@ pub fn open_file_dialog(shell: &mut Shell) {
 
 /// Saves the active document (`File ▸ Save`, `Ctrl+S`).
 pub fn save(shell: &mut Shell) {
-    save_tab(shell, shell.active, false);
+    save_tab(shell, shell.active, SaveThen::Keep);
 }
 
 /// Opens Save As for the active document (`File ▸ Save as`, `Ctrl+Shift+S`).
@@ -340,7 +343,7 @@ pub fn save_all(shell: &mut Shell) {
         if shell.prompt.is_some() || shell.file_dialog.is_some() {
             break;
         }
-        save_tab(shell, tab, false);
+        save_tab(shell, tab, SaveThen::Keep);
     }
 }
 
@@ -359,19 +362,25 @@ fn open_save_as(shell: &mut Shell, tab: usize) {
     shell.file_dialog = Some(FileDialog::save_as(tab, name, encoding, bom));
 }
 
-/// Saves `tab`. With `close_after`, the tab is closed once the write succeeds —
-/// the answer to the unsaved-changes prompt (`docs/ui-reference.md` §9).
-pub fn save_tab(shell: &mut Shell, tab: usize, close_after: bool) {
+/// Saves `tab`, and carries out `then` once the write succeeds — closing the tab
+/// for the unsaved-changes prompt, or giving it up to the file being opened over
+/// it (`docs/ui-reference.md` §9, `Settings ▸ Opening files`).
+///
+/// The continuation is recorded before any detour, because the write does not
+/// always happen in this call: a document with no path opens Save As, and a text
+/// the encoding cannot hold opens the encoding question. Whichever of them
+/// finishes the write is what finishes this, so the intent has to outlive them.
+pub fn save_tab(shell: &mut Shell, tab: usize, then: SaveThen) {
     let Some(has_path) = shell.tabs.get(tab).map(|tab| tab.file.has_path()) else {
         return;
     };
+    if then != SaveThen::Keep {
+        shell.save_then = Some((tab, then));
+    }
     if !has_path {
-        // There is nowhere to write yet, so Save becomes Save As; the close it
-        // was answering resumes when that write succeeds.
+        // There is nowhere to write yet, so Save becomes Save As; what the save
+        // was for resumes when that write succeeds.
         open_save_as(shell, tab);
-        if close_after {
-            shell.close_after_save = Some(tab);
-        }
         return;
     }
 
@@ -403,16 +412,44 @@ pub fn save_tab(shell: &mut Shell, tab: usize, close_after: bool) {
         .map(|tab| tab.title())
         .unwrap_or_default();
     match shell.tabs[tab].file.save() {
-        Ok(_) => {
-            if close_after {
-                shell.close_tab(tab);
-                if shell.closing_window {
-                    advance_close(shell);
-                }
+        Ok(_) => finish_save(shell, tab),
+        Err(_) => {
+            // The write failed, so nothing can follow it: the close or the
+            // replacement is dropped rather than waiting for a later Save of this
+            // tab, which is a new request with its own intent.
+            if shell.save_then.is_some_and(|(saved, _)| saved == tab) {
+                shell.save_then = None;
+            }
+            shell.notification = Some(format!("Could not save \"{name}\""));
+        }
+    }
+}
+
+/// Carries out what a just-written save was for ([`SaveThen`]).
+fn finish_save(shell: &mut Shell, tab: usize) {
+    let Some((saved, then)) = shell.save_then.take() else {
+        return;
+    };
+    if saved != tab {
+        // The step belongs to another tab's save; leave it for that one.
+        shell.save_then = Some((saved, then));
+        return;
+    }
+    match then {
+        SaveThen::Keep => {}
+        SaveThen::Close => {
+            shell.close_tab(tab);
+            if shell.closing_window {
+                advance_close(shell);
             }
         }
-        Err(_) => {
-            shell.notification = Some(format!("Could not save \"{name}\""));
+        SaveThen::Replace => {
+            // The document that was waiting for this write takes the tab over,
+            // and the caret starts where a just-opened document's does.
+            if let Some(replacement) = shell.pending_replace.take() {
+                shell.replace_tab(replacement.tab, replacement.opening);
+                sync_caret_to_document(shell);
+            }
         }
     }
 }
@@ -527,11 +564,17 @@ pub fn confirm_file_dialog(shell: &mut Shell) {
     }
 }
 
-/// Opens `path` into a new tab, or reports why it could not be opened.
+/// Opens `path`, where `Settings ▸ Opening files` says it should go, or reports
+/// why it could not be opened.
 ///
 /// A path already open — in any spelling, compared canonically — focuses the
 /// tab that shows it rather than opening the file a second time (`NC-F012`).
-/// Opens `path` in a new tab, or focuses the tab that already shows it.
+/// That comes first, whatever the setting says: a file is never open twice, so
+/// *Open in a new tab* and the rest have nothing to do when the document is
+/// already on screen (`docs/ui-reference.md` §4).
+///
+/// The file is read here, in the window the user used, so a file that cannot be
+/// read is reported here whatever happens next.
 ///
 /// Reachable from the Recent submenu as well as the Open dialog, so both go
 /// through one path (`NC-F004`, `NC-F012`).
@@ -554,10 +597,39 @@ pub(crate) fn open_path(shell: &mut Shell, path: &Path, encoding: Option<(Encodi
     };
     match opened {
         Ok(tab) => {
-            shell.tabs.push(tab);
-            shell.active = shell.tabs.len() - 1;
             shell.file_dialog = None;
             shell.notification = None;
+            match shell.opening {
+                OpenBehavior::NewTab => {
+                    shell.tabs.push(tab);
+                    shell.active = shell.tabs.len() - 1;
+                }
+                OpenBehavior::NewWindow => {
+                    // The window itself is opened by the eframe application at the
+                    // end of this frame, from a request set here (`NC-F003`); the
+                    // document travels with it, so the new window shows the file
+                    // rather than the empty untitled one a plain New window gets.
+                    shell.new_window_documents.push(tab);
+                    shell.new_window_request = true;
+                }
+                OpenBehavior::ReplaceTab => {
+                    let target = shell.active;
+                    let dirty = shell.tabs.get(target).is_some_and(Tab::is_dirty);
+                    if dirty {
+                        // The document waits for the answer: replacing the tab
+                        // would throw the edits away, and the rule for that is to
+                        // ask (NC-D005).
+                        shell.pending_replace = Some(PendingReplace {
+                            tab: target,
+                            opening: tab,
+                        });
+                        shell.prompt = Some(Prompt::UnsavedChanges { tab: target });
+                    } else {
+                        shell.replace_tab(target, tab);
+                        sync_caret_to_document(shell);
+                    }
+                }
+            }
         }
         Err(error) => {
             if let Some(dialog) = shell.file_dialog.as_mut() {
@@ -590,13 +662,7 @@ fn write_save_as(shell: &mut Shell, tab: usize, path: &Path, encoding: Encoding,
         Some(Ok(_)) => {
             shell.file_dialog = None;
             shell.notification = None;
-            if shell.close_after_save == Some(tab) {
-                shell.close_after_save = None;
-                shell.close_tab(tab);
-                if shell.closing_window {
-                    advance_close(shell);
-                }
-            }
+            finish_save(shell, tab);
         }
         Some(Err(nc_textproc::Error::Encode(nc_textproc::EncodeError { characters, .. }))) => {
             if let Some(dialog) = shell.file_dialog.as_mut() {
@@ -619,7 +685,13 @@ pub fn answer_unsaved_save(shell: &mut Shell) {
     let Some(Prompt::UnsavedChanges { tab }) = shell.prompt.take() else {
         return;
     };
-    save_tab(shell, tab, true);
+    // The prompt may have been raised to close the tab or to let a file being
+    // opened take its place; which of them follows the save is what is pending.
+    let then = match &shell.pending_replace {
+        Some(replacement) if replacement.tab == tab => SaveThen::Replace,
+        _ => SaveThen::Close,
+    };
+    save_tab(shell, tab, then);
 }
 
 /// The answer to the unsaved-changes prompt: discard the edits (`Don't save`).
@@ -627,6 +699,19 @@ pub fn answer_unsaved_dont_save(shell: &mut Shell) {
     let Some(Prompt::UnsavedChanges { tab }) = shell.prompt.take() else {
         return;
     };
+    if shell
+        .pending_replace
+        .as_ref()
+        .is_some_and(|replacement| replacement.tab == tab)
+    {
+        let replacement = shell
+            .pending_replace
+            .take()
+            .expect("just checked to be there");
+        shell.replace_tab(replacement.tab, replacement.opening);
+        sync_caret_to_document(shell);
+        return;
+    }
     shell.close_tab(tab);
     if shell.closing_window {
         advance_close(shell);
@@ -659,13 +744,7 @@ pub fn answer_unrepresentable_save(shell: &mut Shell) {
         .map(|document| document.title())
         .unwrap_or_default();
     if shell.tabs[tab].file.save_lossy().is_ok() {
-        if shell.close_after_save == Some(tab) {
-            shell.close_after_save = None;
-            shell.close_tab(tab);
-            if shell.closing_window {
-                advance_close(shell);
-            }
-        }
+        finish_save(shell, tab);
     } else {
         shell.notification = Some(format!("Could not save \"{name}\""));
     }
@@ -681,9 +760,14 @@ pub fn answer_unrepresentable_choose_encoding(shell: &mut Shell) {
 }
 
 /// The answer to any prompt that has a `Cancel`: do nothing.
+///
+/// Nothing includes the step that was to follow the answer: a save that has been
+/// cancelled cannot close a tab or hand it to the file being opened over it.
 pub fn answer_cancel(shell: &mut Shell) {
     shell.prompt = None;
     shell.closing_window = false;
+    shell.save_then = None;
+    shell.pending_replace = None;
 }
 
 /// Steps the search in `direction` from the caret, keeping the options and the
@@ -1214,7 +1298,7 @@ mod tests {
         assert!(shell.prompt.is_none());
         let dialog = shell.file_dialog.as_ref().expect("Save As opens");
         assert_eq!(dialog.tab, 0);
-        assert_eq!(shell.close_after_save, Some(0));
+        assert_eq!(shell.save_then, Some((0, SaveThen::Close)));
     }
 
     #[test]
@@ -1233,7 +1317,7 @@ mod tests {
         confirm_file_dialog(&mut shell);
 
         assert!(shell.file_dialog.is_none());
-        assert_eq!(shell.close_after_save, None);
+        assert_eq!(shell.save_then, None);
         assert_eq!(std::fs::read_to_string(&path).expect("the file"), "hello");
         assert!(shell.tabs[0].text().is_empty(), "the close resumed");
         assert!(!shell.tabs[0].is_dirty());
@@ -1346,6 +1430,45 @@ mod tests {
         let dialog = shell.file_dialog.as_ref().expect("Save As opens");
         assert_eq!(dialog.mode, FileDialogMode::SaveAs);
         assert_eq!(dialog.tab, 0);
+    }
+
+    #[test]
+    fn a_save_that_detours_still_closes_the_tab_it_was_answering_for() {
+        // The write does not always happen in the call that asked for it: a text
+        // the file's encoding cannot hold opens the encoding question first, and
+        // the close the user asked for has to survive that detour — otherwise
+        // answering "Save anyway" writes the file and leaves the tab open.
+        let scratch = Scratch::new("unrepresentable-close");
+        let path = scratch.0.join("ansi.txt");
+        std::fs::write(&path, b"caf\xE9").expect("an ANSI file");
+
+        let mut shell = Shell::new();
+        shell.tabs[0] = Tab::open(&path).expect("the file opens");
+        // A Cyrillic letter has no ANSI byte, and the caret is at the start of a
+        // freshly opened document, so this writes "Жcaf\xE9".
+        shell.tabs[0].file.insert_str("Ж");
+
+        close_tab(&mut shell, 0);
+        answer_unsaved_save(&mut shell);
+
+        assert!(matches!(shell.prompt, Some(Prompt::Unrepresentable { .. })));
+        assert_eq!(
+            shell.save_then,
+            Some((0, SaveThen::Close)),
+            "the close is still waiting behind the question"
+        );
+
+        answer_unrepresentable_save(&mut shell);
+
+        assert!(shell.prompt.is_none());
+        assert_eq!(shell.save_then, None, "the close resumed");
+        assert_eq!(
+            std::fs::read(&path).expect("the file"),
+            b"?caf\xE9",
+            "and the lossy write happened"
+        );
+        assert_eq!(shell.tabs.len(), 1, "the tab closed");
+        assert!(shell.tabs[0].text().is_empty(), "the fresh last tab");
     }
 
     #[test]

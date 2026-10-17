@@ -336,6 +336,32 @@ round trip through off that puts them back; and the settings page read back as w
 combinations of the two switches. That last one is the test the other two cannot be: a page
 that lies about a setting passes every assertion that only looks at the setting.
 
+**Opening files was the last setting with no behaviour — and the last one M8 needed.**
+`Settings ▸ Opening files` was stored, restored and shown, and nothing read it, so the M8
+exit criterion ("each supported setting persists correctly and produces the expected
+behaviour across restarts") had a row it could not clear. It is the same shape as the two
+above — a control whose page is honest and whose effect is absent — but here the page was
+never wrong, only alone. All three choices now act, at the one funnel every open goes
+through: the Open dialog and `File ▸ Recent` both reach `actions::open_path`, so a file
+opened either way goes where the setting says. Two rules run *before* the choice and are
+tested to: an already-open file is focused rather than duplicated (`NC-F012` — a file is
+never open twice, so the setting has nothing to decide), and the file is read in the window
+the user used, so a read failure is reported there and *Open in a new window* opens no window
+for a file that cannot be read. *Replace the current tab* is the one with a question in it:
+replacing a tab throws its edits away, and the rule for unsaved work is to ask (`NC-D005`),
+which this row does not get to skip — so the incoming document is read first and held while
+the prompt is answered, and `Save`, `Don't save` and `Cancel` each have a defined end.
+
+Proving it turned up a second bug in the machinery that carries an answer past a detour. The
+unsaved-changes prompt's "save, then close" travelled as a `close_after` flag that was set
+only in Save As's branch, so a document *with* a path whose text the file's encoding could
+not hold wrote the file, left the tab open, and left the window's close half-done. The flag
+is now a value — `SaveThen::{Keep, Close, Replace}`, recorded before any detour and spent by
+whichever path finishes the write — and a test closes such a tab through the encoding
+question to hold that down. Section G of the matrix carries no acceptance row for this
+control, so nothing was promoted: the behaviour is pinned by the M8 section of
+`crates/platform/src/ui/lifecycle.rs` and recorded in `docs/ui-reference.md` §4 instead.
+
 **A gap no row covers — the editor could not scroll — is closed.** Measured while
 proving word wrap, from a painted frame: a document longer than the window kept its first
 line at the top and its caret off screen, because the text edit sat directly in the panel

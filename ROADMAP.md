@@ -321,8 +321,10 @@ matrix waiting on a capture.
 
 ### M8 — Settings and desktop integration
 
-Status: IN_PROGRESS — three rows are verified and the exit criterion is the thing
-being tested rather than the thing left for later.
+Status: IN_PROGRESS — four rows are verified (theme, font, persistence, the formatting
+switch) plus the word-wrap row it shares with the editor, and every setting the capture
+shows now produces the behaviour its row names; what remains is the rows that need a
+surface the capture alone does not settle.
 
 *The theme applies* (`NC-P001`). `Settings ▸ App theme` wrote a field no code read;
 the colours are now a `Palette` value resolved per frame from the choice plus what the
@@ -362,6 +364,18 @@ value, wrote into a local that was dropped, and the toolbar never moved. Off now
 formatting half of the top bar — and the divider that introduced it — with it, and the
 settings page is asserted to show each switch its own setting, which is the assertion the
 bug survived.
+
+*And *Opening files* now opens files where it says it will* — the last setting that was
+stored, restored and shown while nothing read it, which was the last thing standing between
+M8 and its exit criterion. The three choices act at the one funnel every open goes through
+(`actions::open_path`), with two rules ahead of them: an already-open file is focused rather
+than duplicated (`NC-F012`), and a file that cannot be read is reported where it was asked
+for. *Replace the current tab* asks before discarding unsaved edits (`NC-D005`), holding the
+incoming document while the prompt is answered. Proving it exposed a second bug: the
+close that follows an unsaved-changes `Save` was carried by a flag set only in Save As's
+branch, so a write that detoured through the encoding question left the tab open and the
+window half-closed. That continuation is now one value — `SaveThen::{Keep, Close, Replace}`
+— recorded before any detour and spent by whichever path finishes the write.
 
 What remains is the rest of the settings the capture shows: spell check, accessibility
 evidence, file associations and printing, with page setup (§8) the captured screen that

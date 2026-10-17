@@ -653,6 +653,35 @@ fn is_markdown(path: &Path) -> bool {
 /// How many paths `File ▸ Recent` keeps (`NC-F010`).
 pub const RECENT_LIMIT: usize = 10;
 
+/// What is to happen to a tab once its document has been written
+/// (`actions::save_tab`).
+///
+/// One value rather than a flag set in the branch that asked, because two things
+/// can follow a save and because the write does not always happen where it was
+/// asked for: a document with no path detours through Save As, and a text the
+/// encoding cannot hold detours through the encoding question. The intent travels
+/// with the save through both, and whichever of them finishes the write finishes
+/// this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveThen {
+    /// Nothing follows: `File ▸ Save` on its own.
+    Keep,
+    /// The tab closes once the write succeeds (`docs/ui-reference.md` §9).
+    Close,
+    /// The tab's document yields to [`Shell::pending_replace`]
+    /// (`Settings ▸ Opening files`).
+    Replace,
+}
+
+/// A document waiting to take a tab's place once that tab's unsaved changes have
+/// been answered for (`Settings ▸ Opening files`, *Replace the current tab*).
+pub struct PendingReplace {
+    /// The tab whose document is being replaced.
+    pub tab: usize,
+    /// The document that takes its place.
+    pub opening: Tab,
+}
+
 /// The whole shell state.
 pub struct Shell {
     /// The open documents, in tab order.
@@ -713,9 +742,13 @@ pub struct Shell {
     pub file_dialog: Option<FileDialog>,
     /// The prompt on screen, when one is waiting for an answer.
     pub prompt: Option<Prompt>,
-    /// The tab to close once a Save As opened for it succeeds
-    /// (`docs/ui-reference.md` §9: Save continues the close).
-    pub close_after_save: Option<usize>,
+    /// The tab a save is for, and what follows that save once it succeeds
+    /// (`docs/ui-reference.md` §9: Save continues the close; `Settings ▸ Opening
+    /// files`: Save continues the file being opened over the tab).
+    pub save_then: Option<(usize, SaveThen)>,
+    /// The file the user asked to open over a tab, held while that tab's unsaved
+    /// changes are answered for (`Settings ▸ Opening files`).
+    pub pending_replace: Option<PendingReplace>,
     /// Whether the window is closing, prompting for each dirty tab in turn.
     pub closing_window: bool,
     /// Set when the window should close once the prompts are answered.
@@ -723,6 +756,11 @@ pub struct Shell {
     /// Set by `File ▸ New window`; the eframe application creates the window at
     /// the end of the frame and clears it (`NC-F003`).
     pub new_window_request: bool,
+    /// Documents for the window a pending request is about to open, when what
+    /// asked for it was a file being opened (`Settings ▸ Opening files`, *Open in
+    /// a new window*). Empty for a plain `File ▸ New window`, which opens one empty
+    /// document.
+    pub new_window_documents: Vec<Tab>,
 }
 
 impl Shell {
@@ -751,10 +789,12 @@ impl Shell {
             go_to: GoToDialog::new(),
             file_dialog: None,
             prompt: None,
-            close_after_save: None,
+            save_then: None,
+            pending_replace: None,
             closing_window: false,
             exit_pending: false,
             new_window_request: false,
+            new_window_documents: Vec::new(),
         }
     }
 
@@ -837,6 +877,20 @@ impl Shell {
         } else if self.active > index {
             self.active -= 1;
         }
+    }
+
+    /// Puts `tab` where the tab at `index` is (`Settings ▸ Opening files`,
+    /// *Replace the current tab*), leaving the strip the length it was.
+    ///
+    /// The document that was there goes with everything it held — its path, its
+    /// encoding, its undo history — which is what replacing it means. Nothing is
+    /// asked here: the caller checks for unsaved changes first (`actions`).
+    pub fn replace_tab(&mut self, index: usize, tab: Tab) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        self.tabs[index] = tab;
+        self.active = index;
     }
 
     /// The number of characters in the active document.

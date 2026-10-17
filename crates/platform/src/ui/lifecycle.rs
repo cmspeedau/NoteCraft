@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use crate::ui::actions;
 use crate::ui::session::{self, Session, save_to};
-use crate::ui::state::{DocKind, Prompt, Shell, Tab};
+use crate::ui::state::{DocKind, OpenBehavior, Prompt, Shell, Tab};
 
 /// A scratch directory, removed when the test ends. Named after the test, since
 /// every test in this binary shares one process id.
@@ -410,6 +410,148 @@ fn a_different_file_still_opens_its_own_tab() {
     assert_eq!(shell.tabs.len(), 3, "distinct files are distinct tabs");
     assert_eq!(shell.active, 2);
     assert_eq!(shell.tabs[2].text(), "two");
+}
+
+// ---- NC-P005 — Settings ▸ Opening files: where an opened file goes ----------
+
+#[test]
+fn opening_in_a_new_tab_leaves_the_current_document_alone() {
+    let scratch = Scratch::new("open-new-tab");
+    let file = scratch.file("note.txt", b"hello");
+
+    let mut shell = Shell::new();
+    shell.opening = OpenBehavior::NewTab;
+    append(&mut shell.tabs[0], "unsaved");
+
+    actions::open_path(&mut shell, &file, None);
+
+    assert_eq!(shell.tabs.len(), 2);
+    assert_eq!(shell.active, 1, "the new tab is shown");
+    assert_eq!(
+        shell.tabs[0].text(),
+        "unsaved",
+        "and the one that was open kept its text"
+    );
+}
+
+#[test]
+fn replacing_the_current_tab_keeps_the_strip_the_length_it_was() {
+    let scratch = Scratch::new("open-replace");
+    let file = scratch.file("note.txt", b"hello");
+
+    let mut shell = Shell::new();
+    shell.opening = OpenBehavior::ReplaceTab;
+
+    actions::open_path(&mut shell, &file, None);
+
+    assert_eq!(shell.tabs.len(), 1, "the untitled tab is the one replaced");
+    assert_eq!(shell.active, 0);
+    assert_eq!(shell.tabs[0].text(), "hello");
+    assert_eq!(
+        shell.pending_selection,
+        Some((0, 0)),
+        "and the editor is told to start at the new document's own caret"
+    );
+}
+
+#[test]
+fn replacing_a_dirty_tab_asks_before_letting_the_edits_go() {
+    let scratch = Scratch::new("open-replace-dirty");
+    let file = scratch.file("note.txt", b"hello");
+
+    let mut shell = Shell::new();
+    shell.opening = OpenBehavior::ReplaceTab;
+    append(&mut shell.tabs[0], "unsaved");
+
+    actions::open_path(&mut shell, &file, None);
+
+    assert_eq!(shell.prompt, Some(Prompt::UnsavedChanges { tab: 0 }));
+    assert!(
+        shell.pending_replace.is_some(),
+        "the file waits for the answer"
+    );
+    assert_eq!(shell.tabs[0].text(), "unsaved", "nothing replaced yet");
+
+    actions::answer_unsaved_dont_save(&mut shell);
+
+    assert!(shell.pending_replace.is_none(), "the answer ended the wait");
+    assert_eq!(shell.tabs.len(), 1);
+    assert_eq!(shell.tabs[0].text(), "hello", "the file took the tab over");
+}
+
+#[test]
+fn cancelling_the_replace_prompt_keeps_the_edits_and_opens_nothing() {
+    let scratch = Scratch::new("open-replace-cancel");
+    let file = scratch.file("note.txt", b"hello");
+
+    let mut shell = Shell::new();
+    shell.opening = OpenBehavior::ReplaceTab;
+    append(&mut shell.tabs[0], "unsaved");
+    actions::open_path(&mut shell, &file, None);
+
+    actions::answer_cancel(&mut shell);
+
+    assert!(shell.prompt.is_none());
+    assert!(
+        shell.pending_replace.is_none(),
+        "a cancelled open is not left waiting"
+    );
+    assert_eq!(shell.tabs[0].text(), "unsaved");
+    assert_eq!(shell.tabs.len(), 1);
+}
+
+#[test]
+fn saving_from_the_replace_prompt_writes_the_edits_and_then_replaces_the_tab() {
+    let scratch = Scratch::new("open-replace-save");
+    let kept = scratch.file("kept.txt", b"original");
+    let other = scratch.file("other.txt", b"other");
+
+    let mut shell = Shell::new();
+    actions::open_path(&mut shell, &kept, None);
+    shell.opening = OpenBehavior::ReplaceTab;
+    append(&mut shell.tabs[shell.active], " edited");
+    assert!(shell.tabs[shell.active].is_dirty());
+
+    actions::open_path(&mut shell, &other, None);
+    assert_eq!(
+        shell.prompt,
+        Some(Prompt::UnsavedChanges { tab: 1 }),
+        "the dirty tab is asked about"
+    );
+
+    actions::answer_unsaved_save(&mut shell);
+
+    assert_eq!(
+        std::fs::read_to_string(&kept).expect("the file"),
+        "original edited",
+        "the edits reached the disk before the tab changed hands"
+    );
+    assert_eq!(shell.tabs[1].text(), "other");
+    assert_eq!(shell.tabs.len(), 2, "a replacement, not a third tab");
+}
+
+#[test]
+fn a_file_already_open_is_focused_whatever_the_setting_says() {
+    // NC-F012 comes first: a file is never open twice, so the setting has nothing
+    // to decide when the document is already on screen (docs/ui-reference.md §4).
+    let scratch = Scratch::new("open-replace-duplicate");
+    let one = scratch.file("one.txt", b"one");
+    let two = scratch.file("two.txt", b"two");
+
+    let mut shell = Shell::new();
+    actions::open_path(&mut shell, &one, None);
+    actions::open_path(&mut shell, &two, None);
+    shell.opening = OpenBehavior::ReplaceTab;
+
+    actions::open_path(&mut shell, &one, None);
+
+    assert_eq!(shell.tabs.len(), 3, "nothing was replaced");
+    assert_eq!(shell.active, 1, "the tab that has the file is shown");
+    assert_eq!(
+        shell.tabs[2].text(),
+        "two",
+        "the active tab kept its document"
+    );
 }
 
 // ---- NC-T005 / NC-F009 — close all and exit: "Prompt per dirty doc" ---------

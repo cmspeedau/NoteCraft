@@ -11,12 +11,16 @@
 //! The reference capture fixes the *command* (`File ▸ New window`, Ctrl+Shift+N)
 //! but not what the new window contains; it is opened with one empty untitled
 //! document, the same state the application starts in (a recorded decision).
+//! When a file being opened is what asks for a window (`Settings ▸ Opening
+//! files`, *Open in a new window*), that window opens showing the file instead:
+//! the request carries the document with it, and an empty list means the plain
+//! command's empty document.
 
 use egui::{Context, Id, ViewportBuilder, ViewportId};
 
 use crate::ui::draw;
 use crate::ui::settings::Settings;
-use crate::ui::state::Shell;
+use crate::ui::state::{Shell, Tab};
 
 /// The set of extra windows the application has opened.
 pub struct Windows {
@@ -56,17 +60,28 @@ impl Windows {
         // to a window, so a New window fired in one that is light, word-wrapped and
         // zoomed to 130% is a window that starts the same way; inheriting the
         // defaults instead would make the command lose the user's own setup.
-        let mut inherited: Option<Settings> = None;
+        //
+        // The request carries documents with it when what asked for the window was
+        // a file being opened (`Settings ▸ Opening files`, *Open in a new window*),
+        // and none for a plain `File ▸ New window`, which opens one empty document.
+        let mut inherited: Option<(Settings, Vec<Tab>)> = None;
         if std::mem::take(&mut main.new_window_request) {
-            inherited = Some(Settings::of(main));
+            inherited = Some((
+                Settings::of(main),
+                std::mem::take(&mut main.new_window_documents),
+            ));
         }
         for window in &mut self.open {
             if std::mem::take(&mut window.shell.new_window_request) && inherited.is_none() {
-                inherited = Some(Settings::of(&window.shell));
+                inherited = Some((
+                    Settings::of(&window.shell),
+                    std::mem::take(&mut window.shell.new_window_documents),
+                ));
             }
         }
-        if let Some(settings) = inherited {
-            self.open.push(Window::new(self.next_number, settings));
+        if let Some((settings, documents)) = inherited {
+            self.open
+                .push(Window::new(self.next_number, settings, documents));
             self.next_number += 1;
         }
     }
@@ -116,10 +131,18 @@ struct Window {
 }
 
 impl Window {
-    /// A window `number` with one empty untitled document, shown with `settings`.
-    fn new(number: u64, settings: Settings) -> Self {
+    /// A window `number`, shown with `settings`.
+    ///
+    /// It holds `documents` when a file being opened asked for the window
+    /// (`Settings ▸ Opening files`), and one empty untitled document when there
+    /// are none — which is what a plain `File ▸ New window` opens.
+    fn new(number: u64, settings: Settings, documents: Vec<Tab>) -> Self {
         let mut shell = Shell::new();
         settings.apply_to(&mut shell);
+        if !documents.is_empty() {
+            shell.tabs = documents;
+            shell.active = 0;
+        }
         Self {
             id: ViewportId(Id::new(("notecraft_window", number))),
             title: format!("NoteCraft — Window {number}"),
@@ -145,6 +168,46 @@ mod tests {
         assert!(!main.new_window_request, "the request was consumed");
         // The new window starts with its own single untitled document.
         assert_eq!(windows.open[0].shell.tabs.len(), 1);
+    }
+
+    #[test]
+    fn opening_in_a_new_window_takes_the_file_to_the_window_it_opens() {
+        // `Settings ▸ Opening files`, *Open in a new window*: the file is read in
+        // the window the user used — so one that cannot be read is reported there —
+        // and the window that shows it is the one that opens next.
+        let path =
+            std::env::temp_dir().join(format!("notecraft-window-open-{}", std::process::id()));
+        std::fs::write(&path, "hello").expect("a file");
+
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+        main.opening = OpenBehavior::NewWindow;
+
+        crate::ui::actions::open_path(&mut main, &path, None);
+
+        assert_eq!(main.tabs.len(), 1, "this window kept its own document");
+        assert_eq!(main.tabs[0].text(), "", "and it is still the empty one");
+        assert!(main.new_window_request, "the window was asked for");
+        assert_eq!(
+            main.new_window_documents.len(),
+            1,
+            "with the file travelling to it"
+        );
+
+        windows.create_requested(&mut main);
+
+        assert_eq!(windows.len(), 1);
+        assert!(!main.new_window_request, "the request was consumed");
+        assert!(
+            main.new_window_documents.is_empty(),
+            "and so was the document that travelled with it"
+        );
+        let shell = &windows.open[0].shell;
+        assert_eq!(shell.tabs.len(), 1, "the new window shows the file alone");
+        assert_eq!(shell.tabs[0].text(), "hello");
+        assert_eq!(shell.active, 0);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
