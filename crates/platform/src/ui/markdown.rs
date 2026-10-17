@@ -713,3 +713,41 @@ fn a_format_survives_a_round_trip_through_the_view() {
     );
     assert_eq!(tab.text(), "press the **button**");
 }
+
+#[test]
+fn the_view_items_show_which_view_is_showing() {
+    // How the two view commands managed to sit inert for so long: nothing in the
+    // menu said which of them was in effect, so a wired command and a decorative one
+    // looked the same from outside. Each now carries its own toggle, and the pair is
+    // one boolean seen from opposite sides — asserted through the shell's own
+    // availability rather than a hand-built context.
+    use nc_commands::{Toggle, by_id, checked};
+
+    assert_eq!(
+        by_id("cmd.view.md_formatted").expect("registered").toggle,
+        Some(Toggle::FormattedView)
+    );
+    assert_eq!(
+        by_id("cmd.view.md_source").expect("registered").toggle,
+        Some(Toggle::SourceView)
+    );
+
+    let mut shell = markdown("# Title\n");
+    for showing in [false, true] {
+        fire(
+            &mut shell,
+            if showing {
+                "cmd.view.md_formatted"
+            } else {
+                "cmd.view.md_source"
+            },
+        );
+        let context = shell.availability();
+        assert_eq!(checked(Toggle::FormattedView, context), showing);
+        assert_eq!(
+            checked(Toggle::SourceView, context),
+            !showing,
+            "exactly one of the pair is checked"
+        );
+    }
+}
