@@ -1,5 +1,14 @@
 //! The editor surface: a monospaced, zoomable text area over the document.
 //!
+//! A known limit, worth stating where it would be fixed: nothing here scrolls. The text
+//! edit sits in the panel at its natural height, so a document taller than the window
+//! has rows below the fold that cannot be reached, and a caret moved past them is
+//! painted off screen. (`View ▸ Word wrap` off is the one case that does scroll, since
+//! a wide line needs a horizontal bar to be read at all — see [`widest_line_width`].)
+//! Fixing it means putting the editor in a scroll area for both axes and following the
+//! caret's rect each frame; no acceptance row asks for it, because the capture cannot
+//! show a scrollbar, and `docs/feature-matrix.md`'s verification summary records it.
+//!
 //! The text is not a `String` the shell owns: it is the `nc-core` [`Document`]
 //! inside the tab's [`TextFile`](nc_textproc::TextFile), edited through a thin
 //! [`egui::TextBuffer`] adapter. That keeps one authoritative copy of the text
@@ -22,6 +31,34 @@ pub const EDITOR_ID: &str = "notecraft_editor";
 /// the same number, so a normal line measures the same in either view.
 const EDIT_FONT_SIZE: f32 = 15.0;
 
+/// How much room to leave past the end of the longest line.
+///
+/// The text edit keeps four points of text margin inside its own rect, and the caret
+/// sits *after* the last glyph rather than over it, so a rect exactly as wide as the
+/// text would break the line it was sized for.
+const LINE_HEADROOM: f32 = 16.0;
+
+/// The width `text`'s longest line wants, in points, at `font`.
+///
+/// Laid out with [`egui::text::LayoutJob::simple`], which is what the text edit's own
+/// layouter uses, so the measurement cannot disagree with the layout it is sizing the
+/// widget for. Only the longest line is laid out: the rest of the document cannot be
+/// wider than it, and a document of any size would otherwise be measured twice per
+/// frame in the unwrapped case.
+fn widest_line_width(text: &str, font: &FontId, ui: &egui::Ui) -> f32 {
+    let longest = text
+        .split('\n')
+        .max_by_key(|line| line.chars().count())
+        .unwrap_or("");
+    let job = egui::text::LayoutJob::simple(
+        longest.to_owned(),
+        font.clone(),
+        ui.visuals().strong_text_color(),
+        f32::INFINITY,
+    );
+    ui.fonts_mut(|fonts| fonts.layout_job(job)).rect.width() + LINE_HEADROOM
+}
+
 /// Draws the editor for the active tab, updates the caret position, and applies
 /// any selection the shell has queued (Find / Go to).
 pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
@@ -43,10 +80,17 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
             let palette = shell.palette;
             let wrap = shell.word_wrap;
             let zoom = shell.zoom as f32 / 100.0;
-            let width = if wrap {
-                ui.available_width()
+            // Measured before the document is borrowed for the widget below, and only
+            // when it is needed: the longest line alone, not a second layout of the
+            // whole document.
+            let natural = if wrap {
+                0.0
             } else {
-                f32::INFINITY
+                widest_line_width(
+                    shell.tabs[index].text(),
+                    &FontId::monospace(EDIT_FONT_SIZE * zoom),
+                    ui,
+                )
             };
 
             // The formatted view is derived from the source and read-only, so it
@@ -67,12 +111,32 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui) {
             let tab = &mut shell.tabs[index];
             let output = {
                 let mut buffer = DocBuffer(tab.document_mut());
-                egui::TextEdit::multiline(&mut buffer)
+                let edit = egui::TextEdit::multiline(&mut buffer)
                     .id(egui::Id::new(EDITOR_ID))
                     .font(FontId::monospace(EDIT_FONT_SIZE * zoom))
-                    .desired_width(width)
-                    .frame(egui::Frame::NONE)
-                    .show(ui)
+                    .frame(egui::Frame::NONE);
+                if wrap {
+                    edit.desired_width(ui.available_width()).show(ui)
+                } else {
+                    // Unwrapped, the editor has to be as wide as its widest line, and
+                    // `egui` will not work that out for you: a `TextEdit` clamps its
+                    // desired width to the space it is given before laying text out,
+                    // so `desired_width(f32::INFINITY)` measures the document at the
+                    // panel's width and wraps it anyway. A scroll area does not help
+                    // either — 0.36 tells the area's inner UI to prefer wrapping to a
+                    // horizontal bar, on purpose. So the width of the widest line is
+                    // measured and handed to the widget as a floor, which is the one
+                    // input that outranks the clamp, and the scroll area around it is
+                    // what turns that width into a bar the user can drag.
+                    egui::ScrollArea::horizontal()
+                        .auto_shrink([false; 2])
+                        .show(ui, |ui| {
+                            edit.min_size(egui::vec2(natural, 0.0))
+                                .desired_width(natural)
+                                .show(ui)
+                        })
+                        .inner
+                }
             };
 
             // The caret a queued selection moves to, or the one the user left

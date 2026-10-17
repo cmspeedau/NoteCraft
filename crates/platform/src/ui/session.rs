@@ -19,7 +19,6 @@
 //! session, and a clean tab whose file can no longer be read is left out rather
 //! than failing the whole start.
 
-use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::iter::Peekable;
@@ -289,7 +288,7 @@ impl TabState {
 
 /// Why a session file could not be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SessionError {
+pub(crate) enum SessionError {
     /// The file does not start with the expected format marker.
     Header,
     /// A line is not one the format defines.
@@ -299,9 +298,7 @@ enum SessionError {
 /// Writes `session` to `path`, through a sibling temporary file so an
 /// interrupted write cannot leave a half-written session behind.
 pub(crate) fn save_to(path: &Path, session: &Session) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    super::config::ensure_directory(path)?;
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, session.encode())?;
     fs::rename(&temporary, path)
@@ -317,33 +314,7 @@ pub(crate) fn load_from(path: &Path) -> Option<Session> {
 /// The session file, or `None` when there is no configuration directory to put
 /// it in.
 fn session_path() -> Option<PathBuf> {
-    config_dir().map(|directory| directory.join(FILE))
-}
-
-/// The directory NoteCraft keeps its session in.
-///
-/// `NOTECRAFT_CONFIG_DIR` overrides it, which is what the tests use; otherwise
-/// the platform's usual per-user configuration directory, and nothing when none
-/// can be found.
-fn config_dir() -> Option<PathBuf> {
-    if let Some(directory) = non_empty(std::env::var_os("NOTECRAFT_CONFIG_DIR")) {
-        return Some(PathBuf::from(directory));
-    }
-    if cfg!(windows) {
-        if let Some(appdata) = non_empty(std::env::var_os("APPDATA")) {
-            return Some(PathBuf::from(appdata).join("NoteCraft"));
-        }
-    }
-    if let Some(xdg) = non_empty(std::env::var_os("XDG_CONFIG_HOME")) {
-        return Some(PathBuf::from(xdg).join("notecraft"));
-    }
-    non_empty(std::env::var_os("HOME"))
-        .map(|home| PathBuf::from(home).join(".config").join("notecraft"))
-}
-
-/// The value, or `None` when it is unset or empty.
-fn non_empty(value: Option<OsString>) -> Option<OsString> {
-    value.filter(|value| !value.is_empty())
+    super::config::file(FILE)
 }
 
 /// Whether `path` can be stored as text and read back as the very same path.
@@ -356,7 +327,9 @@ fn round_trips(path: &Path) -> bool {
 }
 
 /// Escapes a value so it fits on one line, whatever characters it holds.
-fn escape(value: &str) -> String {
+///
+/// Shared with the settings file, which has the same one-value-per-line problem.
+pub(crate) fn escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for character in value.chars() {
         match character {
@@ -372,7 +345,7 @@ fn escape(value: &str) -> String {
 }
 
 /// Reverses [`escape`].
-fn unescape(value: &str) -> Result<String, SessionError> {
+pub(crate) fn unescape(value: &str) -> Result<String, SessionError> {
     let mut out = String::with_capacity(value.len());
     let mut characters = value.chars();
     while let Some(character) = characters.next() {
@@ -393,7 +366,7 @@ fn unescape(value: &str) -> Result<String, SessionError> {
 }
 
 /// `0`/`1` as a boolean.
-fn parse_bool(value: &str) -> Result<bool, SessionError> {
+pub(crate) fn parse_bool(value: &str) -> Result<bool, SessionError> {
     match value {
         "0" => Ok(false),
         "1" => Ok(true),

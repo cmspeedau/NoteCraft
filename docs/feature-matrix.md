@@ -84,7 +84,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-E003 | Select all (Ctrl+A) | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Whole-document selection | `crates/core/tests/keyboard/select_all.rs` |
 | NC-E004 | Caret navigation | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Word/line/paragraph boundaries | `crates/core/tests/editing/caret.rs` |
 | NC-E005 | Mouse selection (click, drag, double, triple) | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Word/line selection rules | `crates/core/tests/editing/mouse.rs` |
-| NC-E006 | Word wrap toggle | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Soft wrap; no bytes changed | `crates/core/tests/editing/word_wrap.rs` |
+| NC-E006 | Word wrap toggle | MANDATORY | M3 | SPECIFIED | VERIFIED | Soft wrap; no bytes changed | `crates/core/tests/editing/word_wrap.rs`, `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/settings.rs` |
 | NC-E007 | Tabs & indentation behavior | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Tab stop width, insertion | `crates/core/tests/editing/tabs.rs` |
 | NC-E008 | Unicode: astral, combining, emoji, surrogate safety | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | No broken surrogate pairs on edit | `crates/core/tests/editing/unicode.rs` |
 | NC-E009 | Drag & drop text | OPTIONAL | M3 | SPECIFIED | IMPLEMENTED | Internal drag; drop target | `crates/core/tests/editing/dnd.rs` |
@@ -145,9 +145,9 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-P001 | App theme (system/light/dark) | MANDATORY | M8 | SPECIFIED | IN_PROGRESS | Dropdown shown; applies the theme | `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/theme.rs` |
+| NC-P001 | App theme (system/light/dark) | MANDATORY | M8 | SPECIFIED | VERIFIED | Dropdown shown; applies the theme | `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/theme.rs` |
 | NC-P002 | Font family & size | MANDATORY | M8 | SPECIFIED | IN_PROGRESS | Dropdown shown; applies to the editor | `crates/platform/src/ui/settings.rs` |
-| NC-P003 | Word-wrap preference persistence | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Survives restart | `tests/session/settings.rs` |
+| NC-P003 | Word-wrap preference persistence | MANDATORY | M8 | SPECIFIED | VERIFIED | Survives restart | `crates/platform/src/ui/settings.rs` |
 | NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Squiggle, suggestions | `tests/settings/spell.rs` |
 | NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Toolbar hides when off | `tests/settings/formatting_toggle.rs` |
 | NC-P006 | High-DPI scaling | MANDATORY | M2/M8 | SPECIFIED | IMPLEMENTED | Layout follows the display scale | egui runtime |
@@ -173,13 +173,13 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 34 |
-| IN_PROGRESS | 2 |
-| NOT_STARTED | 12 |
-| VERIFIED | 19 |
+| IMPLEMENTED | 33 |
+| IN_PROGRESS | 1 |
+| NOT_STARTED | 11 |
+| VERIFIED | 22 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Nineteen rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Twenty-two rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -261,22 +261,52 @@ the same feature behaved differently depending on where it was clicked; both now
 route through `CommandId`, and the table glyph — previously inert — fires
 `cmd.md.table`.
 
-**M8 has begun with the theme, which was the one setting with nothing behind it.**
-`Settings ▸ App theme` wrote `shell.theme` and no code read it, so the dropdown could
-be set and the window would not change — the settings-page shape of the bug
-`LANDED_MILESTONE` exists to catch for commands. The colours now live in a `Palette`
-value (`crates/platform/src/ui/theme.rs`) that is resolved from the choice and what
-the system reports, and the module's colour *constants are deleted*, because a
-leftover constant is a widget that quietly stays dark in a light window and no test
-that paints the surfaces it happens to care about would notice. `appearance.rs`
-asserts the result on painted frames: a frame the shell chose light contains the
-light chrome and page colours and **none** of the dark palette's, an explicit choice
-holds still while the system changes underneath it, and `Use system setting` moves the
-open window when the system does — the last of these on one `egui` context across two
-frames, because the criterion is about the window that is already up. `NC-P001` stays
-`IN_PROGRESS`: its criterion is met by those tests, but the choice does not survive a
-restart yet, and M8's exit criterion is about restarts, so the row and `NC-P003` move
-together once settings are stored.
+**How M8's first rows are verified.** `Settings ▸ App theme` began as a control with
+nothing behind it: it wrote `shell.theme` and no code read it, so choosing Light
+recoloured nothing. That is the settings-page shape of the bug `LANDED_MILESTONE`
+exists to catch for commands, and it is why M8's rows are tested at two ends — the
+choice must change what is painted, *and* the same must be true after a restart.
+
+The colours moved from module constants into a `Palette` value
+(`crates/platform/src/ui/theme.rs`) resolved from the choice plus what the system
+reports, and the constants were **deleted**: a leftover `theme::TEXT` compiles and
+paints one widget dark in a light window forever, and a suite that paints the surfaces
+it cares about would never notice. `appearance.rs` then asserts the outcome — a frame
+chosen light contains the light chrome and page colours and *none* of the dark
+palette's; an explicit choice holds still while the system moves underneath it; `Use
+system setting` recolours the window that is already open, tested across two frames of
+one `egui` context because that is what "already open" means.
+
+`settings.rs` is the store: `key value` lines with a version header, like the session
+file, written a frame after a change and read back at startup. It keeps an unknown key
+verbatim rather than dropping it, so an older build cannot erase a newer one's
+settings, and it refuses a header it does not recognise instead of applying half of it.
+Its table test moves **one setting at a time** through a write and a restart, so a
+setting that is stored but never restored — or restored but never stored — fails as
+itself rather than hiding behind the five that work. `NC-P001` and `NC-P003` are
+`VERIFIED` on that; `NC-P002` stays `IN_PROGRESS` because the font dropdown still does
+not reach the editor.
+
+**Word wrap was a check mark over an editor that wrapped either way.** Turning it off
+asked the text edit for an infinite width, which `egui` 0.36 clamps back to the panel's
+width before laying anything out — and a scroll area does not help either, because 0.36
+tells a scroll area's inner UI to prefer wrapping to showing a horizontal bar. So the
+flag flipped and the document reflowed identically in both states. The editor now
+measures its widest line and hands it to the widget as a floor, which is the one input
+that outranks the clamp, and the horizontal bar comes from the scroll area around it.
+`appearance.rs` proves both directions from the painted galley: wrapped, a long line
+breaks into rows inside the window; unwrapped, it stays one row and runs past it. That
+is also `NC-E006`'s shell half, which is why its row moved: its suite had always
+settled the layout arithmetic and never the toggle.
+
+**A gap no row covers: the editor cannot scroll.** Measured while proving word wrap,
+from a painted frame: a document longer than the window keeps its first line at the top
+and its caret off screen, because the text edit sits directly in the panel with nothing
+scrolling it. Every section of the matrix assumes a reachable document, and none of them
+names scrolling — the capture cannot show a scrollbar either, so there is nothing to
+write an acceptance row *from*. It is recorded here rather than invented as a row, and
+the horizontal half of it is now in place (`View ▸ Word wrap` off gives a bar); the
+vertical half and keeping the caret in view are unbuilt.
 
 **NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
 item set", but `docs/ui-reference.md` documents no context menu anywhere — no
@@ -289,10 +319,11 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 
 > The engines (`nc-core`, `nc-textproc`) and the shell's core surfaces are
 > `IMPLEMENTED`, and the Find/Replace, Go-to, and Open/Save-as dialogs are built
-> on them, with the unsaved-changes, overwrite, and unrepresentable prompts. M6
-> core — tab switching, Save all, duplicate-open identity (NC-F012), New
-> window, session restore (NC-F011), and recent files (NC-F010) — is in place,
-> and M6's behaviour criteria are now `VERIFIED` against a dedicated acceptance
-> suite. The page-setup surface, the outside-change prompt, Markdown, and the
-> remaining session work are still ahead; the visual M6 criteria await a display,
-> and the tab context menu awaits a reference decision.
+> on them, with the unsaved-changes, overwrite, and unrepresentable prompts. M6's
+> behaviour criteria are `VERIFIED` against a dedicated acceptance suite, and so is
+> all of M7 — every Markdown command, the source/rendered view pair, and the
+> serialization the file is written with. M8 has begun: the theme applies and
+> survives a restart, and settings are stored. Still ahead are the font reaching the
+> editor (`NC-P002`), spell check, the formatting toolbar's hide, accessibility
+> evidence, printing and page setup, and the outside-change prompt. The visual
+> criteria await a display, and the tab context menu awaits a reference decision.

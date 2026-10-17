@@ -462,6 +462,62 @@ fn the_rendered_view_indents_a_nested_item_it_cannot_show_otherwise() {
     );
 }
 
+// ---- M8: word wrap, seen as painted -----------------------------------------
+
+/// How the editor laid out a document: the rows its galley broke it into, and how
+/// wide that galley wants to be.
+fn editor_layout(output: &egui::FullOutput, needle: &str) -> (usize, f32) {
+    output
+        .shapes
+        .iter()
+        .find_map(|clipped| match &clipped.shape {
+            Shape::Text(shape) if shape.galley.text().contains(needle) => {
+                Some((shape.galley.rows.len(), shape.galley.rect.width()))
+            }
+            _ => None,
+        })
+        .expect("the document is painted")
+}
+
+/// A shell holding one long line, wrapped or not.
+fn long_line(wrap: bool) -> Shell {
+    let mut shell = Shell::new();
+    shell.word_wrap = wrap;
+    let text = "wrap this line for me  ".repeat(30);
+    shell
+        .active_tab_mut()
+        .expect("a tab")
+        .document_mut()
+        .insert_str(&text);
+    shell
+}
+
+#[test]
+fn word_wrap_breaks_a_long_line_inside_the_window_and_turning_it_off_does_not() {
+    // `NC-P003`'s row is about the *preference* surviving a restart, which
+    // `settings.rs` settles; this settles the half M8's exit criterion adds — that
+    // what survives is a behaviour and not a stored word.
+    let (rows, width) = editor_layout(&paint(&mut long_line(true)), "wrap");
+    assert!(
+        rows > 1,
+        "wrapped, a line longer than the window is broken across rows: {rows} rows"
+    );
+    assert!(
+        width <= 1180.0,
+        "and none of it runs past the window it was fitted to: {width}"
+    );
+
+    let (rows, width) = editor_layout(&paint(&mut long_line(false)), "wrap");
+    assert_eq!(
+        rows, 1,
+        "unwrapped, the line stays one line however long it is"
+    );
+    assert!(
+        width > 1180.0,
+        "and it runs past the window, which is what turning wrapping off is for: {width}"
+    );
+}
+
 // ---- NC-P001 — "Dropdown shown; applies the theme" --------------------------
 //
 // The dropdown's presence is the easy half to read off a screenshot and the hard

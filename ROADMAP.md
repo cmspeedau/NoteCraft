@@ -320,15 +320,31 @@ matrix waiting on a capture.
 
 ### M8 — Settings and desktop integration
 
-Status: IN_PROGRESS — the first thing landed is the one setting that was a control
-with nothing behind it. `Settings ▸ App theme` wrote a field that no code read; the
-colours are now a `Palette` value resolved per frame from the choice plus what the
+Status: IN_PROGRESS — three rows are verified and the exit criterion is the thing
+being tested rather than the thing left for later.
+
+*The theme applies* (`NC-P001`). `Settings ▸ App theme` wrote a field no code read;
+the colours are now a `Palette` value resolved per frame from the choice plus what the
 system reports, the colour constants are gone so a missed site is a compile error
 rather than a widget left dark, and painted frames prove a light window contains no
-dark-palette colour and that an explicit choice ignores the system while `Use system
-setting` follows it. `NC-P001`'s "applies" half is therefore tested; what M8 turns on
-next is its exit criterion — each setting persisting and producing the same behaviour
-after a restart, which is what makes `NC-P003` the row the other settings join.
+dark-palette colour, that an explicit choice ignores the system, and that `Use system
+setting` recolours the window that is already open.
+
+*Settings persist* (`NC-P003`, and `NC-P001` with it). A `settings` file beside the
+session file is written a frame after a change and read at startup; a table test moves
+one setting at a time through a write and a restart, so a setting that is stored but
+never restored fails as itself.
+
+*Word wrap was a check mark over an editor that wrapped either way* — the flag is now
+honoured in both directions and proven from the painted layout, which also settles the
+shell half of `NC-E006`.
+
+What remains is the rest of the settings the capture shows, and the honest list starts
+with the font: `NC-P002`'s dropdown still does not reach the editor, and the four
+family names it offers are Windows fonts this build does not carry, so "applies to the
+editor" needs a decision about what the list should hold. Spell check, the formatting
+toolbar's hide, accessibility evidence, file associations and printing are the rest,
+and page setup (§8) is the captured screen that printing needs first.
 
 - Font family and size.
 - Word wrap and view preferences.

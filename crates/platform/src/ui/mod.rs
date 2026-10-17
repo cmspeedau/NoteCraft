@@ -5,6 +5,7 @@ mod actions;
 /// shell paints, which live in private state.
 #[cfg(test)]
 mod appearance;
+mod config;
 mod dialogs;
 mod editor;
 mod input;
@@ -37,6 +38,13 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
     let mut shell = initial_shell(&options.open_paths);
     seed_documents(&mut shell, &options.open_paths);
 
+    // Then the settings, on top of whichever shell this start produced: a session
+    // restored from the previous run carries documents, and the settings file says
+    // what those documents are shown with. Read once, at the point where a change to
+    // disk cannot race the run that is starting.
+    let settings = settings::Store::open();
+    settings.apply_to(&mut shell);
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(options.title)
@@ -57,6 +65,7 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
             Ok(Box::new(ShellApp {
                 shell,
                 windows: windows::Windows::new(),
+                settings,
             }))
         }),
     )
@@ -105,6 +114,9 @@ struct ShellApp {
     shell: Shell,
     /// The extra windows `File ▸ New window` has opened, beyond the main one.
     windows: windows::Windows,
+    /// The settings file, and what is on it. The main window owns it: one file per
+    /// run, so an extra window changing a setting cannot fight the file.
+    settings: settings::Store,
 }
 
 impl eframe::App for ShellApp {
@@ -115,6 +127,10 @@ impl eframe::App for ShellApp {
         // frame after that.
         self.windows.create_requested(&mut self.shell);
         self.windows.show(&ui.ctx().clone());
+        // Settings are written after the frame that changed them has been drawn, so
+        // the user sees the change first and the file catches up. A window sitting
+        // still compares equal and writes nothing.
+        self.settings.sync(&self.shell);
     }
 
     /// Records the session on shutdown, so the next start reopens these

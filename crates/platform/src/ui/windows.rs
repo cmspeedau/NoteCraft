@@ -15,6 +15,7 @@
 use egui::{Context, Id, ViewportBuilder, ViewportId};
 
 use crate::ui::draw;
+use crate::ui::settings::Settings;
 use crate::ui::state::Shell;
 
 /// The set of extra windows the application has opened.
@@ -51,12 +52,21 @@ impl Windows {
     /// window's and each extra window's own. Called before [`show`](Self::show)
     /// so a new window is drawn the frame it was asked for.
     pub fn create_requested(&mut self, main: &mut Shell) {
-        let mut requested = std::mem::take(&mut main.new_window_request);
-        for window in &mut self.open {
-            requested |= std::mem::take(&mut window.shell.new_window_request);
+        // The new window opens as the window that asked for it is. Settings belong
+        // to a window, so a New window fired in one that is light, word-wrapped and
+        // zoomed to 130% is a window that starts the same way; inheriting the
+        // defaults instead would make the command lose the user's own setup.
+        let mut inherited: Option<Settings> = None;
+        if std::mem::take(&mut main.new_window_request) {
+            inherited = Some(Settings::of(main));
         }
-        if requested {
-            self.open.push(Window::new(self.next_number));
+        for window in &mut self.open {
+            if std::mem::take(&mut window.shell.new_window_request) && inherited.is_none() {
+                inherited = Some(Settings::of(&window.shell));
+            }
+        }
+        if let Some(settings) = inherited {
+            self.open.push(Window::new(self.next_number, settings));
             self.next_number += 1;
         }
     }
@@ -106,12 +116,14 @@ struct Window {
 }
 
 impl Window {
-    /// A window `number` with one empty untitled document.
-    fn new(number: u64) -> Self {
+    /// A window `number` with one empty untitled document, shown with `settings`.
+    fn new(number: u64, settings: Settings) -> Self {
+        let mut shell = Shell::new();
+        settings.apply_to(&mut shell);
         Self {
             id: ViewportId(Id::new(("notecraft_window", number))),
             title: format!("NoteCraft — Window {number}"),
-            shell: Shell::new(),
+            shell,
         }
     }
 }
@@ -119,7 +131,7 @@ impl Window {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::state::DocKind;
+    use crate::ui::state::{AppTheme, DocKind, OpenBehavior};
 
     #[test]
     fn a_request_creates_one_window_with_its_own_shell() {
@@ -133,6 +145,38 @@ mod tests {
         assert!(!main.new_window_request, "the request was consumed");
         // The new window starts with its own single untitled document.
         assert_eq!(windows.open[0].shell.tabs.len(), 1);
+    }
+
+    #[test]
+    fn a_new_window_opens_with_the_settings_of_the_window_it_came_from() {
+        // The settings belong to a window, so the new one has to start as the window
+        // that asked for it looks. Inheriting the build's defaults instead would make
+        // `File ▸ New window` throw away the theme, the zoom and the wrap the user
+        // chose — and after M8, it would throw away the ones they set days ago.
+        let mut windows = Windows::new();
+        let mut main = Shell::new();
+        main.theme = AppTheme::Light;
+        main.zoom = 130;
+        main.word_wrap = false;
+        main.opening = OpenBehavior::NewWindow;
+
+        main.new_window_request = true;
+        windows.create_requested(&mut main);
+
+        let shell = &windows.open[0].shell;
+        assert_eq!(
+            shell.theme,
+            AppTheme::Light,
+            "the window opened light, as asked"
+        );
+        assert_eq!(shell.zoom, 130);
+        assert!(!shell.word_wrap);
+        assert_eq!(shell.opening, OpenBehavior::NewWindow);
+        assert_eq!(
+            shell.tabs.len(),
+            1,
+            "and still starts with one empty document"
+        );
     }
 
     #[test]

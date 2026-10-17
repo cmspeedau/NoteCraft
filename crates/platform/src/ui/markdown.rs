@@ -9,12 +9,14 @@
 //! tests rather than the engine's own unit tests one level up — they prove a user
 //! can actually cause the bytes, not only that the engine can compute them.
 //!
-//! What it cannot settle is the third part of that criterion. `cmd.view.md_source`
-//! and `cmd.view.md_formatted` set `Shell::formatted_view`, and nothing in the
-//! editor reads it: the toggle moves a check mark and renders the same text either
-//! way, so `NC-M002` ("No content/selection loss") has nothing to test yet. That
-//! is also why `LANDED_MILESTONE` stays at 6 — the wiring guard counts a dispatch
-//! arm as wired, and bumping it would have that test certify an inert command.
+//! The third part of that criterion, the view transition, is settled here too — and
+//! the order in which it happened is worth keeping. For most of M7 the two
+//! `cmd.view.md_*` commands set a flag nothing read, so `NC-M002` ("No
+//! content/selection loss") had nothing to test and `LANDED_MILESTONE` had to stay at
+//! 6: the wiring guard counts a dispatch arm as wired, so raising it would have that
+//! one test certify an inert command. The editor honours the flag now, which is what
+//! makes the transition tests below possible; `appearance.rs` adds what the rendered
+//! view is made of.
 
 use std::path::PathBuf;
 
