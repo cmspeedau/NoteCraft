@@ -713,6 +713,32 @@ fn a_caret_that_is_already_visible_leaves_the_view_alone() {
 }
 
 #[test]
+fn a_command_that_names_a_wide_line_scrolls_the_caret_in_horizontally() {
+    // The follow-scroll is pinned from the bottom (the caret at the end of a long
+    // document) but never from the right. A wide unwrapped line reaches the right
+    // edge every time Find or Go to line names a column past it, so the horizontal
+    // half is a real path with nothing guarding it. Wrap off, one line wider than
+    // the window: the caret a command parks at the very end has to be brought back
+    // inside from the right, not just kept down from the bottom.
+    let mut shell = long_line(false);
+    let end = shell.active_tab().expect("a tab").text().chars().count();
+    assert!(end > 500, "the test needs a line wider than the window");
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    shell.pending_selection = Some((end, end));
+    let output = frames(&ctx, &mut shell, 3);
+
+    let caret = caret_on_screen(&output, "wrap", end);
+    assert!(
+        on_screen(caret),
+        "the caret at the end of a wide line is off the right edge at x={}",
+        caret.x
+    );
+}
+
+#[test]
 fn typing_past_the_bottom_of_the_window_keeps_the_caret_in_view() {
     // This half is `egui`'s own work: a text edit asks for its caret to be kept in view
     // whenever the caret moves *inside* it, by calling `Ui::scroll_to_rect`. What was
