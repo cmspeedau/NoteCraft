@@ -1384,6 +1384,160 @@ mod tests {
         assert!(shell.pending_selection.is_none());
     }
 
+    // The Find/Replace and clipboard clauses the engine suites settled but no
+    // shell test had reached from a user's command: that Replace All is undone in
+    // one step, that Match case / Whole word actually steer a search, that a
+    // search stops at the edge when wrapping is off, and that the shell's
+    // `egui`-backed clipboard carries the selection as CRLF.
+
+    /// The text the context last asked the windowing layer to copy, if any.
+    ///
+    /// `egui` 0.36 does not hold clipboard text on the output; a copy queues an
+    /// `OutputCommand::CopyText` the backend drains next frame — the real path a
+    /// `Ctrl+C` takes out of the shell.
+    fn copied_text(ctx: &egui::Context) -> Option<String> {
+        ctx.output(|output| {
+            output.commands.iter().find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+        })
+    }
+
+    #[test]
+    fn copy_puts_the_selection_on_the_clipboard_as_crlf() {
+        // NC-E002: the engine shows a multi-line selection copies as CRLF; nothing
+        // yet showed the shell's `egui`-backed clipboard doing the same, which is
+        // the copy a user actually gets out of the window.
+        let mut shell = shell_with("one\ntwo");
+        shell.tabs[0].document_mut().select(0, 7);
+        let ctx = egui::Context::default();
+
+        copy(&mut shell, &ctx);
+
+        assert_eq!(
+            copied_text(&ctx).as_deref(),
+            Some("one\r\ntwo"),
+            "the line break reaches the clipboard as CRLF, as Windows expects"
+        );
+    }
+
+    #[test]
+    fn copy_without_a_selection_sends_nothing_to_the_clipboard() {
+        let mut shell = shell_with("hello");
+        let ctx = egui::Context::default();
+
+        copy(&mut shell, &ctx);
+
+        assert!(
+            copied_text(&ctx).is_none(),
+            "a copy with nothing selected queues no clipboard write"
+        );
+    }
+
+    #[test]
+    fn cut_puts_the_selection_on_the_clipboard_and_removes_it() {
+        let mut shell = shell_with("one\ntwo");
+        shell.tabs[0].document_mut().select(0, 3); // "one"
+        let ctx = egui::Context::default();
+
+        cut(&mut shell, &ctx);
+
+        assert_eq!(copied_text(&ctx).as_deref(), Some("one"));
+        assert_eq!(shell.tabs[0].text(), "\ntwo", "the cut text is gone");
+        assert!(shell.tabs[0].is_dirty(), "cutting is an edit");
+        assert!(
+            !shell.availability().has_selection,
+            "nothing is left selected, so Cut/Copy grey back out"
+        );
+    }
+
+    #[test]
+    fn replace_all_is_a_single_undo_step_from_the_shell() {
+        // NC-S003: "Undo as a single action". The engine shows `replace_ranges` is
+        // one step; this shows the shell's Replace All is too — one Ctrl+Z brings
+        // every match back, not one per replacement.
+        let mut shell = shell_edited("one two one");
+        shell.find.query = "one".to_owned();
+        shell.find.replacement = "1".to_owned();
+        let before = shell.tabs[0].file.document().undo_depth();
+
+        replace_all(&mut shell);
+
+        assert_eq!(shell.tabs[0].text(), "1 two 1");
+        assert_eq!(
+            shell.tabs[0].file.document().undo_depth(),
+            before + 1,
+            "however many matches, they are one step"
+        );
+
+        undo(&mut shell);
+        assert_eq!(
+            shell.tabs[0].text(),
+            "one two one",
+            "one undo brings them all back"
+        );
+    }
+
+    #[test]
+    fn a_search_with_match_case_only_finds_the_written_case() {
+        // NC-S004: the dialog's Match case option, reaching a search through
+        // shell.find.options. Off is the default and matches either case; on, only
+        // the exact case does, and a needle that then matches nothing says so.
+        let mut shell = shell_with("One one ONE");
+        shell.find.query = "one".to_owned();
+        shell.find.options.match_case = true;
+
+        search_step(&mut shell, Direction::Forward);
+
+        assert_eq!(
+            shell.pending_selection,
+            Some((7, 4)),
+            "case-sensitive, only the lowercase word matches"
+        );
+
+        shell.find.query = "onE".to_owned();
+        shell.pending_selection = None;
+        search_step(&mut shell, Direction::Forward);
+        assert!(shell.pending_selection.is_none());
+        assert!(shell.notification.is_some(), "it reports finding nothing");
+    }
+
+    #[test]
+    fn a_search_with_whole_word_skips_matches_inside_a_word() {
+        // NC-S004's other option: Whole word only. "one" must skip the "one"
+        // buried in "onetwo" and land on the standalone word.
+        let mut shell = shell_with("onetwo one");
+        shell.find.query = "one".to_owned();
+        shell.find.options.whole_word = true;
+
+        search_step(&mut shell, Direction::Forward);
+
+        assert_eq!(shell.pending_selection, Some((10, 7)));
+    }
+
+    #[test]
+    fn a_search_that_reaches_the_end_without_wrapping_says_so() {
+        // NC-S005's untested half: with wrapping turned off, a search that runs
+        // past the last match stops at the edge and says so, rather than silently
+        // wrapping or claiming the needle is absent.
+        let mut shell = shell_with("one two");
+        shell.find.query = "one".to_owned();
+        shell.find.wraps = false;
+        shell.caret = 4; // past the only match
+
+        search_step(&mut shell, Direction::Forward);
+
+        assert_eq!(
+            shell.notification.as_deref(),
+            Some("Reached the end of the document")
+        );
+        assert!(
+            shell.pending_selection.is_none(),
+            "the caret did not wrap back to the match"
+        );
+    }
+
     #[test]
     fn byte_and_char_offsets_agree_across_multibyte_text() {
         let text = "aé€b";

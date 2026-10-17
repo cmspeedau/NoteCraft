@@ -137,8 +137,19 @@ Status: IN_PROGRESS — `crates/core` (`nc-core`) is the text engine:
 implementation, mouse selection rules, drag and drop, and overwrite mode, tied
 together by `Document`. Scrolling is no longer outstanding — the shell scrolls
 on both axes and keeps the caret in view, which landed with M8 and is recorded
-there. Outstanding: IME input, and rendering of control characters and
-whitespace (which belong with the viewport).
+there. The Edit rows verified against this engine (`NC-E001` undo grouping,
+`NC-E002` clipboard and its CRLF conversion, `NC-E003` select all, `NC-E008`
+surrogate safety) are pinned at both ends — the `nc-core` suites and a shell test
+that reaches the command. Three rows stay `IMPLEMENTED` for a reason worth
+recording: `NC-E004` caret navigation, `NC-E005` mouse selection and `NC-E007`
+tabs are modelled and tested in `nc-core`, but the live editor is an
+`egui::TextEdit` over the `DocBuffer` adapter, which handles arrow keys,
+click/drag/double/triple-click and focus **natively** — the `nc-core` rule
+functions are called nowhere in that path, and the two models disagree (an
+`nc-core` triple-click takes the line terminator, egui's does not). Wiring the
+editor to the engine's rules, so those tests describe the running program, is an
+open decision, not a gap a test can close. Outstanding: IME input, and rendering
+of control characters and whitespace (which belong with the viewport).
 
 ### M4 — File I/O and data integrity
 
@@ -201,9 +212,13 @@ dialog; and the status-notification line, all over `nc-textproc::search`. The
 shell now dispatches every implemented command's accelerator from the registry
 (`crates/platform/src/ui/input.rs`) and routes undo/redo, select all, delete, and
 the F5 time/date insertion through the document; cut/copy/paste reuse `egui`'s
-clipboard events, with the menu entries requesting the same. Outstanding:
-end-to-end verification of the commands and the search boundary cases. The F5
-insertion writes UTC (a recorded limitation, NC-S007).
+clipboard events, with the menu entries requesting the same. That verification has now
+landed: every search and edit command is driven from its accelerator through
+`actions::run` and checked against the document (see *How the Edit and Search rows are
+verified* in `docs/feature-matrix.md`), the boundary cases included — the no-wrap edge,
+the wrap notice, Replace All undone in one step, the option set reaching the search, and
+the shell clipboard carrying CRLF. The F5 insertion writes UTC (a recorded limitation,
+NC-S007).
 
 ### M6 — Tabs and application lifecycle
 

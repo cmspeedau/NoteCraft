@@ -79,28 +79,28 @@ library exposes no local time zone and the project carries no time-zone database
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-E001 | Undo / Redo multilevel | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Undo depth & grouping | `crates/core/tests/editing/undo.rs` |
-| NC-E002 | Cut / Copy / Paste | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Clipboard text + EOL conversion | `crates/core/tests/editing/clipboard.rs` |
-| NC-E003 | Select all (Ctrl+A) | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Whole-document selection | `crates/core/tests/keyboard/select_all.rs` |
+| NC-E001 | Undo / Redo multilevel | MANDATORY | M3 | SPECIFIED | VERIFIED | Undo depth & grouping | `crates/core/tests/editing/undo.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-E002 | Cut / Copy / Paste | MANDATORY | M3 | SPECIFIED | VERIFIED | Clipboard text + EOL conversion | `crates/core/tests/editing/clipboard.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-E003 | Select all (Ctrl+A) | MANDATORY | M3 | SPECIFIED | VERIFIED | Whole-document selection | `crates/core/tests/keyboard/select_all.rs`, `crates/platform/src/ui/actions.rs` |
 | NC-E004 | Caret navigation | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Word/line/paragraph boundaries | `crates/core/tests/editing/caret.rs` |
 | NC-E005 | Mouse selection (click, drag, double, triple) | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Word/line selection rules | `crates/core/tests/editing/mouse.rs` |
 | NC-E006 | Word wrap toggle | MANDATORY | M3 | SPECIFIED | VERIFIED | Soft wrap; no bytes changed | `crates/core/tests/editing/word_wrap.rs`, `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/settings.rs` |
 | NC-E007 | Tabs & indentation behavior | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | Tab stop width, insertion | `crates/core/tests/editing/tabs.rs` |
-| NC-E008 | Unicode: astral, combining, emoji, surrogate safety | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | No broken surrogate pairs on edit | `crates/core/tests/editing/unicode.rs` |
+| NC-E008 | Unicode: astral, combining, emoji, surrogate safety | MANDATORY | M3 | SPECIFIED | VERIFIED | No broken surrogate pairs on edit | `crates/core/tests/editing/unicode.rs`, `crates/platform/src/ui/editor.rs` |
 | NC-E009 | Drag & drop text | OPTIONAL | M3 | SPECIFIED | IMPLEMENTED | Internal drag; drop target | `crates/core/tests/editing/dnd.rs` |
-| NC-E010 | Status bar line/column calculation | MANDATORY | M5 | SPECIFIED | IMPLEMENTED | 1-based line/col | `crates/platform/src/ui/editor.rs` |
+| NC-E010 | Status bar line/column calculation | MANDATORY | M5 | SPECIFIED | VERIFIED | 1-based line/col | `crates/platform/src/ui/editor.rs` |
 
 ## C. Find / replace / navigation
 
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NC-S001 | Find (Ctrl+F) | MANDATORY | M5 | SPECIFIED | IMPLEMENTED | Find dialog (§5) | `crates/platform/src/ui/dialogs.rs` |
-| NC-S002 | Find next / previous (F3 / Shift+F3) | MANDATORY | M5 | SPECIFIED | IMPLEMENTED | Direction + wrap semantics (§5) | `crates/textproc/tests/editing/find.rs` |
-| NC-S003 | Replace / Replace All (Ctrl+H) | MANDATORY | M5 | SPECIFIED | IMPLEMENTED | Undo as a single action (§5) | `crates/textproc/tests/editing/replace.rs` |
-| NC-S004 | Search options (match case, whole word) | MANDATORY | M5 | SPECIFIED | IMPLEMENTED | Option set (§5) | `crates/textproc/tests/editing/find_options.rs` |
-| NC-S005 | Wrap-around + boundary notices | MANDATORY | M5 | SPECIFIED | IMPLEMENTED | Wrap option + status notices (§5) | `crates/textproc/tests/editing/find_boundary.rs` |
-| NC-S006 | Go to line (Ctrl+G) | OPTIONAL | M5 | SPECIFIED | IMPLEMENTED | Dialog + clamp behavior (§6) | `crates/textproc/tests/editing/go_to.rs` |
-| NC-S007 | Insert date/time (F5) | OPTIONAL | M5 | SPECIFIED | IMPLEMENTED | Format string | `crates/textproc/tests/editing/time_date.rs` |
+| NC-S001 | Find (Ctrl+F) | MANDATORY | M5 | SPECIFIED | VERIFIED | Find dialog (§5) | `crates/platform/src/ui/dialogs.rs`, `crates/platform/src/ui/mod.rs` |
+| NC-S002 | Find next / previous (F3 / Shift+F3) | MANDATORY | M5 | SPECIFIED | VERIFIED | Direction + wrap semantics (§5) | `crates/textproc/tests/editing/find.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-S003 | Replace / Replace All (Ctrl+H) | MANDATORY | M5 | SPECIFIED | VERIFIED | Undo as a single action (§5) | `crates/textproc/tests/editing/replace.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-S004 | Search options (match case, whole word) | MANDATORY | M5 | SPECIFIED | VERIFIED | Option set (§5) | `crates/textproc/tests/editing/find_options.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-S005 | Wrap-around + boundary notices | MANDATORY | M5 | SPECIFIED | VERIFIED | Wrap option + status notices (§5) | `crates/textproc/tests/editing/find_boundary.rs`, `crates/platform/src/ui/actions.rs` |
+| NC-S006 | Go to line (Ctrl+G) | OPTIONAL | M5 | SPECIFIED | VERIFIED | Dialog + clamp behavior (§6) | `crates/textproc/tests/editing/go_to.rs`, `crates/platform/src/ui/actions.rs`, `crates/platform/src/ui/mod.rs` |
+| NC-S007 | Insert date/time (F5) | OPTIONAL | M5 | SPECIFIED | VERIFIED | Format string | `crates/textproc/tests/editing/time_date.rs`, `crates/platform/src/ui/mod.rs` |
 
 ## D. Encoding & file I/O data integrity
 
@@ -179,7 +179,7 @@ library exposes no local time zone and the project carries no time-zone database
 | VERIFIED | 26 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Thirty rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Forty-two rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -233,6 +233,41 @@ outcome a user reaches; flipping the new-document line ending to LF fails the te
 rows need no window and so, unlike the three `IMPLEMENTED` rows above, they can be settled
 here: the dialog is a `egui` surface the shell draws itself, not the operating system's
 picker.
+
+**How the Edit and Search rows are verified.** The Find, Replace, Go-to, date/time and
+clipboard rows had long been settled at the engine — `nc-textproc`'s search suites and
+`nc-core`'s undo, clipboard and select-all suites cover *direction and wrap, the option
+set, clamping, undo grouping, clipboard text and its CRLF conversion* to the byte — but
+the rows still read `IMPLEMENTED` because the shell's own half had not been pinned. It
+mostly already was, spread across three files rather than one: the dialogs open and
+pre-fill from the command in `mod.rs` (`ctrl_f_opens_the_find_dialog_through_the_registry`,
+`the_go_to_command_pre_fills_the_current_line`, `f5_inserts_the_time_and_date_at_the_caret`),
+the search steps and replaces in `actions.rs`, and each accelerator is fixed by the
+registry's lookup table. Reaching the acceptance text still needed four new shell tests in
+`actions.rs`: that Replace All is undone in **one** `Ctrl+Z` (`replace_all_is_a_single_undo_step_from_the_shell`,
+which the engine already promised but no shell test had checked), that *Match case* and
+*Whole word* steer a search that reaches the document, and that a search with wrapping
+**off** stops at the edge and says so rather than wrapping silently. The clipboard joined
+them: the engine proves a multi-line selection copies as CRLF, but only
+`copy_puts_the_selection_on_the_clipboard_as_crlf` proves the shell's `egui`-backed
+clipboard — the one a `Ctrl+C` actually reaches — does the same. Each new test was
+mutation-checked: ignoring the options, always wrapping, replacing one match per step, and
+stopping the clipboard's CRLF conversion each fail their test.
+
+`NC-E004`, `NC-E005` and `NC-E007` deliberately stay `IMPLEMENTED`. Their `nc-core`
+caret, mouse and tab models are complete and tested in isolation, but the running editor
+is an `egui::TextEdit` fed by the `DocBuffer` adapter in `editor.rs`, and egui handles
+arrow keys, click/drag/double/triple-click and focus *natively*; the `nc-core` rule
+functions are called nowhere in the live path, and the two models even disagree (a
+`nc-core` triple-click selects the line *with* its terminator, egui's does not). Promoting
+those rows on their engine tests would read the specification off a model the program does
+not run — the exact inflation this note exists to prevent — so they wait for the day the
+shell is made to use the engine's rules, which is a feature decision, not a test.
+`NC-E010` does move: its line/column is computed by the shell's own `line_column` in
+`editor.rs`, not by `nc-core`'s unused `status_position`, and `caret_position_is_one_based`
+tests that live function directly. `NC-E008` moves because the buffer adapter edits the
+document at character indices across multi-byte text (`the_buffer_edits_the_document_at_character_indices`)
+and the edit path keeps grapheme clusters whole under undo/redo.
 
 **How M7's rows are verified.** `nc-markdown`'s own suite
 (`crates/markdown/tests/markdown/…`) asserts the byte-level criteria: exact
