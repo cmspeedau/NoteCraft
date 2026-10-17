@@ -32,15 +32,15 @@ configuration directory on exit and reopens them on the next start when no files
 are named on the command line (`crates/platform/src/ui/session.rs`). `File ▸
 Recent` lists the documents opened so far, newest first, and choosing one opens
 it through the same path as `File ▸ Open`, so a document already open is focused
-rather than opened twice (`NC-F010`, `NC-F012`). M7 is landed except for one
-row: `nc-markdown` holds the formatting model, the shell dispatches every `cmd.md.*`
-and `cmd.format.*` command against it, and `View ▸ Markdown` really does switch a
-document between its source and a rendering of it — so bold, italic, strikethrough,
-headings, lists, nesting, links, tables, clear formatting and the view toggle all
-change what the user sees, from the toolbar, the menus and the shortcuts alike. What
-remains of M7 is growing an existing table, `NC-M008`'s expand semantics (see the
-verification summary). The page-setup surface and the outside-change prompt are still
-ahead. Seven M6 behaviour criteria are
+rather than opened twice (`NC-F010`, `NC-F012`). M7 is closed: `nc-markdown` holds the
+formatting model, the shell dispatches every `cmd.md.*` and `cmd.format.*` command
+against it, and `View ▸ Markdown` really does switch a document between its source and a
+rendering of it — so bold, italic, strikethrough, headings, lists, nesting, links,
+tables (writing one and growing one), clear formatting and the view toggle all change
+what the user sees, from the toolbar, the menus and the shortcuts alike. The one piece
+deliberately left undone is widening a table, which nothing in the capture would fire
+(see the verification summary). The page-setup surface and the outside-change prompt are
+still ahead. Seven M6 behaviour criteria are
 `VERIFIED` by an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the
 dirty marker by its painted shapes (`crates/platform/src/ui/appearance.rs`); the
 remaining visual criteria and the tab context menu are not — see the verification
@@ -136,7 +136,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-M005 | Headings | MANDATORY | M7 | SPECIFIED | VERIFIED | ATX output | `crates/markdown/tests/markdown/headings.rs`, `crates/platform/src/ui/markdown.rs` |
 | NC-M006 | Ordered/unordered lists + nesting | MANDATORY | M7 | SPECIFIED | VERIFIED | Nested indent correct | `crates/markdown/tests/markdown/lists.rs`, `crates/platform/src/ui/markdown.rs` |
 | NC-M007 | Hyperlinks | MANDATORY | M7 | SPECIFIED | VERIFIED | Link syntax exact | `crates/markdown/tests/markdown/links.rs`, `crates/platform/src/ui/markdown.rs` |
-| NC-M008 | Tables | MANDATORY | M7 | SPECIFIED | IMPLEMENTED | Insert/expand semantics | `crates/markdown/tests/markdown/tables.rs`, `crates/platform/src/ui/markdown.rs` |
+| NC-M008 | Tables | MANDATORY | M7 | SPECIFIED | VERIFIED | Insert/expand semantics | `crates/markdown/tests/markdown/tables.rs`, `crates/platform/src/ui/markdown.rs` |
 | NC-M009 | Clear formatting | OPTIONAL | M7 | SPECIFIED | VERIFIED | Result | `crates/markdown/tests/markdown/clear.rs`, `crates/platform/src/ui/markdown.rs` |
 | NC-M010 | Formatting participates in undo/redo | MANDATORY | M7 | SPECIFIED | VERIFIED | Single-step undo | `crates/platform/src/ui/markdown.rs` |
 | NC-M011 | Malformed / unsupported syntax preserved | MANDATORY | M7 | SPECIFIED | VERIFIED | No silent normalization | `crates/markdown/tests/markdown/malformed.rs`, `crates/platform/src/ui/markdown.rs` |
@@ -173,13 +173,13 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 35 |
+| IMPLEMENTED | 34 |
 | IN_PROGRESS | 2 |
 | NOT_STARTED | 12 |
-| VERIFIED | 18 |
+| VERIFIED | 19 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Eighteen rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Nineteen rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -224,19 +224,18 @@ else), and it settles `NC-M011` at file level: a `.md` holding a footnote, raw
 HTML, a fence and `==highlight==` opens and saves back byte for byte, CRLF
 included.
 
-One M7 row is not there, and its remaining half is blocked on a decision rather than
-on effort. `NC-M008` is `IMPLEMENTED`: inserting a table works and is tested at both
-levels, but the criterion also asks for expand semantics — growing a table that is
-already there. Nothing can be built for that half without inventing a control: the
-registry carries one table command (`cmd.md.table`, labelled *Table*, `Ctrl+Shift+T`)
-and the capture shows no table dialog and no add-row or add-column item, so there is no
-bound thing to hang the behaviour on. `Tab` in a table's last cell is what other
-editors do, but it is not in the capture and `Tab` inserts a tabulator in this editor,
-which makes it a ruling to obtain rather than a convention to follow. It waits for the
-same kind of decision `NC-T003` waits for, and §12 records the question beside the
-glyph it belongs to.
+`NC-M008`'s "expand semantics" was the last M7 row open, and it was waiting on a
+reading rather than on code: the registry carries one table command and the capture shows
+no table dialog, so there was nothing to hang growth on. The reading taken is that the
+same keystroke grows the table it lands in — one row below the caret's row, as many cells
+as the table's widest row, never between a header and its delimiter, since a row there is
+a broken table rather than a row — because that invents no control, no dialog and no key
+chord; §12 records it beside the glyph it belongs to. Growing a table *sideways* is still
+unimplemented and for the original reason: no command, menu item or shortcut anywhere in
+the capture would fire it, so it remains a decision rather than a backlog item.
 
-`NC-M002` is verified now, and why it could not be before is worth keeping.
+`NC-M002` is the row before it, and why it could not be verified sooner is
+worth keeping.
 `cmd.view.md_source` and `cmd.view.md_formatted` used to set a flag that nothing read:
 the registry declared `Toggle::FormattedView` and no command carried it, so the pair
 did not even show a check mark. A toggle with no visible effect has no content or

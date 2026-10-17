@@ -223,7 +223,12 @@ struct Line {
 }
 
 /// What a single line of source is.
-fn classify(line: &str) -> BlockKind {
+/// What kind of block a line is.
+///
+/// `pub(crate)` so `format` can ask the same question the parser answers: "is the
+/// caret inside a table" has to mean what `blocks` says it means, or the two halves
+/// of the crate disagree about the document.
+pub(crate) fn classify(line: &str) -> BlockKind {
     if line.trim().is_empty() {
         return BlockKind::Blank;
     }

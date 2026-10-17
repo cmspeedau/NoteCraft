@@ -440,6 +440,54 @@ fn the_table_command_writes_a_header_a_separator_and_the_body() {
 }
 
 #[test]
+fn the_table_command_grows_the_table_the_caret_is_in() {
+    // The registry carries one table command and the capture shows no dialog, so the
+    // document decides which job Ctrl+Shift+T is doing: grow here, write one below.
+    let mut shell = markdown("| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+    let on_two = text(&shell).find("| 1 |").unwrap();
+    shell
+        .active_tab_mut()
+        .expect("a tab")
+        .document_mut()
+        .set_caret(on_two);
+    let before = depth(&mut shell);
+
+    fire(&mut shell, "cmd.md.table");
+
+    assert_eq!(
+        text(&shell),
+        "| a | b |\n| --- | --- |\n| 1 | 2 |\n|   |   |\n",
+        "one row, under the caret's row"
+    );
+    assert_eq!(depth(&mut shell), before + 1, "and it costs one undo step");
+
+    let tab = shell.active_tab_mut().expect("a tab");
+    assert!(
+        tab.document_mut().undo(),
+        "one undo takes the row away again"
+    );
+    assert_eq!(tab.text(), "| a | b |\n| --- | --- |\n| 1 | 2 |\n");
+}
+
+#[test]
+fn the_same_command_writes_a_table_and_then_grows_the_one_it_wrote() {
+    let mut shell = markdown("");
+    fire(&mut shell, "cmd.md.table");
+    assert_eq!(
+        text(&shell).lines().count(),
+        4,
+        "header, separator and two body rows"
+    );
+
+    fire(&mut shell, "cmd.md.table");
+    assert_eq!(
+        text(&shell).lines().count(),
+        5,
+        "the caret is inside the table now, so the keystroke lengthens it"
+    );
+}
+
+#[test]
 fn inserting_a_table_leaves_the_rest_of_the_document_in_place() {
     let mut shell = markdown("before\n\nafter\n");
     let at = text(&shell).find("after").unwrap();

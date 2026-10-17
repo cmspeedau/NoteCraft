@@ -38,8 +38,8 @@ mod parse;
 mod patch;
 
 pub use format::{
-    Heading, INDENT, Inline, ListKind, clear_formatting, indent_lines, insert_link, insert_table,
-    outdent_lines, set_heading, set_list, toggle_inline,
+    Heading, INDENT, Inline, ListKind, clear_formatting, expand_table, indent_lines, insert_link,
+    insert_table, outdent_lines, set_heading, set_list, toggle_inline,
 };
 pub use parse::{Block, BlockKind, ListMarker, Span, SpanKind, blocks, spans};
 pub use patch::{Outcome, Patch, apply};

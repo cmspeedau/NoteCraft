@@ -83,9 +83,12 @@ pub fn run(shell: &mut Shell, ctx: &Context, id: CommandId) {
             nc_markdown::insert_link(text, selection, "")
         }),
         "cmd.md.table" => apply_format(shell, |text, selection| {
-            // Ask-the-user-for-a-size is a dialog this build does not have; the
-            // reference's Table item has no captured dialog either.
-            nc_markdown::insert_table(text, selection, 3, 2)
+            // One command, both halves of NC-M008: inside a table it grows a row,
+            // anywhere else it writes a new one. There is no size or direction
+            // dialog in the capture and no second command in the registry, so the
+            // document decides which job this keystroke is doing.
+            nc_markdown::expand_table(text, selection)
+                .or_else(|| nc_markdown::insert_table(text, selection, 3, 2))
         }),
         "cmd.md.clear" => apply_format(shell, nc_markdown::clear_formatting),
         "cmd.md.bullets" => format_list(shell, ListKind::Bullet),

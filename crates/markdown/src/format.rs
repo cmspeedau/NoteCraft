@@ -16,7 +16,8 @@
 //! Block commands (headings, lists, indentation) act on every line the selection
 //! touches, which is what a user means by selecting partway through a paragraph.
 
-use crate::{Outcome, Patch, Range, apply};
+use crate::parse::classify;
+use crate::{BlockKind, Outcome, Patch, Range, apply};
 
 /// How far one level of list nesting is indented.
 pub const INDENT: &str = "  ";
@@ -347,6 +348,100 @@ pub fn insert_table(text: &str, selection: Range, columns: usize, rows: usize) -
         selection: Range::caret(outcome.selection.start + 2),
         ..outcome
     })
+}
+
+/// Grows the table the selection sits in by one row — `NC-M008`'s other half.
+///
+/// Returns `None` when the selection does not touch a table row, which is how the
+/// shell knows to write a table instead of growing one. That is the whole design of
+/// the command: the registry carries one table command, and the capture has no
+/// dialog asking for a size or a direction, so the same keystroke inserts or expands
+/// and the document's own shape decides which (`docs/ui-reference.md` §12).
+///
+/// The new row goes below the selection's row — *below*, never *between a header and
+/// its separator*, because a row in that position stops being a table and becomes
+/// text. A caret in either of the first two rows therefore makes the new row the
+/// first body row. It has as many cells as the table's widest row, so a table the
+/// user has been typing into keeps its shape instead of being resized by the command
+/// that only meant to lengthen it.
+pub fn expand_table(text: &str, selection: Range) -> Option<Outcome> {
+    if !selection.is_within(text) {
+        return None;
+    }
+    let lines = all_lines(text);
+    let row = |span: Range| classify(span.slice(text)) == BlockKind::TableRow;
+    let index = lines
+        .iter()
+        .position(|line| is_around(*line, selection.start))?;
+    if !row(lines[index]) {
+        return None;
+    }
+
+    // The table is the run of table rows around the caret's line.
+    let mut first = index;
+    while first > 0 && row(lines[first - 1]) {
+        first -= 1;
+    }
+    let mut last = index;
+    while last + 1 < lines.len() && row(lines[last + 1]) {
+        last += 1;
+    }
+
+    let cells = lines[first..=last]
+        .iter()
+        .map(|line| count_cells(line.slice(text)))
+        .max()?
+        .max(1);
+    let mut added = String::from("|");
+    for _ in 0..cells {
+        added.push_str("   ");
+        added.push('|');
+    }
+
+    // Below the caret's row, clamped so the row cannot split a header from its
+    // separator; a single-row table just gets a row under itself.
+    let below = index.max(first + 1).min(last);
+    let at = lines[below].end;
+    let outcome = apply(text, &[Patch::insert(at, format!("\n{added}"))], selection);
+    Some(Outcome {
+        // The new row's first cell: past the newline and the opening "| ".
+        selection: Range::caret(at + 3),
+        ..outcome
+    })
+}
+
+/// Every line of the document, as a range over its content with the newline
+/// excluded. A document ending in a newline has one last empty line.
+fn all_lines(text: &str) -> Vec<Range> {
+    let mut lines = Vec::new();
+    let mut start = 0usize;
+    for (index, byte) in text.bytes().enumerate() {
+        if byte == b'\n' {
+            lines.push(Range { start, end: index });
+            start = index + 1;
+        }
+    }
+    lines.push(Range {
+        start,
+        end: text.len(),
+    });
+    lines
+}
+
+/// Whether `offset` sits on this line, counting its newline as part of it.
+fn is_around(line: Range, offset: usize) -> bool {
+    line.start <= offset && offset <= line.end
+}
+
+/// How many cells a table row carries.
+fn count_cells(line: &str) -> usize {
+    let trimmed = line.trim();
+    let inner = trimmed.trim_matches('|');
+    if inner.trim().is_empty() {
+        // `||` and friends: there the pipes *are* the cells.
+        return trimmed.matches('|').count().saturating_sub(1).max(1);
+    }
+    inner.split('|').count()
 }
 
 /// The lines a selection covers, as ranges over each line's content with the

@@ -271,7 +271,7 @@ It needs a capture, or a recorded decision, before it can be built.
 Exit criteria: Formatting operations, Markdown serialization, and view
 transitions pass their acceptance tests.
 
-Status: IN_PROGRESS — the formatting model is landed as `crates/markdown`
+Status: COMPLETE — the formatting model is landed as `crates/markdown`
 (`nc-markdown`), built to §6's three rules: it edits the Markdown source rather than
 a rich internal tree, its parse keeps every byte (each block carries the exact source
 it came from, and property tests assert a document reads back unchanged), and
@@ -284,11 +284,12 @@ that unsupported syntax (`[^1]:`, raw HTML, fences, `==highlight==`) survives
 untouched. Commands return the new text *and* the remapped selection, so the shell
 can apply a format as one undoable edit.
 
-All three parts of the exit criteria now have passing acceptance tests: formatting
-operations, Markdown serialization, and the source/formatted view transition. One row
-stays open beneath them — `NC-M008` asks for a table's expand semantics as well as its
-insertion, and growing a table that is already there is not implemented — so M7 is
-`IN_PROGRESS` until that is done.
+All three parts of the exit criterion have passing acceptance tests: formatting
+operations, Markdown serialization, and the source/formatted view transition. Tables
+came last because half of the row was a question rather than a task — one command, no
+captured dialog — and the answer taken is that the keystroke grows the table it lands
+in (§12). Widening a table is the one thing deliberately left undone: nothing in the
+capture would fire it, so it waits for a decision rather than being invented.
 
 The formatted view renders the document from its own Markdown and does not edit it,
 which is what `docs/architecture.md` §6 requires: the source is the document, so there
@@ -307,13 +308,15 @@ Everything a user can click is wired and tested through the shell
 (`crates/platform/src/ui/markdown.rs`, which fires each command through the same
 `actions::run` a menu item and a key chord reach): bold, italic, strikethrough, the
 seven paragraph styles as ATX levels, bulleted and numbered lists with two-space
-nesting, links, table insertion, clear formatting, one-undo-step formats, the
-`.md` / `.markdown` decision, and both views. Two toolbar dropdowns that had been
+nesting, links, tables — writing one and growing one — clear formatting, one-undo-step
+formats, the `.md` / `.markdown` decision, and both views. Two toolbar dropdowns that had been
 writing shell state directly — or nothing at all — now fire registry commands, and the
 table glyph is no longer inert. The reference shows no hyperlink or table-size dialog,
 so neither was invented: the commands write their syntax and leave the caret where the
 user types (§12). `LANDED_MILESTONE` reads 7: every milestone-7 command now changes
-something a user can see, which is the bar that constant exists to hold.
+something a user can see, which is the bar that constant exists to hold. Nothing in M7
+is `BLOCKED` or `NOT_STARTED`, and `NC-T003`'s context menu is the only row in the whole
+matrix waiting on a capture.
 
 ### M8 — Settings and desktop integration
 
