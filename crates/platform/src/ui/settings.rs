@@ -2,7 +2,8 @@
 
 use egui::{Align, CornerRadius, Frame, Layout, Margin, RichText, vec2};
 
-use crate::ui::state::{AppTheme, FONT_FAMILIES, OpenBehavior, Shell};
+use crate::ui::fonts::FAMILIES;
+use crate::ui::state::{AppTheme, OpenBehavior, Shell};
 use crate::ui::{theme::Palette, widgets};
 
 /// Draws the settings page.
@@ -197,7 +198,7 @@ fn font_dropdown(ui: &mut egui::Ui, shell: &mut Shell) {
         .selected_text(shell.font_family)
         .width(180.0)
         .show_ui(ui, |ui| {
-            for family in FONT_FAMILIES {
+            for family in FAMILIES {
                 if ui
                     .selectable_label(shell.font_family == family, family)
                     .clicked()
@@ -369,7 +370,7 @@ impl Settings {
 /// and the fallback for a broken file cannot drift apart.
 const DEFAULT: Settings = Settings {
     theme: AppTheme::Dark,
-    font_family: FONT_FAMILIES[0],
+    font_family: crate::ui::fonts::DEFAULT,
     zoom: 100,
     word_wrap: true,
     status_bar_visible: true,
@@ -494,13 +495,13 @@ fn opening_from(value: &str) -> OpenBehavior {
     }
 }
 
-/// Reads a font family, which has to be one this build can render.
+/// Reads a font family, which has to be one this build carries a face for.
 ///
-/// The families are a fixed list because the build carries its own faces: a name from
-/// a newer list would ask the editor to draw in a font that is not there, so the
+/// The families are a fixed list because the faces are embedded, not discovered: a name
+/// from a newer list would ask the editor to draw in a font that is not there, so the
 /// default family takes it instead.
 fn font_from(value: &str) -> &'static str {
-    FONT_FAMILIES
+    FAMILIES
         .into_iter()
         .find(|family| *family == value)
         .unwrap_or(DEFAULT.font_family)
@@ -577,7 +578,7 @@ mod tests {
         // editor, which is the reason it is not a serialization crate's output.
         let settings = Settings {
             theme: AppTheme::Light,
-            font_family: "Courier New",
+            font_family: "Fira Mono",
             zoom: 130,
             word_wrap: false,
             status_bar_visible: false,
@@ -587,7 +588,7 @@ mod tests {
             settings.encode(&[]),
             "notecraft-settings 1\n\
              theme light\n\
-             font Courier New\n\
+             font Fira Mono\n\
              zoom 130\n\
              word_wrap 0\n\
              status_bar 0\n\
@@ -599,7 +600,7 @@ mod tests {
     fn a_written_file_reads_back_as_the_same_settings() {
         let settings = Settings {
             theme: AppTheme::System,
-            font_family: "Cascadia Mono",
+            font_family: "IBM Plex Mono",
             zoom: 90,
             word_wrap: false,
             status_bar_visible: true,
@@ -621,7 +622,7 @@ mod tests {
         type Change = (&'static str, fn(&mut Shell));
         let changes: [Change; 6] = [
             ("theme", |shell| shell.theme = AppTheme::Light),
-            ("font", |shell| shell.font_family = "Courier New"),
+            ("font", |shell| shell.font_family = "Fira Mono"),
             ("zoom", |shell| shell.zoom = 130),
             ("word wrap", |shell| shell.word_wrap = false),
             ("status bar", |shell| shell.status_bar_visible = false),
@@ -873,11 +874,13 @@ mod tests {
     #[test]
     fn a_font_that_is_not_one_of_the_offered_families_is_not_applied() {
         // The list is fixed because the build carries its own faces; a name from a
-        // newer list would ask the editor to draw in a font that is not there.
+        // newer list would ask the editor to draw in a font that is not there. The names
+        // this rejects are the ones the old list offered: they were real font names on
+        // Windows and nothing here.
         for value in ["", "Consolas ", "not a font", "consolas"] {
             assert_eq!(font_from(value), DEFAULT.font_family, "{value:?}");
         }
-        for family in FONT_FAMILIES {
+        for family in FAMILIES {
             assert_eq!(font_from(family), family);
         }
     }

@@ -146,7 +146,7 @@ library exposes no local time zone and the project carries no time-zone database
 | ID | Feature | Priority | Milestone | Spec | Impl | Acceptance criteria | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-P001 | App theme (system/light/dark) | MANDATORY | M8 | SPECIFIED | VERIFIED | Dropdown shown; applies the theme | `crates/platform/src/ui/appearance.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/theme.rs` |
-| NC-P002 | Font family & size | MANDATORY | M8 | SPECIFIED | IN_PROGRESS | Dropdown shown; applies to the editor | `crates/platform/src/ui/settings.rs` |
+| NC-P002 | Font family & size | MANDATORY | M8 | SPECIFIED | VERIFIED | Dropdown shown; applies to the editor | `crates/platform/src/ui/fonts.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-P003 | Word-wrap preference persistence | MANDATORY | M8 | SPECIFIED | VERIFIED | Survives restart | `crates/platform/src/ui/settings.rs` |
 | NC-P004 | Spell check + autocorrect | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Squiggle, suggestions | `tests/settings/spell.rs` |
 | NC-P005 | Formatting enable/disable toggle | MANDATORY | M8 | SPECIFIED | NOT_STARTED | Toolbar hides when off | `tests/settings/formatting_toggle.rs` |
@@ -174,12 +174,12 @@ library exposes no local time zone and the project carries no time-zone database
 | --- | --- |
 | Total tracked features | 68 |
 | IMPLEMENTED | 33 |
-| IN_PROGRESS | 1 |
+| IN_PROGRESS | 0 |
 | NOT_STARTED | 11 |
-| VERIFIED | 22 |
+| VERIFIED | 23 |
 | BLOCKED | 1 |
 
-**What `VERIFIED` means here.** Twenty-two rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Twenty-three rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -284,8 +284,7 @@ settings, and it refuses a header it does not recognise instead of applying half
 Its table test moves **one setting at a time** through a write and a restart, so a
 setting that is stored but never restored — or restored but never stored — fails as
 itself rather than hiding behind the five that work. `NC-P001` and `NC-P003` are
-`VERIFIED` on that; `NC-P002` stays `IN_PROGRESS` because the font dropdown still does
-not reach the editor.
+`VERIFIED` on that.
 
 **Word wrap was a check mark over an editor that wrapped either way.** Turning it off
 asked the text edit for an infinite width, which `egui` 0.36 clamps back to the panel's
@@ -298,6 +297,32 @@ that outranks the clamp, and the horizontal bar comes from the scroll area aroun
 breaks into rows inside the window; unwrapped, it stays one row and runs past it. That
 is also `NC-E006`'s shell half, which is why its row moved: its suite had always
 settled the layout arithmetic and never the toggle.
+
+**`NC-P002`'s dropdown listed four fonts this build does not have.** The list was
+Consolas, Cascadia Mono, Segoe UI and Courier New: real names on Windows, and unreachable
+here, because an `egui` application draws with the faces it ships and never asks the
+operating system for its own. So every option in that dropdown painted the identical face —
+the settings shape of the bug `LANDED_MILESTONE` exists to catch, one row over from the
+commands it watches. The list is now what is actually carried: JetBrains Mono, IBM Plex
+Mono, Atkinson Hyperlegible Mono and Fira Mono, each embedded from its upstream file under
+the OFL, with the licence text beside the font and the provenance in
+`crates/platform/assets/fonts/README.md`. All four are monospaced because both document
+surfaces are (`markdown_view` indents with spaces, which is exact only in a monospaced
+face), and Atkinson Hyperlegible Mono is the family a low-vision reader can ask for, which
+is the lever `NC-P007` will need. Choosing one is proven at two ends: the four rasterize to
+different marks for the same string, and the editor's own text is set at a different
+advance afterwards, asserted from a painted frame because "applies to the editor" is a claim
+about the editor. `NC-P002`'s other half, *size*, has no control in the capture, so the
+family comes from settings and the size from zoom — recorded in §4 rather than invented.
+
+Two measurements from that work changed the code. Three of the four families share a 0.6 em
+advance, so comparing **widths** cannot tell JetBrains Mono from Fira Mono; the glyph atlas
+and the per-character advance can, and the tests use those. And a face a window changes
+reflows every line, which moves the row the caret sits on *without the caret moving* — so
+nothing follows it, and the caret was left below the fold by a settings change. The editor
+now compares the face and size it laid the document out in and follows the caret when either
+moves; that is also why installing the shipped faces costs a frame and the caret tests warm
+the context up first.
 
 **A gap no row covers — the editor could not scroll — is closed.** Measured while
 proving word wrap, from a painted frame: a document longer than the window kept its first
@@ -337,7 +362,8 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 > behaviour criteria are `VERIFIED` against a dedicated acceptance suite, and so is
 > all of M7 — every Markdown command, the source/rendered view pair, and the
 > serialization the file is written with. M8 has begun: the theme applies and
-> survives a restart, and settings are stored. Still ahead are the font reaching the
-> editor (`NC-P002`), spell check, the formatting toolbar's hide, accessibility
+> survives a restart, settings are stored, and the font list is real — four families this
+> build actually carries, applied to the editor. Still ahead are spell check, the
+> formatting toolbar's hide, accessibility
 > evidence, printing and page setup, and the outside-change prompt. The visual
 > criteria await a display, and the tab context menu awaits a reference decision.

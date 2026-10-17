@@ -642,6 +642,12 @@ fn a_command_that_moves_the_caret_to_the_document_end_brings_it_on_screen() {
 
     let ctx = egui::Context::default();
     theme::install(&ctx, shell.palette);
+    // One frame first, to bring the context up. Installing the shipped faces takes effect
+    // at the start of the *next* pass, so a cold first frame lays the document out in a
+    // face it is about to leave, and the scroll it works out from that is short by however
+    // much taller the real face is. One frame of warm-up is the difference between testing
+    // "a command moved the caret" and testing the first frame of a process.
+    frame(&ctx, &mut shell, None);
     let output = frames(&ctx, &mut shell, 3);
 
     let caret = caret_on_screen(&output, "line 120", end);
@@ -702,6 +708,112 @@ fn typing_past_the_bottom_of_the_window_keeps_the_caret_in_view() {
         on_screen(at),
         "after {caret} characters of arrow keys the caret is off screen at y={}",
         at.y
+    );
+}
+
+#[test]
+fn a_document_that_grows_under_the_caret_keeps_the_caret_in_view() {
+    // The other way a caret ends up off screen without anything moving it: the document
+    // changes size underneath it. Zoom and the font choice both reflow every line, so the
+    // row the caret sits on travels — and since the caret did not change, neither the text
+    // edit nor any command has a reason to follow it. The editor watches the metrics it
+    // laid the document out in and follows the caret when they move.
+    let mut shell = long_document(200);
+    let end = shell.active_tab().expect("a tab").text().chars().count();
+    shell.pending_selection = Some((end, end));
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    frame(&ctx, &mut shell, None);
+    let arrived = caret_on_screen(&frames(&ctx, &mut shell, 3), "line 120", end);
+    assert!(
+        on_screen(arrived),
+        "the caret did not arrive in view to start with"
+    );
+
+    shell.zoom = 160;
+    let output = frames(&ctx, &mut shell, 3);
+
+    let grown = caret_on_screen(&output, "line 120", end);
+    assert!(
+        on_screen(grown),
+        "the document grew 60% under a caret at its end and left it at y={}",
+        grown.y
+    );
+}
+
+// ---- NC-P002 — "Dropdown shown; applies to the editor" ----------------------
+
+/// How far apart the editor set its characters, in the document containing `needle`.
+///
+/// The advance, not the width of the painted run: a galley's rect is trimmed to the ink
+/// of its first and last glyph, so two faces with clearly different advances can measure
+/// the same width for a given sentence. Where a glyph *is* placed is the number that says
+/// which face the text edit laid the document out in.
+fn advance_of(output: &egui::FullOutput, needle: &str) -> f32 {
+    let galley = output
+        .shapes
+        .iter()
+        .find_map(|clipped| match &clipped.shape {
+            Shape::Text(shape) if shape.galley.text().contains(needle) => {
+                Some(shape.galley.clone())
+            }
+            _ => None,
+        })
+        .expect("the document is painted");
+    let glyphs: Vec<_> = galley
+        .rows
+        .iter()
+        .flat_map(|row| row.glyphs.iter())
+        .collect();
+    let (first, last) = (
+        glyphs.first().expect("a glyph"),
+        glyphs.last().expect("a glyph"),
+    );
+    (last.pos.x - first.pos.x) / (glyphs.len() - 1) as f32
+}
+
+#[test]
+fn the_family_the_settings_page_offers_is_the_face_the_editor_paints_in() {
+    // The unit test in `fonts` proves the rasterizer produces different marks per family;
+    // this proves the *editor surface* is the thing asking for them. A choice that reached
+    // the font table but not the text edit — which is exactly how `NC-P002` sat for six
+    // milestones, with the dropdown writing a field nothing read — would pass that test
+    // and fail this one.
+    let mut shell = Shell::new();
+    shell
+        .active_tab_mut()
+        .expect("a tab")
+        .document_mut()
+        .insert_str("The quick brown fox jumps");
+    let start = shell.font_family;
+    assert_eq!(
+        start,
+        crate::ui::fonts::DEFAULT,
+        "the test compares against the starting face"
+    );
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    // Two frames, because a face a context has not yet run cannot be measured: new font
+    // definitions are taken up at the start of the next pass, so the first frame is the
+    // one that asks for the face and the second is the one drawn in it. A person sees one
+    // frame; the test has to wait for the same two.
+    frame(&ctx, &mut shell, None);
+    let before = advance_of(&frame(&ctx, &mut shell, None), "quick");
+
+    // Atkinson Hyperlegible Mono is the accessibility family, and the one of the four
+    // whose advance is not the 0.6 em the other three share, so its arrival is measurable
+    // where the text is set.
+    shell.font_family = "Atkinson Hyperlegible Mono";
+    frame(&ctx, &mut shell, None);
+    let output = frame(&ctx, &mut shell, None);
+
+    let after = advance_of(&output, "quick");
+    assert!(
+        (after - before).abs() > 0.2,
+        "{start} and Atkinson Hyperlegible Mono set the editor's text at {before} and \
+         {after} points per character: the choice never reached the text edit"
     );
 }
 

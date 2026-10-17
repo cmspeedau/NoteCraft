@@ -165,7 +165,7 @@ fn source_view(
 
             // The caret a queued selection moves to, or the one the user left
             // the editor with.
-            match pending {
+            let caret = match pending {
                 Some((primary, secondary)) => {
                     apply_selection(ui.ctx(), &output, primary, secondary);
                     set_document_selection(tab, primary, secondary);
@@ -181,9 +181,44 @@ fn source_view(
                     }
                     None => shell.caret,
                 },
+            };
+
+            // The other case that puts the caret outside the window without asking: the
+            // document changed size underneath it. A new face or a new zoom reflows every
+            // line, so the row the caret is on moves — and the caret itself did not change,
+            // so neither this widget nor any command has reason to follow it. When the
+            // metrics moved this frame, follow it anyway.
+            //
+            // The size is not enough to compare, and neither is the `FontId`: both ask for
+            // `FontFamily::Monospace` whichever face is behind that name, so the thing that
+            // moved is what the context resolves that family to, read back from the context
+            // rather than from what the widget was handed.
+            let metrics = (resolved_face(ui.ctx()), font.size);
+            let key = egui::Id::new("editor-laid-out-in");
+            let moved = ui
+                .ctx()
+                .data(|data| data.get_temp::<(String, f32)>(key))
+                .is_none_or(|(face, size)| face != metrics.0 || size != metrics.1);
+            if moved {
+                scroll_caret_into_view(ui, &output, caret);
             }
+            ui.ctx().data_mut(|data| data.insert_temp(key, metrics));
+            caret
         })
         .inner
+}
+
+/// The face the context resolves the document's family slot to right now, which is the
+/// face the text edit has just laid the document out in.
+fn resolved_face(ctx: &egui::Context) -> String {
+    ctx.fonts(|fonts| {
+        fonts
+            .definitions()
+            .families
+            .get(&egui::FontFamily::Monospace)
+            .and_then(|names| names.first().cloned())
+            .unwrap_or_default()
+    })
 }
 
 /// Scrolls enough of the frame to bring a caret the shell just moved to back on

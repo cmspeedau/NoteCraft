@@ -184,6 +184,10 @@ docs/         # architecture, feature matrix, test strategy, UI reference
 
 ## License
 
-Licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+The code is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+
+The four editor fonts are separate works under the SIL Open Font License 1.1, shipped in
+[`crates/platform/assets/fonts`](crates/platform/assets/fonts) with each family's licence
+text beside its file and their provenance in that directory's `README.md`.
 
 Repository: <https://github.com/CMSpeedAU/NoteCraft>

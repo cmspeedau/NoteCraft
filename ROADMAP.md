@@ -348,12 +348,17 @@ stays on screen whether it moved under a key, a click, or a command naming a pos
 The painted harness had to start reporting a clock: `egui` applies a scroll request from
 the timestamp of a later frame, and without one no request is ever applied.
 
-What remains is the rest of the settings the capture shows, and the honest list starts
-with the font: `NC-P002`'s dropdown still does not reach the editor, and the four
-family names it offers are Windows fonts this build does not carry, so "applies to the
-editor" needs a decision about what the list should hold. Spell check, the formatting
-toolbar's hide, accessibility evidence, file associations and printing are the rest,
-and page setup (§8) is the captured screen that printing needs first.
+*The font list is real* (`NC-P002`, and `NC-P007` gains its lever). The dropdown offered
+Consolas, Cascadia Mono, Segoe UI and Courier New — four Windows names this build cannot
+reach, so every option painted the same face. It now offers the four monospaced families
+whose OFL files are embedded here (JetBrains Mono, IBM Plex Mono, Atkinson Hyperlegible
+Mono, Fira Mono) under their own names, and a painted frame proves choosing one changes how
+the editor sets its text. The row's other half, size, has no control in the capture, so the
+family comes from settings and the size from zoom, recorded in §4.
+
+What remains is the rest of the settings the capture shows: spell check, the formatting
+toolbar's hide, accessibility evidence, file associations and printing, with page setup (§8)
+the captured screen that printing needs first.
 
 - Font family and size.
 - Word wrap and view preferences.

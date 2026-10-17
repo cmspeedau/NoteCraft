@@ -650,9 +650,6 @@ fn is_markdown(path: &Path) -> bool {
     name.ends_with(".md") || name.ends_with(".markdown")
 }
 
-/// The editor font families offered in Settings.
-pub const FONT_FAMILIES: [&str; 4] = ["Consolas", "Cascadia Mono", "Segoe UI", "Courier New"];
-
 /// How many paths `File ▸ Recent` keeps (`NC-F010`).
 pub const RECENT_LIMIT: usize = 10;
 
@@ -684,7 +681,8 @@ pub struct Shell {
     /// widget because every widget in one frame has to agree on it — and because a
     /// painted frame can then be asserted against the palette it was drawn with.
     pub palette: Palette,
-    /// The editor font family name.
+    /// The document font family, one of the names in [`crate::ui::fonts`] — each of
+    /// which this build ships a face for.
     pub font_family: &'static str,
     /// Where opened files go.
     pub opening: OpenBehavior,
@@ -735,7 +733,7 @@ impl Shell {
             zoom: 100,
             theme: AppTheme::Dark,
             palette: Palette::DARK,
-            font_family: FONT_FAMILIES[0],
+            font_family: crate::ui::fonts::DEFAULT,
             opening: OpenBehavior::NewTab,
             ai_enabled: false,
             line: 1,

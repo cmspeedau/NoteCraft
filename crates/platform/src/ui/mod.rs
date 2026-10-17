@@ -8,6 +8,7 @@ mod appearance;
 mod config;
 mod dialogs;
 mod editor;
+mod fonts;
 mod input;
 /// The M6 acceptance suite. Test-only: it drives the shell's own state, which is
 /// private to this crate.
@@ -62,6 +63,7 @@ pub(crate) fn run(options: StartupOptions) -> Result<RunOutcome, PlatformError> 
             // choice once settings persist — is installed before the first frame, so
             // nothing is painted in the wrong palette and then corrected.
             shell.palette = theme::apply(&cc.egui_ctx, shell.theme);
+            fonts::install(&cc.egui_ctx);
             Ok(Box::new(ShellApp {
                 shell,
                 windows: windows::Windows::new(),
@@ -156,6 +158,10 @@ pub(crate) fn draw(shell: &mut Shell, ui: &mut egui::Ui) {
     // style is cheap but not free, and an unchanged comparison says the same thing
     // twice.
     shell.palette = theme::apply(&ctx, shell.theme);
+    // The face the document is drawn in. Context-keyed for the same reason as the
+    // palette, with a cost the palette does not pay: a new face rebuilds the glyph
+    // atlas, so this is called once per frame and does nothing unless the choice moved.
+    fonts::apply(&ctx, shell.font_family);
 
     title_bar::show(shell, ui, &ctx);
 
