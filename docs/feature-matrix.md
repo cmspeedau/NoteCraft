@@ -71,7 +71,7 @@ library exposes no local time zone and the project carries no time-zone database
 | NC-F007 | Print / Page setup (Ctrl+P) | OPTIONAL | M8 | SPECIFIED | VERIFIED | Page-setup dialog (§8); print pipeline | `crates/textproc/tests/file_io/print.rs`, `crates/platform/src/ui/settings.rs`, `crates/platform/src/ui/actions.rs`, `crates/platform/src/ui/dialogs.rs` |
 | NC-F008 | Close tab (Ctrl+W) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the active tab; last tab resets to untitled | `crates/platform/src/ui/lifecycle.rs` |
 | NC-F009 | Exit (Alt+F4) | MANDATORY | M6 | SPECIFIED | VERIFIED | Closes the window | `crates/platform/src/ui/lifecycle.rs` |
-| NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | IMPLEMENTED | File ▸ Recent lists prior documents | `crates/platform/src/ui/state.rs` |
+| NC-F010 | Recent files | OPTIONAL | M6 | SPECIFIED | VERIFIED | File ▸ Recent lists prior documents | `crates/platform/src/ui/state.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-F011 | Session restore | MANDATORY | M6 | SPECIFIED | VERIFIED | Restores tabs incl. unsaved state | `crates/platform/src/ui/lifecycle.rs`, `…/ui/session.rs` |
 | NC-F012 | Duplicate-open / document identity | MANDATORY | M6 | SPECIFIED | VERIFIED | New tab vs focus existing | `crates/platform/src/ui/lifecycle.rs` |
 
@@ -173,14 +173,14 @@ library exposes no local time zone and the project carries no time-zone database
 | Metric | Value |
 | --- | --- |
 | Total tracked features | 68 |
-| IMPLEMENTED | 9 |
+| IMPLEMENTED | 8 |
 | IN_PROGRESS | 0 |
 | NOT_STARTED | 5 |
 | OUT_OF_SCOPE | 2 |
-| VERIFIED | 52 |
+| VERIFIED | 53 |
 | BLOCKED | 0 |
 
-**What `VERIFIED` means here.** Fifty-two rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Fifty-three rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -200,7 +200,7 @@ documents make two dots, and answering the unsaved prompt clears the marker. The
 assertions were mutation-checked — disabling the dot's paint condition fails four
 of them, so they are not reading a shape list that would pass either way.
 
-Three M6 rows stay `IMPLEMENTED`, and the reason is stated rather than glossed.
+Two M6 rows stay `IMPLEMENTED`, and the reason is stated rather than glossed.
 `NC-T001` reads "Geometry matches the reference", and `docs/ui-reference.md` gives
 the tab strip no coordinates — `appearance.rs` now asserts the §1 claims that *are*
 structural (one tab per document, laid out side by side, exactly one carrying the
@@ -208,8 +208,23 @@ accent underline, tabs within their stated 120..=220 width), but that is the
 shell agreeing with itself, not a comparison against the capture, so the row does
 not earn `VERIFIED` on that. Whether the shell *looks* like the screenshot still
 needs a person looking at a running window. `NC-F003` needs a second real
-top-level window, and `NC-F010`'s Recent submenu needs its drawing observed — its
-list, ordering and capping are tested, the rendering is not.
+top-level window, which a headless frame cannot make.
+
+`NC-F010` sat on that list on the strength of a claim that was never measured: that
+its Recent submenu's drawing "needs its drawing observed", as if a display were
+what was missing. It is not. `appearance.rs` opens `File ▸ Recent` by clicking where
+the previous frame painted each label, and the submenu paints into that frame like
+any other surface — as do the tab context menu (`NC-T003`) and the whole `File`
+menu, accelerators included. So what the menu lists, in what order, what an entry
+reopens, and what it says when there is nothing to list are now all asserted on the
+painted surface, and the row is `VERIFIED` against its own acceptance text. The
+limitation recorded above stands untouched: it is a scope limit on *what* Recent
+remembers, not a gap in whether the menu shows it.
+
+The lesson is in the checking, not the row. "Needs a display" is the kind of claim
+that goes unexamined and quietly becomes the reason a row cannot be finished; one
+frame of clicking proved it false. Anything else in these documents carrying that
+wording deserves the same test before it is believed.
 
 **How the File rows are verified.** `NC-F004`, `NC-F005` and `NC-F006` were
 `IMPLEMENTED` with the file dialog's *mechanics* settled in `actions.rs` — a name typed

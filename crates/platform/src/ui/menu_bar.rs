@@ -75,8 +75,12 @@ fn menu_items(
                 }
             }
             MenuItem::Submenu { title, items } => {
-                if is_recent_submenu(items) && !shell.recent_files.is_empty() {
-                    recent_submenu(title, shell, ui);
+                // Recent opens even with nothing in it, because what it then says
+                // is the point (`recent_submenu`); every other submenu whose
+                // entries are all unavailable stays shut rather than opening onto
+                // a list nobody can act on.
+                if is_recent_submenu(items) {
+                    recent_submenu(title, shell, ui, items, ctx, palette);
                 } else if all_disabled(items) {
                     let _ = ui.add_enabled(false, egui::Button::new(*title));
                 } else {
@@ -102,12 +106,25 @@ fn is_recent_submenu(items: &[MenuItem]) -> bool {
 /// submenu is labelled whatever the menu model says it should be.
 ///
 /// The list is read out before any of it is acted on, because opening a file
-/// rewrites it and an entry may move to the front. An empty list is not drawn
-/// here at all: the registry's `cmd.file.recent_empty` says "No recent files",
-/// which is what the menu already shows for it.
-fn recent_submenu(title: &'static str, shell: &mut Shell, ui: &mut egui::Ui) {
+/// rewrites it and an entry may move to the front. When there is nothing to list
+/// the submenu still opens, onto the rows the registry resolved for it —
+/// `cmd.file.recent_empty`, "No recent files". A submenu the registry says exists
+/// but which will not open is a dead surface; the empty-state message the registry
+/// wrote is the thing to show instead of a title that looks broken.
+fn recent_submenu(
+    title: &'static str,
+    shell: &mut Shell,
+    ui: &mut egui::Ui,
+    when_empty: &[MenuItem],
+    ctx: &Context,
+    palette: Palette,
+) {
     let paths = shell.recent_files.clone();
     let _ = ui.menu_button(title, |ui| {
+        if paths.is_empty() {
+            menu_items(ui, when_empty, shell, ctx, palette);
+            return;
+        }
         for path in &paths {
             let name = path.file_name().map_or_else(
                 || path.to_string_lossy().into_owned(),

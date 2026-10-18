@@ -1525,3 +1525,118 @@ fn the_tab_context_menu_offers_nothing_the_registry_did_not_decide() {
     // no menu appeared at all.
     assert!(paints(&menu, "Close tab"), "the menu did not open");
 }
+
+// ---- NC-F010 — "File ▸ Recent lists prior documents" ------------------------
+
+/// A scratch directory, removed when the test ends. Named for the test, since
+/// every test in this binary shares one process id.
+struct Scratch(std::path::PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let directory = std::env::temp_dir().join(format!(
+            "notecraft-appearance-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("a scratch directory");
+        Self(directory)
+    }
+
+    fn file(&self, name: &str, text: &str) -> std::path::PathBuf {
+        let path = self.0.join(name);
+        std::fs::write(&path, text).expect("a file");
+        path
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Opens a menu by its labels, top-down — `["File", "Recent"]` is
+/// `File ▸ Recent` — and hands back the frame showing the result. Each level is a
+/// click where the previous frame painted that label, which is how a person opens
+/// a menu with a mouse.
+fn open_menu(shell: &mut Shell, ctx: &egui::Context, labels: &[&str]) -> egui::FullOutput {
+    let mut output = frame(ctx, shell, None);
+    for label in labels {
+        let at = painted_pos(&output, label).unwrap_or_else(|| panic!("no {label:?} to click"));
+        interact(ctx, shell, click_at(at + egui::vec2(8.0, 8.0)));
+        output = frame(ctx, shell, None);
+    }
+    output
+}
+
+#[test]
+fn the_recent_submenu_paints_the_documents_it_remembers_newest_first() {
+    // `state.rs` settles the list's order and capping; what this settles is that
+    // the menu draws that list at all, and in it — the half `NC-F010` was held
+    // `IMPLEMENTED` for want of.
+    let mut shell = Shell::new();
+    shell.remember_recent(std::path::Path::new("/tmp/older-notes.txt"));
+    shell.remember_recent(std::path::Path::new("/tmp/newer-notes.txt"));
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    let menu = open_menu(&mut shell, &ctx, &["File", "Recent"]);
+
+    let older = painted_pos(&menu, "older-notes.txt").expect("the older document is listed");
+    let newer = painted_pos(&menu, "newer-notes.txt").expect("the newer document is listed");
+    assert!(
+        newer.y < older.y,
+        "the newest document is painted above the older one: {newer:?} over {older:?}"
+    );
+}
+
+#[test]
+fn choosing_a_recent_entry_reopens_the_document_it_names() {
+    let scratch = Scratch::new("recent");
+    let notes = scratch.file("notes.txt", "the notes\r\n");
+    let mut shell = Shell::new();
+    shell.remember_recent(&notes);
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    let menu = open_menu(&mut shell, &ctx, &["File", "Recent"]);
+    let entry = painted_pos(&menu, "notes.txt").expect("the entry is listed");
+
+    interact(&ctx, &mut shell, click_at(entry + egui::vec2(12.0, 9.0)));
+    frame(&ctx, &mut shell, None);
+
+    // Read off the active tab, because which tab an opening file lands in is
+    // `Settings ▸ Opening files`; that the menu opened *this* document is the
+    // claim here, whichever tab it was put in.
+    assert!(
+        shell.tabs[shell.active].matches_path(&notes),
+        "the menu opened the file it named, not an empty document"
+    );
+    assert_eq!(
+        shell.tabs[shell.active].text(),
+        "the notes\n",
+        "and read the file in; the CRLF it was written with is a property of the \
+         file, not of the document"
+    );
+}
+
+#[test]
+fn an_empty_recent_submenu_says_so_instead_of_not_opening() {
+    // The registry declares `cmd.file.recent_empty` as the row Recent shows with
+    // nothing to list. A submenu that stays shut because its one entry is
+    // disabled makes that row unreachable — a declared surface no user can ever
+    // see, and a title that reads as broken instead of a menu that says what is
+    // missing.
+    let mut shell = Shell::new();
+    shell.recent_files.clear();
+
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    let menu = open_menu(&mut shell, &ctx, &["File", "Recent"]);
+
+    assert!(
+        paints(&menu, "No recent files"),
+        "Recent opened onto nothing"
+    );
+}

@@ -279,7 +279,10 @@ the structural claims it does make (§1 — one tab per document, side by side, 
 accent underline) are now asserted, but that is the shell agreeing with itself, not
 a comparison against the capture, and judging the likeness still takes a person
 looking at a running window. `NC-F003` needs a second real top-level window.
-`NC-F010`'s Recent submenu needs its drawing observed. The tab context menu
+`NC-F010` was held out on the belief that its Recent submenu needed a display to be
+observed; that belief was tested and found false — the submenu paints in a headless
+frame and is now asserted there, list, order, reopening an entry and the empty
+state included. The tab context menu
 (`NC-T003`) is settled: the capture shows no context menu, so `AGENT.md` §3 allowed
 its item set to be decided and recorded in the registry rather than copied, and it
 is built from the `File` commands alone (`docs/ui-reference.md` §11).
