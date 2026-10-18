@@ -360,4 +360,296 @@ serde = { version = \"1\" }
 
         let _ = fs::remove_dir_all(&root);
     }
+
+    // --- `docs/feature-matrix.md` consistency --------------------------------
+
+    use std::collections::BTreeMap;
+
+    /// The status values the matrix documents (`AGENT.md` §11) and the only
+    /// values a row's `Impl` column may carry.
+    const STATUS_VALUES: &[&str] = &[
+        "NOT_STARTED",
+        "SPECIFIED",
+        "IN_PROGRESS",
+        "IMPLEMENTED",
+        "VERIFIED",
+        "BLOCKED",
+        "OUT_OF_SCOPE",
+    ];
+
+    /// The `(id, Impl status)` of every `| NC-… |` row, in file order.
+    fn feature_rows(text: &str) -> Vec<(String, String)> {
+        let mut rows = Vec::new();
+        for raw in text.lines() {
+            let line = raw.trim();
+            if !line.starts_with("| NC-") {
+                continue;
+            }
+            // "", id, feature, priority, milestone, spec, impl, …, ""
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            if let (Some(id), Some(impl_status)) = (cells.get(1), cells.get(6)) {
+                rows.push((id.to_string(), impl_status.to_string()));
+            }
+        }
+        rows
+    }
+
+    /// The verification-summary table's numbers, keyed by the left-hand cell:
+    /// the `Total tracked features` row and each per-status count.
+    fn summary_counts(text: &str) -> BTreeMap<String, usize> {
+        let mut counts = BTreeMap::new();
+        for raw in text.lines() {
+            let line = raw.trim();
+            if !line.starts_with('|') {
+                continue;
+            }
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            if cells.len() != 4 {
+                continue;
+            }
+            let Ok(value) = cells[2].parse::<usize>() else {
+                continue;
+            };
+            if cells[1] == "Total tracked features" || STATUS_VALUES.contains(&cells[1]) {
+                counts.insert(cells[1].to_string(), value);
+            }
+        }
+        counts
+    }
+
+    /// The number word the verification summary spells out ("Fifty-one"), if
+    /// its sentence is present.
+    fn prose_tally(text: &str) -> Option<&str> {
+        let marker = "**What `VERIFIED` means here.** ";
+        let rest = &text[text.find(marker)? + marker.len()..];
+        let end = rest.find(" rows are verified")?;
+        Some(rest[..end].trim())
+    }
+
+    /// The English words for a count, matching the prose's style (`1` → `One`,
+    /// `51` → `Fifty-one`).
+    fn count_words(n: usize) -> String {
+        const ONES: [&str; 20] = [
+            "Zero",
+            "One",
+            "Two",
+            "Three",
+            "Four",
+            "Five",
+            "Six",
+            "Seven",
+            "Eight",
+            "Nine",
+            "Ten",
+            "Eleven",
+            "Twelve",
+            "Thirteen",
+            "Fourteen",
+            "Fifteen",
+            "Sixteen",
+            "Seventeen",
+            "Eighteen",
+            "Nineteen",
+        ];
+        const TENS: [&str; 10] = [
+            "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+        ];
+        if n < 20 {
+            return ONES[n].to_string();
+        }
+        if n < 100 {
+            return match n % 10 {
+                0 => TENS[n / 10].to_string(),
+                // Only the first word of the phrase is capitalised (`Fifty-one`,
+                // not `Fifty-One`).
+                ones => format!("{}-{}", TENS[n / 10], ONES[ones].to_ascii_lowercase()),
+            };
+        }
+        match n % 100 {
+            0 => format!("{} hundred", ONES[n / 100]),
+            rest => format!(
+                "{} hundred and {}",
+                ONES[n / 100],
+                count_words(rest).to_ascii_lowercase()
+            ),
+        }
+    }
+
+    /// Every way the matrix disagrees with the rows it summarises. Empty means
+    /// it is consistent. This is the machine half of §11 ("use these states
+    /// consistently") and of §2's rule that a feature is not `VERIFIED` by
+    /// assertion: the counts and the spelled-out tally a reader trusts are
+    /// checked against the rows, so a hand-kept total cannot quietly drift the
+    /// way it once did.
+    fn feature_matrix_violations(text: &str) -> Vec<String> {
+        let rows = feature_rows(text);
+        if rows.is_empty() {
+            return vec!["no `| NC-… |` feature rows found".to_string()];
+        }
+
+        let mut violations = Vec::new();
+        let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for (id, impl_status) in &rows {
+            if !seen.insert(id) {
+                violations.push(format!("{id} appears more than once"));
+            }
+            if !STATUS_VALUES.contains(&impl_status.as_str()) {
+                violations.push(format!("{id} has the unknown Impl status `{impl_status}`"));
+            }
+            *counts.entry(impl_status.as_str()).or_default() += 1;
+        }
+
+        let summary = summary_counts(text);
+        match summary.get("Total tracked features").copied() {
+            Some(total) if total == rows.len() => {}
+            Some(total) => violations.push(format!(
+                "the summary says {total} tracked features but the rows number {}",
+                rows.len()
+            )),
+            None => violations.push("the summary has no `Total tracked features` row".to_string()),
+        }
+
+        // A status used by a row and one counted by the summary are the same
+        // set, with the same number on each side.
+        let mut statuses: BTreeSet<&str> = counts.keys().copied().collect();
+        statuses.extend(
+            summary
+                .keys()
+                .map(String::as_str)
+                .filter(|key| *key != "Total tracked features"),
+        );
+        for status in statuses {
+            let from_rows = counts.get(status).copied().unwrap_or(0);
+            match summary.get(status).copied() {
+                Some(reported) if reported == from_rows => {}
+                Some(reported) => violations.push(format!(
+                    "the summary says {reported} `{status}` but the rows number {from_rows}"
+                )),
+                None => violations.push(format!(
+                    "the rows include {from_rows} `{status}` but the summary does not count it"
+                )),
+            }
+        }
+
+        let verified = counts.get("VERIFIED").copied().unwrap_or(0);
+        match prose_tally(text) {
+            Some(words) if words == count_words(verified) => {}
+            Some(words) => violations.push(format!(
+                "the verification summary says `{words}` verified but the rows number \
+                 {verified} (`{}`)",
+                count_words(verified)
+            )),
+            None => {
+                violations.push("the verification-summary prose tally was not found".to_string())
+            }
+        }
+
+        violations
+    }
+
+    fn feature_matrix_text() -> String {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/feature-matrix.md");
+        fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
+    }
+
+    #[test]
+    fn the_feature_matrix_summary_matches_its_rows() {
+        let violations = feature_matrix_violations(&feature_matrix_text());
+        assert!(
+            violations.is_empty(),
+            "docs/feature-matrix.md is internally inconsistent:\n  {}",
+            violations.join("\n  ")
+        );
+    }
+
+    #[test]
+    fn the_feature_matrix_guard_catches_drifted_counts() {
+        // Each mutation is what a hand-edited total or a mistyped status looks
+        // like, so a green run means the guard is actually reading the rows.
+        let text = feature_matrix_text();
+
+        let wrong_total = text.replace(
+            "| Total tracked features | 68 |",
+            "| Total tracked features | 67 |",
+        );
+        assert!(
+            feature_matrix_violations(&wrong_total)
+                .iter()
+                .any(|v| v.contains("tracked features")),
+            "a wrong total must be reported"
+        );
+
+        let wrong_status = text.replace("| VERIFIED | 51 |", "| VERIFIED | 52 |");
+        assert!(
+            feature_matrix_violations(&wrong_status)
+                .iter()
+                .any(|v| v.contains("`VERIFIED`")),
+            "a wrong per-status count must be reported"
+        );
+
+        let wrong_words =
+            text.replace("Fifty-one rows are verified", "Fifty-two rows are verified");
+        assert!(
+            feature_matrix_violations(&wrong_words)
+                .iter()
+                .any(|v| v.contains("verified")),
+            "a wrong prose tally must be reported"
+        );
+
+        // A single row's status flipped out of the counted set is caught by the
+        // per-status comparison, and a typo is caught as an unknown status.
+        let bad_status = text.replace(
+            "| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED",
+            "| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFED",
+        );
+        assert!(
+            feature_matrix_violations(&bad_status)
+                .iter()
+                .any(|v| v.contains("unknown Impl status")),
+            "a mistyped status must be reported"
+        );
+    }
+
+    #[test]
+    fn parses_matrix_rows_and_summary() {
+        let text = "\
+| ID | Feature | Priority | Milestone | Spec | Impl | Acceptance | Test |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| NC-F001 | A thing | MANDATORY | M4 | SPECIFIED | VERIFIED | does a thing | `a.rs` |
+| NC-E004 | Another | MANDATORY | M3 | SPECIFIED | IMPLEMENTED | partly | `b.rs` |
+
+| Metric | Value |
+| --- | --- |
+| Total tracked features | 2 |
+| VERIFIED | 1 |
+";
+        assert_eq!(
+            feature_rows(text),
+            vec![
+                ("NC-F001".to_string(), "VERIFIED".to_string()),
+                ("NC-E004".to_string(), "IMPLEMENTED".to_string()),
+            ]
+        );
+        let summary = summary_counts(text);
+        assert_eq!(summary.get("Total tracked features"), Some(&2));
+        assert_eq!(summary.get("VERIFIED"), Some(&1));
+        // A row count with no summary count is a violation.
+        assert!(
+            feature_matrix_violations(text)
+                .iter()
+                .any(|v| v.contains("`IMPLEMENTED`"))
+        );
+    }
+
+    #[test]
+    fn spells_counts_the_way_the_summary_does() {
+        assert_eq!(count_words(0), "Zero");
+        assert_eq!(count_words(1), "One");
+        assert_eq!(count_words(20), "Twenty");
+        assert_eq!(count_words(51), "Fifty-one");
+        assert_eq!(count_words(68), "Sixty-eight");
+        assert_eq!(count_words(100), "One hundred");
+        assert_eq!(count_words(115), "One hundred and fifteen");
+    }
 }
