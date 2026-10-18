@@ -377,18 +377,32 @@ serde = { version = \"1\" }
         "OUT_OF_SCOPE",
     ];
 
-    /// The `(id, Impl status)` of every `| NC-… |` row, in file order.
-    fn feature_rows(text: &str) -> Vec<(String, String)> {
+    /// One `| NC-… |` row of the matrix: its id, `Impl` status, and the eighth
+    /// cell — the `Test` column for the feature tables, the `Note` column for
+    /// the service table.
+    #[derive(Debug, PartialEq, Eq)]
+    struct FeatureRow {
+        id: String,
+        impl_status: String,
+        test: String,
+    }
+
+    /// Every `| NC-… |` row, in file order.
+    fn feature_rows(text: &str) -> Vec<FeatureRow> {
         let mut rows = Vec::new();
         for raw in text.lines() {
             let line = raw.trim();
             if !line.starts_with("| NC-") {
                 continue;
             }
-            // "", id, feature, priority, milestone, spec, impl, …, ""
+            // "", id, feature, priority, milestone, spec, impl, acceptance, test, ""
             let cells: Vec<&str> = line.split('|').map(str::trim).collect();
             if let (Some(id), Some(impl_status)) = (cells.get(1), cells.get(6)) {
-                rows.push((id.to_string(), impl_status.to_string()));
+                rows.push(FeatureRow {
+                    id: id.to_string(),
+                    impl_status: impl_status.to_string(),
+                    test: cells.get(8).copied().unwrap_or("").to_string(),
+                });
             }
         }
         rows
@@ -490,14 +504,17 @@ serde = { version = \"1\" }
         let mut violations = Vec::new();
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         let mut seen: BTreeSet<&str> = BTreeSet::new();
-        for (id, impl_status) in &rows {
-            if !seen.insert(id) {
-                violations.push(format!("{id} appears more than once"));
+        for row in &rows {
+            if !seen.insert(row.id.as_str()) {
+                violations.push(format!("{} appears more than once", row.id));
             }
-            if !STATUS_VALUES.contains(&impl_status.as_str()) {
-                violations.push(format!("{id} has the unknown Impl status `{impl_status}`"));
+            if !STATUS_VALUES.contains(&row.impl_status.as_str()) {
+                violations.push(format!(
+                    "{} has the unknown Impl status `{}`",
+                    row.id, row.impl_status
+                ));
             }
-            *counts.entry(impl_status.as_str()).or_default() += 1;
+            *counts.entry(row.impl_status.as_str()).or_default() += 1;
         }
 
         let summary = summary_counts(text);
@@ -549,8 +566,102 @@ serde = { version = \"1\" }
     }
 
     fn feature_matrix_text() -> String {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/feature-matrix.md");
+        let path = workspace_root().join("docs/feature-matrix.md");
         fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
+    }
+
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    /// The `.rs` files a `Test` cell cites, with the documented `…/` shorthand
+    /// for `crates/platform/src/` expanded.
+    fn cited_paths(cell: &str) -> Vec<String> {
+        cell.split('`')
+            .skip(1)
+            .step_by(2)
+            .filter(|span| span.contains('/') && span.ends_with(".rs"))
+            .map(|span| match span.strip_prefix("…/") {
+                Some(rest) => format!("crates/platform/src/{rest}"),
+                None => span.to_string(),
+            })
+            .collect()
+    }
+
+    /// Every way a `VERIFIED` row's citation fails: a row that names no
+    /// acceptance file, or one that names a file which is not in the tree. A row
+    /// earns `VERIFIED` on tests that exist (`AGENT.md` §2; `docs/test-strategy.md`
+    /// §2's "every feature … has a named test file"), so a citation that points
+    /// nowhere is the same inflation as a count that does not add up.
+    fn matrix_reference_violations(root: &Path, text: &str) -> Vec<String> {
+        let mut violations = Vec::new();
+        for row in feature_rows(text) {
+            if row.impl_status != "VERIFIED" {
+                continue;
+            }
+            let paths = cited_paths(&row.test);
+            if paths.is_empty() {
+                violations.push(format!(
+                    "{} is VERIFIED but names no acceptance file",
+                    row.id
+                ));
+                continue;
+            }
+            for path in paths {
+                if !root.join(&path).is_file() {
+                    violations.push(format!(
+                        "{} is VERIFIED but cites a file that is not there: {path}",
+                        row.id
+                    ));
+                }
+            }
+        }
+        violations
+    }
+
+    #[test]
+    fn every_verified_feature_cites_a_file_that_exists() {
+        let violations = matrix_reference_violations(&workspace_root(), &feature_matrix_text());
+        assert!(
+            violations.is_empty(),
+            "docs/feature-matrix.md cites files that are missing:\n  {}",
+            violations.join("\n  ")
+        );
+    }
+
+    #[test]
+    fn the_reference_guard_catches_dangling_citations() {
+        let text = feature_matrix_text();
+        let gone = "\
+| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED | UTF-8 (no BOM), CRLF, empty, in a new tab | `crates/platform/src/ui/gone.rs` |";
+        let missing = text.replace(
+            "| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED | UTF-8 (no BOM), CRLF, empty, in a new tab | `crates/platform/src/ui/lifecycle.rs` |",
+            gone,
+        );
+        assert!(
+            matrix_reference_violations(&workspace_root(), &missing)
+                .iter()
+                .any(|v| v.contains("gone.rs")),
+            "a citation to a missing file must be reported"
+        );
+
+        // A verified row that names no file at all is the inflation §2 forbids.
+        let uncited = "| NC-Z999 | X | MANDATORY | M1 | SPECIFIED | VERIFIED | does it | — |\n";
+        assert!(
+            matrix_reference_violations(Path::new("."), uncited)
+                .iter()
+                .any(|v| v.contains("names no acceptance file")),
+            "a verified row with no citation must be reported"
+        );
+
+        assert_eq!(
+            cited_paths("`crates/platform/src/ui/lifecycle.rs`, `…/ui/session.rs`"),
+            vec![
+                "crates/platform/src/ui/lifecycle.rs".to_string(),
+                "crates/platform/src/ui/session.rs".to_string(),
+            ]
+        );
+        assert!(cited_paths("egui runtime").is_empty());
     }
 
     #[test]
@@ -627,8 +738,16 @@ serde = { version = \"1\" }
         assert_eq!(
             feature_rows(text),
             vec![
-                ("NC-F001".to_string(), "VERIFIED".to_string()),
-                ("NC-E004".to_string(), "IMPLEMENTED".to_string()),
+                FeatureRow {
+                    id: "NC-F001".to_string(),
+                    impl_status: "VERIFIED".to_string(),
+                    test: "`a.rs`".to_string(),
+                },
+                FeatureRow {
+                    id: "NC-E004".to_string(),
+                    impl_status: "IMPLEMENTED".to_string(),
+                    test: "`b.rs`".to_string(),
+                },
             ]
         );
         let summary = summary_counts(text);
