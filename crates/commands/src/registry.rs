@@ -10,6 +10,7 @@
 use crate::availability::Availability;
 use crate::menu::{MenuNode, TopMenu};
 use crate::shortcut::{Key, Modifiers, Shortcut};
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// A stable, human-readable command identifier (`cmd.<group>.<name>`).
@@ -838,19 +839,57 @@ pub enum RegistryProblem {
     MilestoneRegression(&'static str),
     /// A toggle command carries a shortcut, which would make it a plain command.
     ToggleWithShortcut(&'static str),
+    /// The menu bar names a command that is not in the registry, so the item
+    /// would silently vanish from the drawn menu — `menu::resolve_node` drops an
+    /// id it cannot resolve.
+    MenuCommandNotRegistered(&'static str),
+    /// The menu bar lists the same command more than once.
+    DuplicateMenuCommand(&'static str),
+    /// A command declares a menu placement that the menu bar does not show it
+    /// in, so the declarative placement and the drawn menu disagree.
+    PlacementNotInMenu(&'static str),
+}
+
+/// Every command the menu bar shows, with the placement it is shown under. The
+/// tree is walked so [`registry_integrity`] can check the menu against the
+/// registry it is built from.
+fn menu_entries(menu_bar: &[MenuBar]) -> Vec<(&'static str, MenuPlacement)> {
+    fn walk(
+        nodes: &'static [MenuNode],
+        menu: TopMenu,
+        submenu: Option<&'static str>,
+        out: &mut Vec<(&'static str, MenuPlacement)>,
+    ) {
+        for node in nodes {
+            match node {
+                MenuNode::Command(id) => out.push((id.as_str(), MenuPlacement { menu, submenu })),
+                MenuNode::Separator => {}
+                MenuNode::Submenu(title, children) => walk(children, menu, Some(title), out),
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for bar in menu_bar {
+        walk(bar.nodes, bar.menu, None, &mut out);
+    }
+    out
 }
 
 /// Checks the registry against its structural invariants and returns every
 /// problem found. An empty result means the registry is internally consistent.
 pub fn registry_integrity() -> Vec<RegistryProblem> {
+    integrity_of(REGISTRY, MENU_BAR)
+}
+
+fn integrity_of(registry: &[CommandSpec], menu_bar: &[MenuBar]) -> Vec<RegistryProblem> {
     let mut problems = Vec::new();
 
-    for (index, spec) in REGISTRY.iter().enumerate() {
+    for (index, spec) in registry.iter().enumerate() {
         let id = spec.id.as_str();
-        if REGISTRY[..index].iter().any(|other| other.id == spec.id) {
+        if registry[..index].iter().any(|other| other.id == spec.id) {
             problems.push(RegistryProblem::DuplicateId(id));
         }
-        if REGISTRY[..index]
+        if registry[..index]
             .iter()
             .any(|other| other.menu_id == spec.menu_id)
         {
@@ -858,7 +897,7 @@ pub fn registry_integrity() -> Vec<RegistryProblem> {
         }
         if let Some(shortcut) = spec.shortcut {
             let text = shortcut.to_string();
-            if REGISTRY[..index]
+            if registry[..index]
                 .iter()
                 .any(|other| other.shortcut.map(|other| other.to_string()) == Some(text.clone()))
             {
@@ -867,12 +906,35 @@ pub fn registry_integrity() -> Vec<RegistryProblem> {
         }
     }
 
-    for spec in REGISTRY {
+    for spec in registry {
         if spec.milestone.number() == 0 {
             problems.push(RegistryProblem::MilestoneRegression(spec.id.as_str()));
         }
         if spec.toggle.is_some() && spec.shortcut.is_some() {
             problems.push(RegistryProblem::ToggleWithShortcut(spec.id.as_str()));
+        }
+    }
+
+    // The menu is drawn from the registry by id: an id the menu names but the
+    // registry does not carry is dropped silently when the menu is resolved, so
+    // the item disappears with nothing to show why — the mirror of a registry
+    // entry with no effect. The declared placement is checked against the tree
+    // too, so the field and the drawn menu cannot drift apart.
+    let entries = menu_entries(menu_bar);
+    let mut shown: BTreeMap<&'static str, MenuPlacement> = BTreeMap::new();
+    for &(id, placement) in &entries {
+        if by_id(id).is_none() {
+            problems.push(RegistryProblem::MenuCommandNotRegistered(id));
+        }
+        if shown.insert(id, placement).is_some() {
+            problems.push(RegistryProblem::DuplicateMenuCommand(id));
+        }
+    }
+    for spec in registry {
+        if let Some(placement) = spec.placement {
+            if shown.get(spec.id.as_str()) != Some(&placement) {
+                problems.push(RegistryProblem::PlacementNotInMenu(spec.id.as_str()));
+            }
         }
     }
 
@@ -972,6 +1034,49 @@ mod tests {
     fn registry_is_internally_consistent() {
         let problems = registry_integrity();
         assert!(problems.is_empty(), "registry problems: {problems:?}");
+    }
+
+    #[test]
+    fn integrity_catches_a_menu_that_disagrees_with_the_registry() {
+        // A menu naming an id the registry does not carry would be dropped
+        // silently when the menu is built, so the item disappears from the
+        // drawn menu with nothing to show why.
+        let ghost = [MenuBar {
+            menu: TopMenu::File,
+            nodes: &[MenuNode::Command(CommandId("cmd.file.not_real"))],
+        }];
+        assert!(
+            integrity_of(REGISTRY, &ghost).contains(&RegistryProblem::MenuCommandNotRegistered(
+                "cmd.file.not_real"
+            )),
+            "an unregistered menu id must be reported"
+        );
+
+        // A command shown somewhere other than its declared placement means the
+        // placement field and the drawn menu have drifted apart.
+        let moved = [MenuBar {
+            menu: TopMenu::View,
+            nodes: &[MenuNode::Command(CommandId("cmd.file.new_tab"))],
+        }];
+        assert!(
+            integrity_of(REGISTRY, &moved)
+                .contains(&RegistryProblem::PlacementNotInMenu("cmd.file.new_tab")),
+            "a placement the menu does not honour must be reported"
+        );
+
+        // The same command twice would draw twice.
+        let doubled = [MenuBar {
+            menu: TopMenu::File,
+            nodes: &[
+                MenuNode::Command(CommandId("cmd.file.new_tab")),
+                MenuNode::Command(CommandId("cmd.file.new_tab")),
+            ],
+        }];
+        assert!(
+            integrity_of(REGISTRY, &doubled)
+                .contains(&RegistryProblem::DuplicateMenuCommand("cmd.file.new_tab")),
+            "a command listed twice must be reported"
+        );
     }
 
     #[test]
