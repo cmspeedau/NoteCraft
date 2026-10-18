@@ -112,7 +112,7 @@ dark theme. Every command this build implements is now dispatched from the
 registry by its keyboard accelerator (`crates/platform/src/ui/input.rs`), so the
 menu and the keyboard run the same command. The Find/Replace and Go to line
 dialogs are built on the search engine (NC-S001, NC-S006). Outstanding: the
-Page setup surface, context menus, and high-DPI polish.
+Page setup surface and high-DPI polish.
 
 ### M3 — Text engine
 
@@ -279,10 +279,10 @@ the structural claims it does make (§1 — one tab per document, side by side, 
 accent underline) are now asserted, but that is the shell agreeing with itself, not
 a comparison against the capture, and judging the likeness still takes a person
 looking at a running window. `NC-F003` needs a second real top-level window.
-`NC-F010`'s Recent submenu needs its drawing observed. And the tab context menu
-(`NC-T003`) is blocked on the reference: `docs/ui-reference.md` documents no
-context menu at all, so its "Reference item set" does not exist to build against.
-It needs a capture, or a recorded decision, before it can be built.
+`NC-F010`'s Recent submenu needs its drawing observed. The tab context menu
+(`NC-T003`) is settled: the capture shows no context menu, so `AGENT.md` §3 allowed
+its item set to be decided and recorded in the registry rather than copied, and it
+is built from the `File` commands alone (`docs/ui-reference.md` §11).
 
 ### M7 — Markdown functionality
 
@@ -344,8 +344,8 @@ table glyph is no longer inert. The reference shows no hyperlink or table-size d
 so neither was invented: the commands write their syntax and leave the caret where the
 user types (§12). `LANDED_MILESTONE` reads 7: every milestone-7 command now changes
 something a user can see, which is the bar that constant exists to hold. Nothing in M7
-is `BLOCKED` or `NOT_STARTED`, and `NC-T003`'s context menu is the only row in the whole
-matrix waiting on a capture.
+is `BLOCKED` or `NOT_STARTED`, and `NC-T003`'s context menu — the last row waiting
+on a capture — was settled by a recorded decision instead (§11).
 
 ### M8 — Settings and desktop integration
 

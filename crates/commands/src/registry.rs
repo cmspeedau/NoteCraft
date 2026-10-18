@@ -10,7 +10,7 @@
 use crate::availability::Availability;
 use crate::menu::{MenuNode, TopMenu};
 use crate::shortcut::{Key, Modifiers, Shortcut};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// A stable, human-readable command identifier (`cmd.<group>.<name>`).
@@ -839,15 +839,26 @@ pub enum RegistryProblem {
     MilestoneRegression(&'static str),
     /// A toggle command carries a shortcut, which would make it a plain command.
     ToggleWithShortcut(&'static str),
-    /// The menu bar names a command that is not in the registry, so the item
-    /// would silently vanish from the drawn menu — `menu::resolve_node` drops an
-    /// id it cannot resolve.
+    /// A menu — the menu bar or the tab context menu — names a command that is
+    /// not in the registry, so the item would silently vanish from the drawn
+    /// menu: `menu::resolve_node` drops an id it cannot resolve.
     MenuCommandNotRegistered(&'static str),
-    /// The menu bar lists the same command more than once.
+    /// A menu lists the same command more than once.
     DuplicateMenuCommand(&'static str),
     /// A command declares a menu placement that the menu bar does not show it
     /// in, so the declarative placement and the drawn menu disagree.
     PlacementNotInMenu(&'static str),
+}
+
+/// The command ids a menu's nodes name, in order, submenus included.
+fn command_ids(nodes: &[MenuNode], out: &mut Vec<&'static str>) {
+    for node in nodes {
+        match *node {
+            MenuNode::Command(id) => out.push(id.as_str()),
+            MenuNode::Separator => {}
+            MenuNode::Submenu(_, children) => command_ids(children, out),
+        }
+    }
 }
 
 /// Every command the menu bar shows, with the placement it is shown under. The
@@ -855,13 +866,13 @@ pub enum RegistryProblem {
 /// registry it is built from.
 fn menu_entries(menu_bar: &[MenuBar]) -> Vec<(&'static str, MenuPlacement)> {
     fn walk(
-        nodes: &'static [MenuNode],
+        nodes: &[MenuNode],
         menu: TopMenu,
         submenu: Option<&'static str>,
         out: &mut Vec<(&'static str, MenuPlacement)>,
     ) {
         for node in nodes {
-            match node {
+            match *node {
                 MenuNode::Command(id) => out.push((id.as_str(), MenuPlacement { menu, submenu })),
                 MenuNode::Separator => {}
                 MenuNode::Submenu(title, children) => walk(children, menu, Some(title), out),
@@ -938,6 +949,21 @@ fn integrity_of(registry: &[CommandSpec], menu_bar: &[MenuBar]) -> Vec<RegistryP
         }
     }
 
+    // The tab context menu is drawn the same way, from ids, so an id it cannot
+    // resolve would drop an item in silence too. It has no placement of its own
+    // to honour — its items keep the `File` placements the menu bar shows them
+    // under — so only the two structural checks apply.
+    let mut tab_nodes = Vec::new();
+    command_ids(TAB_CONTEXT_MENU, &mut tab_nodes);
+    let mut seen_in_tab: BTreeSet<&str> = BTreeSet::new();
+    for id in tab_nodes {
+        if by_id(id).is_none() {
+            problems.push(RegistryProblem::MenuCommandNotRegistered(id));
+        }
+        if !seen_in_tab.insert(id) {
+            problems.push(RegistryProblem::DuplicateMenuCommand(id));
+        }
+    }
     problems
 }
 
@@ -1024,6 +1050,27 @@ pub struct MenuBar {
     /// The menu's contents.
     pub nodes: &'static [MenuNode],
 }
+
+/// The tab context menu: what right-clicking a tab offers (`NC-T003`).
+///
+/// The reference capture shows no context menu anywhere, so `AGENT.md` §3 asks
+/// for a *decided* item set recorded in the registry rather than one guessed
+/// inside the shell. The rule the set obeys: every item is a command the
+/// captured `File` menu already carries, taking only those that act on the one
+/// document a tab holds, and keeping them in that menu's own order. The context
+/// menu therefore adds a surface, not a command — nothing here can be offered
+/// that the menu bar does not know about, and each item keeps the availability
+/// rule the menu bar greys it with. `docs/ui-reference.md` §11 carries the
+/// reasoning, including why there is no "close all tabs".
+pub const TAB_CONTEXT_MENU: &[MenuNode] = &[
+    MenuNode::Command(CommandId("cmd.file.new_tab")),
+    MenuNode::Separator,
+    MenuNode::Command(CommandId("cmd.file.save")),
+    MenuNode::Command(CommandId("cmd.file.save_as")),
+    MenuNode::Command(CommandId("cmd.file.save_all")),
+    MenuNode::Separator,
+    MenuNode::Command(CommandId("cmd.file.close_tab")),
+];
 
 #[cfg(test)]
 mod tests {

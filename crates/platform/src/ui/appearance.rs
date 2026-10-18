@@ -100,11 +100,20 @@ fn frames(ctx: &egui::Context, shell: &mut Shell, count: usize) -> egui::FullOut
 
 /// A click, as the windowing layer reports one: press then release, same point.
 fn click_at(point: egui::Pos2) -> Vec<egui::Event> {
+    pointer_click_at(point, egui::PointerButton::Primary)
+}
+
+/// A right-click, which is what raises a tab's context menu (`NC-T003`).
+fn right_click_at(point: egui::Pos2) -> Vec<egui::Event> {
+    pointer_click_at(point, egui::PointerButton::Secondary)
+}
+
+fn pointer_click_at(point: egui::Pos2, button: egui::PointerButton) -> Vec<egui::Event> {
     [true, false]
         .iter()
         .map(|pressed| egui::Event::PointerButton {
             pos: point,
-            button: egui::PointerButton::Primary,
+            button,
             pressed: *pressed,
             modifiers: egui::Modifiers::NONE,
         })
@@ -1415,4 +1424,104 @@ fn spell_check_underlines_a_slip_and_leaves_a_correct_word_alone() {
         spell_squiggles(&output).is_empty(),
         "a correct word was flagged"
     );
+}
+
+// ---- NC-T003 — "Tab context menu" -------------------------------------------
+
+/// Where `needle` was first painted, as the anchor of its galley.
+fn painted_pos(output: &egui::FullOutput, needle: &str) -> Option<egui::Pos2> {
+    output
+        .shapes
+        .iter()
+        .find_map(|clipped| match &clipped.shape {
+            Shape::Text(shape) => shape.galley.text().contains(needle).then_some(shape.pos),
+            _ => None,
+        })
+}
+
+/// A shell of `count` tabs, brought up on one live context with its first frame
+/// painted, plus the tab rectangles from that frame.
+fn tabs_on_screen(count: usize) -> (Shell, egui::Context, egui::FullOutput) {
+    let mut shell = Shell::new();
+    while shell.tabs.len() < count {
+        shell.open_tab(DocKind::Plain);
+    }
+    let ctx = egui::Context::default();
+    theme::install(&ctx, shell.palette);
+    let output = frame(&ctx, &mut shell, None);
+    let rects = tab_rects(&output);
+    assert_eq!(rects.len(), count, "one tab painted per document");
+    (shell, ctx, output)
+}
+
+#[test]
+fn right_clicking_a_tab_raises_the_registry_item_set_and_selects_that_tab() {
+    // The item set is the registry's (`nc_commands::TAB_CONTEXT_MENU`), so what
+    // this asserts is that the strip really draws it — and that the right-click
+    // also selects the tab it landed on, which is what lets every item act on
+    // the document the user aimed at (`docs/ui-reference.md` §11).
+    let (mut shell, ctx, _output) = tabs_on_screen(3);
+    // Opening a tab activates it, so the last one opened is on screen. Put the
+    // window back on the first tab: what the right-click has to move.
+    shell.active = 0;
+    let output = frame(&ctx, &mut shell, None);
+    let target = tab_rects(&output)[2].center();
+    assert_eq!(shell.active, 0, "the third tab is not the active one yet");
+
+    interact(&ctx, &mut shell, right_click_at(target));
+    let output = frame(&ctx, &mut shell, None);
+
+    assert_eq!(shell.active, 2, "right-click selected the tab it landed on");
+    for label in ["New tab", "Save as", "Save all", "Close tab"] {
+        assert!(paints(&output, label), "the menu does not offer {label:?}");
+    }
+}
+
+#[test]
+fn choosing_close_tab_from_the_context_menu_closes_the_tab_it_was_raised_from() {
+    let (mut shell, ctx, output) = tabs_on_screen(3);
+    let target = tab_rects(&output)[1].center();
+
+    interact(&ctx, &mut shell, right_click_at(target));
+    let menu = frame(&ctx, &mut shell, None);
+    let item = painted_pos(&menu, "Close tab").expect("Close tab painted");
+
+    // A menu row is a button taller than its label, so aiming inside the row
+    // rather than at the glyph is what a click on the item is.
+    interact(&ctx, &mut shell, click_at(item + egui::vec2(12.0, 9.0)));
+    let after = frame(&ctx, &mut shell, None);
+
+    assert_eq!(
+        shell.tabs.len(),
+        2,
+        "the tab the menu was raised from closed"
+    );
+    assert_eq!(
+        tab_rects(&after).len(),
+        2,
+        "and the strip redrew without it"
+    );
+}
+
+#[test]
+fn the_tab_context_menu_offers_nothing_the_registry_did_not_decide() {
+    // The item set is a recorded decision (`docs/ui-reference.md` §11), and the
+    // decision is that the menu adds a surface and not a command: no "close all",
+    // which §11 already rules out, and nothing else the strip might invent. An
+    // assertion that only lists what *is* there would pass with extra items too.
+    let (mut shell, ctx, output) = tabs_on_screen(2);
+    let target = tab_rects(&output)[0].center();
+
+    interact(&ctx, &mut shell, right_click_at(target));
+    let menu = frame(&ctx, &mut shell, None);
+
+    for absent in ["Close all", "Close others", "Close window", "Print"] {
+        assert!(
+            !paints(&menu, absent),
+            "the tab context menu offers {absent:?}, which the decided item set does not"
+        );
+    }
+    // And what it does offer is on screen: the guard above is not passing because
+    // no menu appeared at all.
+    assert!(paints(&menu, "Close tab"), "the menu did not open");
 }

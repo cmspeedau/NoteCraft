@@ -62,12 +62,14 @@ fn menu_items(
                 enabled,
                 checked,
             } => {
-                let text = command_label(spec.label, *checked);
-                let mut button = egui::Button::new(text).min_size(egui::vec2(210.0, 0.0));
-                if let Some(accel) = accelerator {
-                    button = button.shortcut_text(RichText::new(accel).color(palette.text_dim));
-                }
-                if ui.add_enabled(*enabled, button).clicked() {
+                if command_button(
+                    ui,
+                    spec.label,
+                    *checked,
+                    accelerator.as_deref(),
+                    *enabled,
+                    palette,
+                ) {
                     actions::run(shell, ctx, spec.id);
                     ui.close();
                 }
@@ -131,6 +133,27 @@ fn command_label(label: &str, checked: Option<bool>) -> RichText {
         Some(false) => RichText::new(format!("     {label}")),
         None => RichText::new(label),
     }
+}
+
+/// One menu row: the registry's label, its accelerator right-aligned, greyed
+/// when the command's availability rule says so — and whether it was chosen.
+///
+/// Shared with the tab context menu (`title_bar`) so the two surfaces cannot
+/// drift apart in what a row looks like or when it is clickable.
+pub(crate) fn command_button(
+    ui: &mut egui::Ui,
+    label: &str,
+    checked: Option<bool>,
+    accelerator: Option<&str>,
+    enabled: bool,
+    palette: Palette,
+) -> bool {
+    let mut button =
+        egui::Button::new(command_label(label, checked)).min_size(egui::vec2(210.0, 0.0));
+    if let Some(accel) = accelerator {
+        button = button.shortcut_text(RichText::new(accel).color(palette.text_dim));
+    }
+    ui.add_enabled(enabled, button).clicked()
 }
 
 /// The formatting controls in the middle of the bar.

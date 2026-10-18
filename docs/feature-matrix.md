@@ -43,7 +43,7 @@ deliberately left undone is widening a table, which nothing in the capture would
 still ahead. Seven M6 behaviour criteria are
 `VERIFIED` by an acceptance suite (`crates/platform/src/ui/lifecycle.rs`) and the
 dirty marker by its painted shapes (`crates/platform/src/ui/appearance.rs`); the
-remaining visual criteria and the tab context menu are not — see the verification
+remaining visual criteria are not — see the verification
 summary for exactly which rows rest on what. Nothing is `VERIFIED` until its
 acceptance tests pass end to end.
 
@@ -121,7 +121,7 @@ library exposes no local time zone and the project carries no time-zone database
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NC-T001 | Tab strip + add-tab button | MANDATORY | M6 | SPECIFIED | IMPLEMENTED | Geometry matches the reference | `crates/platform/src/ui/appearance.rs` (structural only) |
 | NC-T002 | Tab switching Ctrl+Tab / Ctrl+Shift+Tab | MANDATORY | M6 | SPECIFIED | VERIFIED | Cyclic; works with N tabs | `crates/platform/src/ui/lifecycle.rs` |
-| NC-T003 | Tab context menu | OPTIONAL | M6 | SPECIFIED | BLOCKED | Reference item set | blocked — see note below |
+| NC-T003 | Tab context menu | OPTIONAL | M6 | SPECIFIED | VERIFIED | Decided item set (§11): the `File` commands that act on one tab, in that menu's order | `crates/commands/src/menu.rs`, `crates/platform/src/ui/appearance.rs` |
 | NC-T004 | Dirty indicator on tab/title | MANDATORY | M6 | SPECIFIED | VERIFIED | Marker shown when dirty | `crates/platform/src/ui/appearance.rs` |
 | NC-T005 | Close all | MANDATORY | M6 | SPECIFIED | VERIFIED | Prompt per dirty doc | `crates/platform/src/ui/lifecycle.rs` |
 
@@ -177,10 +177,10 @@ library exposes no local time zone and the project carries no time-zone database
 | IN_PROGRESS | 0 |
 | NOT_STARTED | 5 |
 | OUT_OF_SCOPE | 2 |
-| VERIFIED | 51 |
-| BLOCKED | 1 |
+| VERIFIED | 52 |
+| BLOCKED | 0 |
 
-**What `VERIFIED` means here.** Fifty-one rows are verified, by suites that drive the
+**What `VERIFIED` means here.** Fifty-two rows are verified, by suites that drive the
 real shell rather than a model of it, and by the Markdown engine's own suite — whose
 criteria the shell suite then re-checks end to end.
 
@@ -587,14 +587,34 @@ deliberately disagrees with its logical one. Both are decisions the milestone ma
 its own optional boundary, and they are written down rather than left to rot as
 `NOT_STARTED`.
 
-**NC-T003 is blocked, not unstarted.** Its acceptance criterion is a "Reference
-item set", but `docs/ui-reference.md` documents no context menu anywhere — no
-match for "context menu" or "right-click" in the file — and §11 states outright
-that the reference capture does not include these behaviours. There is no item set
-to implement against, and AGENT.md §2 forbids inventing UI the reference does not
-show. It also appears under M2's outstanding surface in `ROADMAP.md`, so it is
-double-booked. Unblocking needs a decision from whoever owns the reference capture:
-capture the menu, or record a decided item set in the registry the way §3 allows.
+**NC-T003 was the last row waiting on a capture, and it was settled the way §3
+allows rather than by waiting.** Its acceptance criterion read "Reference item
+set", and `docs/ui-reference.md` documents no context menu anywhere — no match for
+"context menu" or "right-click" in the file — so there was no item set to copy. §3
+says that when the reference does not show a behaviour, decide it and record the
+decision rather than guess silently, and that is what happened: `nc_commands::TAB_CONTEXT_MENU`
+now carries the set, and `docs/ui-reference.md` §11 carries the reasoning.
+
+The rule the decision obeys is that the context menu adds a **surface, not a
+command**: every item is one the captured `File` menu already carries, restricted
+to those that act on the single document a tab holds, kept in that menu's own
+order, and each keeping the availability rule that greys it in `File`. There is
+no *close all tabs*, because §11 already rules that out. Right-clicking selects
+the tab it landed on before the menu opens, which is what makes every item mean
+the document the user aimed at — without that, "Close tab" would close whichever
+tab happened to be active, a wrong action wearing the right label.
+
+Why this row can be `VERIFIED` where `NC-P004` stays `IMPLEMENTED`: P004's spell
+checker is a feature the capture has nothing about, so its look has no reference
+at all. A tab strip the capture *does* show, given a menu built only from commands
+the capture *does* show, is a projection of what was captured rather than an
+invention, and its acceptance is the recorded set. The tests drive the real shell
+both ways: `menu.rs` pins the exact item set, the `File` order, and the greying at
+the model, and `appearance.rs` right-clicks a painted tab and asserts the menu
+opens, that choosing `Close tab` closes the tab the menu was raised from, and that
+the menu offers nothing the decision excludes. Mutation-checked: painting no items,
+dropping the select-on-right-click, and adding a `Print` row to the set each fail
+their test.
 
 > The engines (`nc-core`, `nc-textproc`) and the shell's core surfaces are
 > `IMPLEMENTED`, and the Find/Replace, Go-to, and Open/Save-as dialogs are built
@@ -611,5 +631,6 @@ capture the menu, or record a decided item set in the registry the way §3 allow
 > as invented UI (`IMPLEMENTED`, no captured row to verify against); file
 > association and localization are `OUT_OF_SCOPE` by a recorded decision — the first
 > mutates the user's desktop and is OS-specific, the second has no non-English
-> capture to localize against. Still ahead: the visual criteria await a display, and
-> the tab context menu awaits a reference decision.
+> capture to localize against. Still ahead: the visual criteria await a display.
+> The tab context menu no longer awaits anything: §3 let the item set be decided
+> and recorded, and it is (`NC-T003`).

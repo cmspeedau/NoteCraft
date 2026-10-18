@@ -120,6 +120,16 @@ pub fn build_menu_bar(context: AvailabilityContext) -> Vec<MenuModel> {
         .collect()
 }
 
+/// The tab context menu for `context` (`NC-T003`).
+///
+/// The same registry, resolved the same way as the menu bar — the items are the
+/// ones [`registry::TAB_CONTEXT_MENU`] decides, each greyed by the availability
+/// rule the menu bar already greys it with. A second renderer with its own idea
+/// of what a tab offers is how two surfaces start disagreeing.
+pub fn build_tab_context_menu(context: AvailabilityContext) -> Vec<MenuItem> {
+    normalise(resolve_nodes(registry::TAB_CONTEXT_MENU, context))
+}
+
 /// Builds a single top-level menu for `context`.
 pub fn resolve(bar: &MenuBar, context: AvailabilityContext) -> MenuModel {
     MenuModel {
@@ -220,6 +230,75 @@ mod tests {
         let bar = build_menu_bar(AvailabilityContext::initial());
         let titles: Vec<_> = bar.iter().map(|menu| menu.menu.label()).collect();
         assert_eq!(titles, vec!["File", "Edit", "View"]);
+    }
+
+    #[test]
+    fn the_tab_context_menu_offers_only_file_commands_in_the_file_order() {
+        // Every item is one the captured `File` menu already carries, and in that
+        // menu's order — the context menu adds a surface, not a command
+        // (`NC-T003`, `docs/ui-reference.md` §11).
+        let items = build_tab_context_menu(AvailabilityContext::initial());
+        let offered: Vec<_> = items
+            .iter()
+            .filter_map(MenuItem::command)
+            .map(|spec| spec.id.as_str())
+            .collect();
+        assert_eq!(
+            offered,
+            vec![
+                "cmd.file.new_tab",
+                "cmd.file.save",
+                "cmd.file.save_as",
+                "cmd.file.save_all",
+                "cmd.file.close_tab",
+            ]
+        );
+
+        let file = {
+            let bar = build_menu_bar(AvailabilityContext::initial());
+            bar.into_iter()
+                .find(|model| model.menu == TopMenu::File)
+                .expect("File menu")
+                .items
+        };
+        let order = |id: &str| {
+            file.iter()
+                .filter_map(MenuItem::command)
+                .position(|spec| spec.id.as_str() == id)
+        };
+        let positions: Vec<_> = offered.iter().filter_map(|id| order(id)).collect();
+        assert_eq!(
+            positions,
+            {
+                let mut sorted = positions.clone();
+                sorted.sort();
+                sorted
+            },
+            "the context menu must not reorder what the File menu already orders"
+        );
+    }
+
+    #[test]
+    fn the_tab_context_menu_greys_what_the_file_menu_greys() {
+        let enabled = |items: &[MenuItem], id: &str| {
+            items
+                .iter()
+                .find(|item| item.command().map(|spec| spec.id.as_str()) == Some(id))
+                .unwrap_or_else(|| panic!("{id} is offered"))
+                .is_enabled()
+        };
+
+        // One tab: `Save all` has nothing to save all of. Two tabs and it does.
+        let one = build_tab_context_menu(AvailabilityContext::initial());
+        assert!(!enabled(&one, "cmd.file.save_all"));
+        assert!(enabled(&one, "cmd.file.new_tab"));
+        assert!(enabled(&one, "cmd.file.close_tab"));
+
+        let two = build_tab_context_menu(AvailabilityContext {
+            tab_count: 2,
+            ..AvailabilityContext::initial()
+        });
+        assert!(enabled(&two, "cmd.file.save_all"));
     }
 
     #[test]

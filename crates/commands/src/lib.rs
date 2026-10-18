@@ -30,10 +30,13 @@ mod registry;
 mod shortcut;
 
 pub use availability::{Availability, AvailabilityContext};
-pub use menu::{MenuItem, MenuModel, MenuNode, TopMenu, all_disabled, build_menu_bar, checked};
+pub use menu::{
+    MenuItem, MenuModel, MenuNode, TopMenu, all_disabled, build_menu_bar, build_tab_context_menu,
+    checked,
+};
 pub use registry::{
     CommandId, CommandSpec, MENU_BAR, MenuBar, MenuPlacement, Milestone, REGISTRY, RegistryProblem,
-    Toggle, by_id, by_menu_id, by_shortcut, commands_at, registry_integrity,
+    TAB_CONTEXT_MENU, Toggle, by_id, by_menu_id, by_shortcut, commands_at, registry_integrity,
 };
 pub use shortcut::{Key, Modifiers, Shortcut};
 

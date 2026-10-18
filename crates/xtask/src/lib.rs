@@ -631,17 +631,28 @@ serde = { version = \"1\" }
 
     #[test]
     fn the_reference_guard_catches_dangling_citations() {
+        // Takes the first `VERIFIED` row and points its first citation at a file
+        // that is not in the tree, changing nothing else. Derived from the
+        // document, so it keeps testing what it claims as rows come and go.
         let text = feature_matrix_text();
-        let gone = "\
-| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED | UTF-8 (no BOM), CRLF, empty, in a new tab | `crates/platform/src/ui/gone.rs` |";
-        let missing = text.replace(
-            "| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED | UTF-8 (no BOM), CRLF, empty, in a new tab | `crates/platform/src/ui/lifecycle.rs` |",
-            gone,
+        let row = text
+            .lines()
+            .find(|line| line.starts_with("| NC-") && line.contains(" VERIFIED "))
+            .expect("a VERIFIED row")
+            .to_string();
+        let id = row.split('|').nth(1).unwrap_or_default().trim().to_string();
+        let open = row.find('`').expect("a cited path");
+        let close = open + 1 + row[open + 1..].find('`').expect("a closing backtick");
+        let broken = format!(
+            "{}crates/platform/src/ui/gone.rs{}",
+            &row[..open + 1],
+            &row[close..]
         );
+        let missing = text.replace(row.as_str(), &broken);
         assert!(
             matrix_reference_violations(&workspace_root(), &missing)
                 .iter()
-                .any(|v| v.contains("gone.rs")),
+                .any(|v| v.contains(&id) && v.contains("gone.rs")),
             "a citation to a missing file must be reported"
         );
 
@@ -674,16 +685,36 @@ serde = { version = \"1\" }
         );
     }
 
+    /// Rewrites the summary table's number for `key`, leaving the rest of the
+    /// document byte-for-byte as it was.
+    fn set_summary(text: &str, key: &str, value: usize) -> String {
+        let prefix = format!("| {key} | ");
+        text.lines()
+            .map(|raw| match raw.trim().strip_prefix(&prefix) {
+                Some(rest) if rest.trim_end_matches(" |").parse::<usize>().is_ok() => {
+                    format!("| {key} | {value} |")
+                }
+                _ => raw.to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[test]
     fn the_feature_matrix_guard_catches_drifted_counts() {
         // Each mutation is what a hand-edited total or a mistyped status looks
-        // like, so a green run means the guard is actually reading the rows.
+        // like, so a green run means the guard is actually reading the rows. The
+        // numbers are read back out of the document rather than written here: a
+        // test that hard-coded them would quietly stop testing anything the
+        // moment a row moved — which is exactly how it first failed.
         let text = feature_matrix_text();
+        let rows = feature_rows(&text);
+        let verified = rows
+            .iter()
+            .filter(|row| row.impl_status == "VERIFIED")
+            .count();
 
-        let wrong_total = text.replace(
-            "| Total tracked features | 68 |",
-            "| Total tracked features | 67 |",
-        );
+        let wrong_total = set_summary(&text, "Total tracked features", rows.len() - 1);
         assert!(
             feature_matrix_violations(&wrong_total)
                 .iter()
@@ -691,16 +722,19 @@ serde = { version = \"1\" }
             "a wrong total must be reported"
         );
 
-        let wrong_status = text.replace("| VERIFIED | 51 |", "| VERIFIED | 52 |");
+        let wrong_verified = set_summary(&text, "VERIFIED", verified + 1);
         assert!(
-            feature_matrix_violations(&wrong_status)
+            feature_matrix_violations(&wrong_verified)
                 .iter()
                 .any(|v| v.contains("`VERIFIED`")),
             "a wrong per-status count must be reported"
         );
 
-        let wrong_words =
-            text.replace("Fifty-one rows are verified", "Fifty-two rows are verified");
+        let words = prose_tally(&text).expect("the prose tally");
+        let wrong_words = text.replace(
+            &format!("{words} rows are verified"),
+            "No rows are verified",
+        );
         assert!(
             feature_matrix_violations(&wrong_words)
                 .iter()
@@ -708,12 +742,8 @@ serde = { version = \"1\" }
             "a wrong prose tally must be reported"
         );
 
-        // A single row's status flipped out of the counted set is caught by the
-        // per-status comparison, and a typo is caught as an unknown status.
-        let bad_status = text.replace(
-            "| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFIED",
-            "| NC-F001 | New empty document (Ctrl+N) | MANDATORY | M4 | SPECIFIED | VERIFED",
-        );
+        // A status outside §11's set is reported as such wherever it appears.
+        let bad_status = text.replace("| SPECIFIED | VERIFIED |", "| SPECIFIED | VERIFED |");
         assert!(
             feature_matrix_violations(&bad_status)
                 .iter()

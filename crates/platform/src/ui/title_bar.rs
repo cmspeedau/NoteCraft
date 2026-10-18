@@ -8,7 +8,8 @@ use egui::{
 
 use crate::ui::state::{DocKind, Shell, Tab};
 use crate::ui::theme::Palette;
-use crate::ui::{a11y, actions, widgets};
+use crate::ui::{a11y, actions, menu_bar, widgets};
+use nc_commands::{CommandId, MenuItem, build_tab_context_menu};
 
 /// The height of the title bar, in points.
 pub const HEIGHT: f32 = 40.0;
@@ -20,6 +21,8 @@ struct TabHit {
     activate: bool,
     /// The tab's close button was clicked.
     close: bool,
+    /// The tab was right-clicked, which raises its context menu.
+    menu: bool,
 }
 
 /// Draws the title bar and applies any tab changes it caused.
@@ -42,6 +45,12 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
 
             let mut to_activate: Option<usize> = None;
             let mut to_close: Option<usize> = None;
+            // A command chosen from a tab's context menu. Collected during the
+            // draw and run after it, the way a tab click is: the items act on
+            // the tab the menu was raised from, which right-clicking has already
+            // made the active one (`NC-T003`, `docs/ui-reference.md` §11).
+            let mut chosen: Option<CommandId> = None;
+            let tab_menu = build_tab_context_menu(shell.availability());
 
             let palette = shell.palette;
             ui.horizontal_centered(|ui| {
@@ -60,11 +69,24 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
                     .show(ui, |ui| {
                         ui.horizontal_centered(|ui| {
                             for (index, tab) in shell.tabs.iter().enumerate() {
-                                let hit =
-                                    tab_widget(ui, index, tab, index == shell.active, palette);
+                                let hit = tab_widget(
+                                    ui,
+                                    index,
+                                    tab,
+                                    index == shell.active,
+                                    palette,
+                                    &tab_menu,
+                                    &mut chosen,
+                                );
                                 if hit.close {
                                     to_close = Some(index);
-                                } else if hit.activate {
+                                } else if hit.activate || hit.menu {
+                                    // A right-click selects the tab it landed on
+                                    // before it offers anything, so every item
+                                    // then acts on the document the user aimed at
+                                    // rather than on whichever tab happened to be
+                                    // active — and an item that cannot be honoured
+                                    // is greyed rather than wrong.
                                     to_activate = Some(index);
                                 }
                             }
@@ -88,6 +110,9 @@ pub fn show(shell: &mut Shell, ui: &mut egui::Ui, ctx: &Context) {
             }
             if let Some(index) = to_close {
                 actions::close_tab(shell, index);
+            }
+            if let Some(command) = chosen {
+                actions::run(shell, ctx, command);
             }
         });
 }
@@ -141,12 +166,17 @@ fn app_icon(ui: &mut egui::Ui, palette: Palette) {
 }
 
 /// A single tab, returning what was clicked.
+///
+/// `tab_menu` is the registry's tab context menu, already resolved against the
+/// shell's availability; `chosen` collects a command the user picks from it.
 fn tab_widget(
     ui: &mut egui::Ui,
     index: usize,
     tab: &Tab,
     active: bool,
     palette: Palette,
+    tab_menu: &[MenuItem],
+    chosen: &mut Option<CommandId>,
 ) -> TabHit {
     let height = 34.0;
     let title = tab.title();
@@ -236,8 +266,43 @@ fn tab_widget(
         );
     }
 
+    // Right-click raises the tab's context menu: the registry's item set, drawn
+    // with the same rows as the menu bar, so the strip cannot offer something the
+    // menus do not already carry (`NC-T003`, `docs/ui-reference.md` §11).
+    let _ = response.context_menu(|ui| {
+        for item in tab_menu {
+            match item {
+                MenuItem::Separator => {
+                    let _ = ui.separator();
+                }
+                MenuItem::Command {
+                    spec,
+                    accelerator,
+                    enabled,
+                    checked,
+                } => {
+                    if menu_bar::command_button(
+                        ui,
+                        spec.label,
+                        *checked,
+                        accelerator.as_deref(),
+                        *enabled,
+                        palette,
+                    ) {
+                        *chosen = Some(spec.id);
+                        ui.close();
+                    }
+                }
+                // The tab menu is a flat list; a submenu would need the menu
+                // bar's own renderer, and nothing here is one.
+                MenuItem::Submenu { .. } => {}
+            }
+        }
+    });
+
     TabHit {
         activate: response.clicked() && !close.hovered(),
         close: close.clicked(),
+        menu: response.secondary_clicked(),
     }
 }
